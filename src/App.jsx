@@ -27,7 +27,8 @@ import Team from '@/pages/Team';
 import Profile from '@/pages/Profile';
 import AdminRoute from '@/components/AdminRoute';
 import AdminPanelLayout from '@/components/admin/AdminPanelLayout';
-import Integrations from '@/pages/admin/Integrations';
+import IntegrationsHub from '@/pages/admin/IntegrationsHub';
+import EmailIntegration from '@/pages/admin/EmailIntegration';
 import UserManagementHub from '@/pages/admin/UserManagementHub';
 import ComingSoonPage from '@/pages/admin/ComingSoonPage';
 import ConfigCrudPage from '@/pages/admin/ConfigCrudPage';
@@ -81,7 +82,30 @@ const AuthenticatedApp = () => {
               <Route path="data-health" element={<DataHealth />} />
               <Route path="activity" element={<ActivityLog />} />
               <Route path="bulk-upload" element={<BulkUpload />} />
-              <Route path="integrations" element={<Integrations />} />
+              <Route path="integrations" element={<IntegrationsHub />} />
+              <Route path="integrations/email" element={<EmailIntegration />} />
+              <Route
+                path="integrations/ai"
+                element={(
+                  <ComingSoonPage
+                    title="AI Providers"
+                    description="Connect OpenAI, Anthropic, and other LLM APIs."
+                    backTo="/admin/integrations"
+                    backLabel="Integrations"
+                  />
+                )}
+              />
+              <Route
+                path="integrations/storage"
+                element={(
+                  <ComingSoonPage
+                    title="Storage"
+                    description="Connect Google Drive, S3, R2, and other storage providers."
+                    backTo="/admin/integrations"
+                    backLabel="Integrations"
+                  />
+                )}
+              />
               <Route path="users" element={<UserManagementHub />} />
               <Route path="users/list" element={<ComingSoonPage title="Users" description="Invite users, assign roles, and deactivate accounts. Available in Phase 5." />} />
               <Route path="users/roles" element={<ComingSoonPage title="Roles" description="CRUD application roles. Available in Phase 5." />} />

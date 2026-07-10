@@ -1,11 +1,8 @@
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { SECRET_MASK } from './auth.ts';
 
-export type SmtpSettings = {
+export type ResendSettings = {
   id: number;
-  provider: string;
-  smtp_host: string;
-  smtp_port: number;
-  smtp_username: string;
   api_key: string;
   from_email: string | null;
   from_name: string | null;
@@ -14,64 +11,48 @@ export type SmtpSettings = {
   updated_by: string | null;
 };
 
-export type SafeSmtpSettings = {
-  provider: string;
-  smtp_host: string;
-  smtp_port: number;
-  smtp_username: string;
+export type SafeResendSettings = {
   from_email: string | null;
   from_name: string | null;
   enabled: boolean;
   configured: boolean;
   api_key_masked: string;
   updated_at: string | null;
-  updated_by: string | null;
 };
 
-const API_KEY_MASK = '*************';
-
-export function toSafeSettings(row: SmtpSettings | null): SafeSmtpSettings {
-  const hasKey = Boolean(row?.api_key?.trim());
-  return {
-    provider: row?.provider ?? 'resend',
-    smtp_host: row?.smtp_host ?? 'smtp.resend.com',
-    smtp_port: row?.smtp_port ?? 465,
-    smtp_username: row?.smtp_username ?? 'resend',
-    from_email: row?.from_email ?? null,
-    from_name: row?.from_name ?? null,
-    enabled: row?.enabled ?? false,
-    configured: hasKey && Boolean(row?.from_email?.trim()),
-    api_key_masked: hasKey ? API_KEY_MASK : '',
-    updated_at: row?.updated_at ?? null,
-    updated_by: row?.updated_by ?? null,
-  };
-}
-
-export async function loadSmtpSettings(
+export async function loadResendSettings(
   adminClient: SupabaseClient,
-): Promise<SmtpSettings | null> {
+): Promise<ResendSettings | null> {
   const { data, error } = await adminClient
-    .from('integration_smtp_settings')
+    .from('integration_resend_settings')
     .select('*')
     .eq('id', 1)
     .maybeSingle();
 
   if (error) throw error;
-  return data as SmtpSettings | null;
+  return data as ResendSettings | null;
+}
+
+export function toSafeResendSettings(row: ResendSettings | null): SafeResendSettings {
+  const hasKey = Boolean(row?.api_key?.trim());
+  return {
+    from_email: row?.from_email ?? null,
+    from_name: row?.from_name ?? null,
+    enabled: row?.enabled ?? false,
+    configured: hasKey && Boolean(row?.from_email?.trim()),
+    api_key_masked: hasKey ? SECRET_MASK : '',
+    updated_at: row?.updated_at ?? null,
+  };
 }
 
 export async function sendResendEmail(
-  settings: SmtpSettings,
+  settings: ResendSettings,
   params: { to: string; subject: string; html: string },
 ): Promise<{ messageId: string }> {
   const fromName = settings.from_name?.trim() || 'Gradito';
   const fromEmail = settings.from_email?.trim();
-  if (!fromEmail) {
-    throw new Error('From email is not configured');
-  }
-  if (!settings.api_key?.trim()) {
-    throw new Error('API key is not configured');
-  }
+  if (!fromEmail) throw new Error('Sender email is not configured');
+  if (!settings.api_key?.trim()) throw new Error('API key is not configured');
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -94,13 +75,4 @@ export async function sendResendEmail(
   }
 
   return { messageId: data.id as string };
-}
-
-export function createServiceClient(): SupabaseClient {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL');
-  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing Supabase environment variables');
-  }
-  return createClient(supabaseUrl, serviceRoleKey);
 }

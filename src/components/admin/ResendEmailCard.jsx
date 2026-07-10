@@ -3,10 +3,10 @@ import { format } from 'date-fns';
 import { AlertCircle, Info, Loader2, Mail, X } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import {
-  useSaveSmtpIntegration,
-  useSmtpIntegration,
-  useTestSmtpIntegration,
-} from '@/hooks/useSmtpIntegration';
+  useEmailIntegration,
+  useSaveResendIntegration,
+  useTestResendIntegration,
+} from '@/hooks/useEmailIntegration';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,7 +18,6 @@ import { toast } from '@/components/ui/use-toast';
 
 const RESEND_DOMAINS_URL = 'https://resend.com/domains';
 const DEFAULT_FROM_NAME = 'Gradito';
-const DEFAULT_SMTP_PORT = 465;
 
 function isDomainVerificationError(message) {
   if (!message) return false;
@@ -33,11 +32,13 @@ function isDomainVerificationError(message) {
   );
 }
 
-export default function SmtpIntegrationCard() {
+export default function ResendEmailCard() {
   const { user } = useAuth();
-  const { data: settings, isLoading, isError, error } = useSmtpIntegration();
-  const saveMutation = useSaveSmtpIntegration();
-  const testMutation = useTestSmtpIntegration();
+  const { data, isLoading, isError, error } = useEmailIntegration();
+  const settings = data?.resend;
+  const activeProvider = data?.active_provider ?? 'resend';
+  const saveMutation = useSaveResendIntegration();
+  const testMutation = useTestResendIntegration();
 
   const [senderEmail, setSenderEmail] = useState('');
   const [apiKey, setApiKey] = useState('');
@@ -62,14 +63,13 @@ export default function SmtpIntegrationCard() {
     e.preventDefault();
     try {
       await saveMutation.mutateAsync({
-        smtp_port: DEFAULT_SMTP_PORT,
         from_email: senderEmail,
         from_name: DEFAULT_FROM_NAME,
         api_key: apiKey || undefined,
       });
       setApiKey('');
       setIsChangingKey(false);
-      toast({ title: 'Email settings saved' });
+      toast({ title: 'Resend settings saved' });
     } catch (err) {
       toast({
         title: 'Save failed',
@@ -118,7 +118,7 @@ export default function SmtpIntegrationCard() {
     return (
       <Card>
         <CardContent className="py-8 text-sm text-destructive">
-          Failed to load email settings: {error?.message}
+          Failed to load Resend settings: {error?.message}
         </CardContent>
       </Card>
     );
@@ -127,9 +127,10 @@ export default function SmtpIntegrationCard() {
   const configured = settings?.configured;
   const showApiKeyInput = !configured || isChangingKey;
   const showDomainHint = isDomainVerificationError(testError);
+  const isActive = activeProvider === 'resend';
 
   return (
-    <Card>
+    <Card className={!isActive ? 'opacity-75' : undefined}>
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -138,12 +139,15 @@ export default function SmtpIntegrationCard() {
               Resend Email
             </CardTitle>
             <CardDescription className="mt-1">
-              API key + sender email on a verified domain. Used for invites and app emails.
+              API key + sender email on a verified domain. Used when Resend is the active provider.
             </CardDescription>
           </div>
-          <Badge variant={configured ? 'default' : 'secondary'}>
-            {configured ? 'Connected' : 'Not configured'}
-          </Badge>
+          <div className="flex flex-col items-end gap-1">
+            <Badge variant={configured ? 'default' : 'secondary'}>
+              {configured ? 'Connected' : 'Not configured'}
+            </Badge>
+            {!isActive && <Badge variant="outline">Inactive</Badge>}
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -161,9 +165,7 @@ export default function SmtpIntegrationCard() {
               >
                 resend.com/domains
               </a>
-              , add the DNS records, then use a sender email on that verified domain (e.g.{' '}
-              <code className="text-xs">noreply@mail.yourdomain.com</code>). Emails display as{' '}
-              <strong>{DEFAULT_FROM_NAME}</strong> by default.
+              , add the DNS records, then use a sender email on that verified domain.
             </AlertDescription>
           </Alert>
 
@@ -196,11 +198,6 @@ export default function SmtpIntegrationCard() {
                 </Button>
               </div>
             )}
-            <p className="text-xs text-muted-foreground">
-              {configured && !isChangingKey
-                ? 'Leave blank on save to keep the existing key.'
-                : 'Create an API key in the Resend dashboard with sending access.'}
-            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -215,18 +212,6 @@ export default function SmtpIntegrationCard() {
               placeholder="noreply@mail.yourdomain.com"
               required
             />
-            <p className="text-xs text-muted-foreground">
-              Required by Resend. Must be on a domain marked Verified in{' '}
-              <a
-                href={RESEND_DOMAINS_URL}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary underline underline-offset-2"
-              >
-                Resend Domains
-              </a>
-              .
-            </p>
           </div>
 
           {settings?.updated_at && (
@@ -236,15 +221,14 @@ export default function SmtpIntegrationCard() {
           )}
 
           <div className="border-t pt-4 space-y-1.5">
-            <Label htmlFor="test-to">Test recipient</Label>
+            <Label htmlFor="test-to-resend">Test recipient</Label>
             <Input
-              id="test-to"
+              id="test-to-resend"
               type="email"
               value={testTo}
               onChange={(e) => setTestTo(e.target.value)}
               placeholder="you@example.com"
             />
-            <p className="text-xs text-muted-foreground">Not saved — for test sends only.</p>
           </div>
 
           {testError && (
@@ -261,23 +245,7 @@ export default function SmtpIntegrationCard() {
                 <X className="h-4 w-4" />
               </Button>
               <AlertTitle>{showDomainHint ? 'Domain not verified' : 'Test send failed'}</AlertTitle>
-              <AlertDescription className="pr-8">
-                <p>{testError}</p>
-                {showDomainHint && (
-                  <p className="mt-2">
-                    Verify your domain at{' '}
-                    <a
-                      href={RESEND_DOMAINS_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="underline underline-offset-2"
-                    >
-                      resend.com/domains
-                    </a>
-                    , then set Sender email to an address on that verified domain and try again.
-                  </p>
-                )}
-              </AlertDescription>
+              <AlertDescription className="pr-8">{testError}</AlertDescription>
             </Alert>
           )}
 

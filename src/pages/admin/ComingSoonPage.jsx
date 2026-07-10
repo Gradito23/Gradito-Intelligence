@@ -5,13 +5,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
-export default function ComingSoonPage({ title, description }) {
+export default function ComingSoonPage({
+  title,
+  description,
+  backTo = '/admin/users',
+  backLabel = 'User Management',
+  body = 'This section is under development and will be available in a future release.',
+}) {
   return (
     <div className="space-y-4">
       <Button variant="ghost" size="sm" asChild className="-ml-2">
-        <Link to="/admin/users">
+        <Link to={backTo}>
           <ArrowLeft className="h-4 w-4 mr-1" />
-          User Management
+          {backLabel}
         </Link>
       </Button>
       <div>
@@ -27,12 +33,10 @@ export default function ComingSoonPage({ title, description }) {
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-heading">Under development</CardTitle>
-          <CardDescription>
-            This section will be implemented in Phase 5 with Resend email integration.
-          </CardDescription>
+          <CardDescription>{body}</CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          Check back after User Management is enabled.
+          Check back in a future release.
         </CardContent>
       </Card>
     </div>
