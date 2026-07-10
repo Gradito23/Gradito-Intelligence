@@ -7,6 +7,7 @@ import {
   SECRET_MASK,
 } from '../_shared/auth.ts';
 import { buildEmailAnalytics, logEmail, sendEmail } from '../_shared/email.ts';
+import { renderTestEmail } from '../_shared/emailTemplates.ts';
 import {
   loadResendSettings,
   sendResendEmail,
@@ -168,8 +169,8 @@ async function handleTestResend(
     return jsonResponse({ error: 'Resend is not configured' }, 400);
   }
 
-  const subject = 'Gradito — Resend test email';
-  const html = '<p>Your Resend integration is working.</p>';
+  const subject = 'Gradito Intelligence — Email test';
+  const html = renderTestEmail();
 
   try {
     const { messageId } = await sendResendEmail(settings, { to: testTo, subject, html });
@@ -452,8 +453,8 @@ async function handleTestCustomSmtp(
 
   const config = resolved.config!;
   const configId = resolved.configId;
-  const subject = 'Gradito — Custom SMTP test email';
-  const html = '<p>Your Custom SMTP integration is working.</p>';
+  const subject = 'Gradito Intelligence — Email test';
+  const html = renderTestEmail();
 
   try {
     await sendCustomSmtpEmail(config, { to: testTo, subject, html }, { verify: true });

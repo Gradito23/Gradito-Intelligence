@@ -32,10 +32,10 @@ export const ADMIN_NAV_SECTIONS = [
     label: 'User Management',
     icon: Users,
     items: [
-      { path: '/admin/users', label: 'Overview', comingSoon: true },
-      { path: '/admin/users/list', label: 'Users', comingSoon: true },
-      { path: '/admin/users/roles', label: 'Roles', comingSoon: true },
-      { path: '/admin/users/permissions', label: 'Permissions', comingSoon: true },
+      { path: '/admin/users', label: 'Overview' },
+      { path: '/admin/users/list', label: 'Users' },
+      { path: '/admin/users/roles', label: 'Roles' },
+      { path: '/admin/users/permissions', label: 'Permissions' },
     ],
   },
   {

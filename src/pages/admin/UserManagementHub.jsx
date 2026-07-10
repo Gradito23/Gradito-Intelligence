@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Users } from 'lucide-react';
+import { useUsers } from '@/hooks/useUsers';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
@@ -22,19 +23,42 @@ const SUB_PAGES = [
   },
 ];
 
+function StatCard({ label, value }) {
+  return (
+    <Card>
+      <CardContent className="pt-4 pb-4">
+        <p className="text-xs uppercase tracking-wider text-muted-foreground">{label}</p>
+        <p className="text-2xl font-heading font-semibold text-navy mt-1">{value ?? '—'}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function UserManagementHub() {
+  const { data } = useUsers();
+  const stats = data?.stats;
+
   return (
     <div className="space-y-4">
       <div>
         <h2 className="font-heading text-xl font-semibold text-navy flex items-center gap-2">
           <Users className="h-5 w-5" />
           User Management
-          <Badge variant="secondary">Coming Soon</Badge>
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage users, roles, and permissions — available in Phase 5
+          Manage users, roles, and permissions
         </p>
       </div>
+
+      {stats && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <StatCard label="Total users" value={stats.total} />
+          <StatCard label="Active" value={stats.active} />
+          <StatCard label="Invited" value={stats.invited} />
+          <StatCard label="Admins" value={stats.admins} />
+        </div>
+      )}
+
       <div className="grid gap-3">
         {SUB_PAGES.map(({ path, title, description }) => (
           <Link key={path} to={path}>
@@ -46,9 +70,6 @@ export default function UserManagementHub() {
                 </CardTitle>
                 <CardDescription>{description}</CardDescription>
               </CardHeader>
-              <CardContent className="pt-0">
-                <Badge variant="outline" className="text-xs">Phase 5</Badge>
-              </CardContent>
             </Card>
           </Link>
         ))}

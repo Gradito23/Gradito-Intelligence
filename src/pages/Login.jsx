@@ -1,6 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/api/supabaseClient";
+import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,11 +9,48 @@ import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 
+function getOAuthErrorFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const error = params.get('error') || hashParams.get('error');
+  const description = params.get('error_description') || hashParams.get('error_description');
+  if (!error && !description) return '';
+  if (description) {
+    try {
+      return decodeURIComponent(description.replace(/\+/g, ' '));
+    } catch {
+      return description;
+    }
+  }
+  return 'Sign-in failed. No account found — contact your administrator for an invite.';
+}
+
 export default function Login() {
+  const { isAuthenticated, isLoadingAuth } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const oauthError = getOAuthErrorFromUrl();
+    if (oauthError) {
+      setError(
+        oauthError.toLowerCase().includes('signup')
+          || oauthError.toLowerCase().includes('not allowed')
+          ? 'No account found. Contact your administrator for an invite.'
+          : oauthError,
+      );
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isLoadingAuth && isAuthenticated) {
+      const params = new URLSearchParams(window.location.search);
+      window.location.href = params.get("next") || "/";
+    }
+  }, [isAuthenticated, isLoadingAuth]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,9 +70,14 @@ export default function Login() {
 
   const handleGoogle = async () => {
     setError("");
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next") || "/";
+    const redirectTo = next === "/"
+      ? `${window.location.origin}/login`
+      : `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/` },
+      options: { redirectTo },
     });
     if (oauthError) setError(oauthError.message);
   };
@@ -42,15 +85,7 @@ export default function Login() {
   return (
     <AuthLayout
       title="Welcome back"
-      subtitle="Log in to your account"
-      footer={
-        <>
-          Don't have an account?{" "}
-          <Link to="/register" className="text-primary font-medium hover:underline">
-            Create one
-          </Link>
-        </>
-      }
+      subtitle="Invite-only access. Contact your administrator if you need an account."
     >
       <Button
         variant="outline"

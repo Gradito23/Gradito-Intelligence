@@ -8,7 +8,6 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ProtectedRoute from '@/components/ProtectedRoute';
 
 import Login from '@/pages/Login';
-import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 
@@ -30,8 +29,12 @@ import AdminPanelLayout from '@/components/admin/AdminPanelLayout';
 import IntegrationsHub from '@/pages/admin/IntegrationsHub';
 import EmailIntegration from '@/pages/admin/EmailIntegration';
 import UserManagementHub from '@/pages/admin/UserManagementHub';
+import UsersList from '@/pages/admin/UsersList';
+import RolesList from '@/pages/admin/RolesList';
+import PermissionsMatrix from '@/pages/admin/PermissionsMatrix';
 import ComingSoonPage from '@/pages/admin/ComingSoonPage';
 import ConfigCrudPage from '@/pages/admin/ConfigCrudPage';
+import AcceptInvite from '@/pages/AcceptInvite';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
@@ -54,9 +57,10 @@ const AuthenticatedApp = () => {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      <Route path="/register" element={<Navigate to="/login" replace />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
       <Route path="/intake" element={<ChefIntake />} />
 
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
@@ -96,9 +100,9 @@ const AuthenticatedApp = () => {
                 )}
               />
               <Route path="users" element={<UserManagementHub />} />
-              <Route path="users/list" element={<ComingSoonPage title="Users" description="Invite users, assign roles, and deactivate accounts. Available in Phase 5." />} />
-              <Route path="users/roles" element={<ComingSoonPage title="Roles" description="CRUD application roles. Available in Phase 5." />} />
-              <Route path="users/permissions" element={<ComingSoonPage title="Permissions" description="Editable role × resource permission matrix. Available in Phase 5." />} />
+              <Route path="users/list" element={<UsersList />} />
+              <Route path="users/roles" element={<RolesList />} />
+              <Route path="users/permissions" element={<PermissionsMatrix />} />
               <Route path="reference-data/:configType" element={<ConfigCrudPage />} />
             </Route>
           </Route>

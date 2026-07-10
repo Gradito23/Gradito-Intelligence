@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { Camera, Loader2, Lock } from 'lucide-react';
+import { Camera, Loader2, Lock, KeyRound } from 'lucide-react';
+import GoogleIcon from '@/components/GoogleIcon';
 import { supabase } from '@/api/supabaseClient';
 import { useAuth } from '@/lib/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -107,6 +108,8 @@ export default function Profile() {
     try {
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
+
+      await refreshUser();
       setNewPassword('');
       setConfirmPassword('');
       toast({ title: 'Password updated' });
@@ -195,6 +198,37 @@ export default function Profile() {
               </Button>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-heading">Sign-in Methods</CardTitle>
+          <CardDescription>How you can log into this account</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between py-2 border-b">
+            <div className="flex items-center gap-3">
+              <GoogleIcon className="w-5 h-5" />
+              <span className="text-sm font-medium">Google</span>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {user.hasGoogle ? 'Connected' : 'Not connected'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between py-2 border-b">
+            <div className="flex items-center gap-3">
+              <KeyRound className="w-5 h-5 text-muted-foreground" />
+              <span className="text-sm font-medium">Password</span>
+            </div>
+            <span className="text-sm text-muted-foreground">
+              {user.hasPassword ? 'Set' : 'Not set'}
+            </span>
+          </div>
+          <div className="pt-1">
+            <Label className="text-muted-foreground text-xs uppercase tracking-wider">Status</Label>
+            <p className="text-sm font-medium mt-1">{user.loginMethodLabel}</p>
+          </div>
         </CardContent>
       </Card>
 
