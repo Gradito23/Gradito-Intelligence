@@ -25,8 +25,7 @@ export const ADMIN_NAV_SECTIONS = [
     items: [
       { path: '/admin/integrations', label: 'Overview', icon: Plug },
       { path: '/admin/integrations/email', label: 'Email', icon: Plug },
-      { path: '/admin/integrations/ai', label: 'AI Providers', comingSoon: true },
-      { path: '/admin/integrations/storage', label: 'Storage', comingSoon: true },
+      { path: '/admin/integrations/ai', label: 'OpenAI', comingSoon: true },
     ],
   },
   {

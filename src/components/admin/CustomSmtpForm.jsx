@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { useSaveCustomSmtp, useTestCustomSmtp } from '@/hooks/useEmailIntegration';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -150,15 +149,6 @@ export default function CustomSmtpForm({ open, onOpenChange, config, onSaved }) 
         </DialogHeader>
 
         <form onSubmit={handleSave} className="space-y-4">
-          <Alert>
-            <AlertTitle>Supabase Edge SMTP ports</AlertTitle>
-            <AlertDescription>
-              Ports 25, 465, and 587 (including Gmail) are blocked on Supabase Edge Functions.
-              Use a provider with an alternate port (e.g. Mailgun 2525, AWS SES 2587), or use{' '}
-              <strong>Resend API</strong> for Gmail/domain email instead.
-            </AlertDescription>
-          </Alert>
-
           <div className="flex justify-end">
             <Button type="button" variant="outline" size="sm" onClick={applyGmailPreset}>
               Use Gmail preset

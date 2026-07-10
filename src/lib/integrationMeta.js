@@ -1,4 +1,4 @@
-import { Bot, Cloud, Mail, MessageSquare } from 'lucide-react';
+import { Bot, Mail } from 'lucide-react';
 
 export const INTEGRATION_CATEGORIES = [
   {
@@ -13,14 +13,6 @@ export const INTEGRATION_CATEGORIES = [
         icon: Mail,
         status: 'active',
       },
-      {
-        id: 'sms',
-        label: 'SMS / Twilio',
-        description: 'Transactional SMS notifications.',
-        path: null,
-        icon: MessageSquare,
-        status: 'coming_soon',
-      },
     ],
   },
   {
@@ -28,9 +20,9 @@ export const INTEGRATION_CATEGORIES = [
     label: 'AI Providers',
     integrations: [
       {
-        id: 'llm',
-        label: 'LLM / OpenAI',
-        description: 'Connect OpenAI or compatible LLM APIs.',
+        id: 'openai',
+        label: 'OpenAI',
+        description: 'Connect OpenAI API for AI-assisted workflows.',
         path: '/admin/integrations/ai',
         icon: Bot,
         status: 'coming_soon',
@@ -41,28 +33,6 @@ export const INTEGRATION_CATEGORIES = [
         description: 'Claude API for AI-assisted workflows.',
         path: '/admin/integrations/ai',
         icon: Bot,
-        status: 'coming_soon',
-      },
-    ],
-  },
-  {
-    id: 'storage',
-    label: 'Storage',
-    integrations: [
-      {
-        id: 'gdrive',
-        label: 'Google Drive',
-        description: 'Import and export files from Google Drive.',
-        path: '/admin/integrations/storage',
-        icon: Cloud,
-        status: 'coming_soon',
-      },
-      {
-        id: 's3',
-        label: 'S3 / R2',
-        description: 'Object storage for uploads and backups.',
-        path: '/admin/integrations/storage',
-        icon: Cloud,
         status: 'coming_soon',
       },
     ],

@@ -456,7 +456,7 @@ async function handleTestCustomSmtp(
   const html = '<p>Your Custom SMTP integration is working.</p>';
 
   try {
-    await sendCustomSmtpEmail(config, { to: testTo, subject, html });
+    await sendCustomSmtpEmail(config, { to: testTo, subject, html }, { verify: true });
 
     if (configId) {
       await adminClient

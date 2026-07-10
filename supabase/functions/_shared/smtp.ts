@@ -1,3 +1,5 @@
+import nodemailer from 'npm:nodemailer@6.9.7';
+
 export type CustomSmtpConfig = {
   id: string;
   smtp_host: string;
@@ -15,36 +17,32 @@ export type CustomSmtpConfig = {
 
 const SMTP_TIMEOUT_MS = 15_000;
 
-/** Deno Deploy (Supabase Edge) blocks outbound SMTP on these ports. */
-const BLOCKED_EDGE_PORTS = new Set([25, 465, 587]);
+export function formatSmtpError(error: unknown, host: string): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const isGmail = host.includes('gmail');
 
-export function getSmtpPortError(port: number): string | null {
-  if (!BLOCKED_EDGE_PORTS.has(port)) return null;
-  return (
-    `SMTP port ${port} is not available from Supabase Edge Functions. ` +
-    'Use a provider alternate port (e.g. AWS SES 2587, Mailgun 2525) or switch to Resend API for Gmail.'
-  );
-}
-
-export async function sendCustomSmtpEmail(
-  config: CustomSmtpConfig,
-  params: { to: string; subject: string; html: string },
-): Promise<void> {
-  const portError = getSmtpPortError(config.smtp_port);
-  if (portError) {
-    throw new Error(portError);
+  if (
+    isGmail &&
+    (message.includes('535') ||
+      message.includes('BadCredentials') ||
+      message.includes('Username and Password not accepted'))
+  ) {
+    return 'Google rejected the SMTP password. Generate a new App Password at Google Account → Security → App passwords, then save and test again.';
   }
 
-  const nodemailer = await import('npm:nodemailer@^6.9.16');
+  return `SMTP connection failed: ${message}`;
+}
 
-  const fromName = config.from_name?.trim() || 'Gradito';
-  const fromEmail = config.from_email.trim();
+function buildTransportConfig(config: CustomSmtpConfig) {
+  const isTls = config.encryption === 'tls';
+  const isSecure = config.encryption === 'ssl' || (isTls && config.smtp_port === 465);
+  const requireTLS = isTls && config.smtp_port !== 465;
 
-  const transport = nodemailer.default.createTransport({
+  return {
     host: config.smtp_host,
     port: config.smtp_port,
-    // secure=true → implicit TLS (465); secure=false → STARTTLS (587 on supported ports)
-    secure: config.encryption === 'ssl',
+    secure: isSecure,
+    requireTLS,
     auth: {
       user: config.username,
       pass: config.password,
@@ -52,16 +50,35 @@ export async function sendCustomSmtpEmail(
     connectionTimeout: SMTP_TIMEOUT_MS,
     greetingTimeout: SMTP_TIMEOUT_MS,
     socketTimeout: SMTP_TIMEOUT_MS,
-  });
+    ...(config.smtp_host.includes('gmail') && {
+      service: 'gmail',
+      tls: {
+        rejectUnauthorized: false,
+      },
+    }),
+  };
+}
+
+export async function sendCustomSmtpEmail(
+  config: CustomSmtpConfig,
+  params: { to: string; subject: string; html: string },
+  options?: { verify?: boolean },
+): Promise<void> {
+  const transport = nodemailer.createTransport(buildTransportConfig(config));
 
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
-  const sendPromise = transport.sendMail({
-    from: `${fromName} <${fromEmail}>`,
-    to: params.to,
-    subject: params.subject,
-    html: params.html,
-  });
+  const run = async () => {
+    if (options?.verify) {
+      await transport.verify();
+    }
+    await transport.sendMail({
+      from: `${config.from_name?.trim() || 'Gradito'} <${config.from_email.trim()}>`,
+      to: params.to,
+      subject: params.subject,
+      html: params.html,
+    });
+  };
 
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(
@@ -71,7 +88,9 @@ export async function sendCustomSmtpEmail(
   });
 
   try {
-    await Promise.race([sendPromise, timeoutPromise]);
+    await Promise.race([run(), timeoutPromise]);
+  } catch (err) {
+    throw new Error(formatSmtpError(err, config.smtp_host));
   } finally {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
     transport.close();

@@ -88,19 +88,8 @@ const AuthenticatedApp = () => {
                 path="integrations/ai"
                 element={(
                   <ComingSoonPage
-                    title="AI Providers"
-                    description="Connect OpenAI, Anthropic, and other LLM APIs."
-                    backTo="/admin/integrations"
-                    backLabel="Integrations"
-                  />
-                )}
-              />
-              <Route
-                path="integrations/storage"
-                element={(
-                  <ComingSoonPage
-                    title="Storage"
-                    description="Connect Google Drive, S3, R2, and other storage providers."
+                    title="OpenAI"
+                    description="Connect OpenAI API for AI-assisted workflows."
                     backTo="/admin/integrations"
                     backLabel="Integrations"
                   />
