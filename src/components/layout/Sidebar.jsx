@@ -1,35 +1,68 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Menu, X } from 'lucide-react';
+import { Menu, PanelLeft, PanelLeftClose, X } from 'lucide-react';
 import UserAccountMenu from './UserAccountMenu';
 import OpsSidebarNav from './OpsSidebarNav';
 import AdminSidebarNav from './AdminSidebarNav';
+import { useSidebarLayout } from './SidebarLayoutContext';
+import { cn } from '@/lib/utils';
 
 export default function Sidebar() {
   const location = useLocation();
+  const { collapsed, toggleCollapsed } = useSidebarLayout();
   const [mobileOpen, setMobileOpen] = useState(false);
   const isAdminRoute = location.pathname.startsWith('/admin');
 
   const closeMobile = () => setMobileOpen(false);
+  const isCollapsedDesktop = collapsed;
 
-  const navContent = (
-    <>
-      <div className="p-6 pb-4">
-        <h1 className="font-display text-2xl font-bold text-sidebar-foreground tracking-wide">
-          GRADITO
-        </h1>
-        <p className="text-xs text-sidebar-foreground/50 mt-1 tracking-widest uppercase">Chef Intelligence</p>
-      </div>
-      <nav className="flex-1 px-3 space-y-4 overflow-y-auto">
-        {isAdminRoute ? (
-          <AdminSidebarNav onNavigate={closeMobile} />
-        ) : (
-          <OpsSidebarNav onNavigate={closeMobile} />
-        )}
-      </nav>
-      <UserAccountMenu />
-    </>
-  );
+  const navContent = (forMobile = false) => {
+    const showCollapsed = !forMobile && isCollapsedDesktop;
+
+    return (
+      <>
+        <div className={cn('pb-4', showCollapsed ? 'px-2 pt-4' : 'p-6')}>
+          <div className={cn('flex items-center', showCollapsed ? 'flex-col gap-2' : 'justify-between gap-2')}>
+            <div className={cn(showCollapsed && 'text-center')}>
+              {showCollapsed ? (
+                <h1 className="font-display text-lg font-bold text-sidebar-foreground tracking-wide">G</h1>
+              ) : (
+                <>
+                  <h1 className="font-display text-2xl font-bold text-sidebar-foreground tracking-wide">
+                    GRADITO
+                  </h1>
+                  <p className="text-xs text-sidebar-foreground/50 mt-1 tracking-widest uppercase">
+                    Chef Intelligence
+                  </p>
+                </>
+              )}
+            </div>
+            {!forMobile && (
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                className={cn(
+                  'hidden lg:flex items-center justify-center rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors shrink-0',
+                  showCollapsed ? 'w-8 h-8' : 'w-8 h-8',
+                )}
+                aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              >
+                {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
+              </button>
+            )}
+          </div>
+        </div>
+        <nav className={cn('flex-1 overflow-y-auto', showCollapsed ? 'px-1 space-y-2' : 'px-3 space-y-4')}>
+          {isAdminRoute ? (
+            <AdminSidebarNav onNavigate={closeMobile} collapsed={showCollapsed} />
+          ) : (
+            <OpsSidebarNav onNavigate={closeMobile} collapsed={showCollapsed} />
+          )}
+        </nav>
+        <UserAccountMenu collapsed={showCollapsed} />
+      </>
+    );
+  };
 
   return (
     <>
@@ -46,12 +79,22 @@ export default function Sidebar() {
         <div className="lg:hidden fixed inset-0 z-40 bg-black/50" onClick={closeMobile} />
       )}
 
-      <aside className="hidden lg:flex w-60 bg-navy flex-col min-h-screen fixed left-0 top-0 bottom-0 z-30">
-        {navContent}
+      <aside
+        className={cn(
+          'hidden lg:flex bg-navy flex-col min-h-screen fixed left-0 top-0 bottom-0 z-30 transition-[width] duration-200',
+          isCollapsedDesktop ? 'w-16' : 'w-60',
+        )}
+      >
+        {navContent(false)}
       </aside>
 
-      <aside className={`lg:hidden fixed left-0 top-0 bottom-0 z-40 w-60 bg-navy flex flex-col transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        {navContent}
+      <aside
+        className={cn(
+          'lg:hidden fixed left-0 top-0 bottom-0 z-40 w-60 bg-navy flex flex-col transition-transform duration-300',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full',
+        )}
+      >
+        {navContent(true)}
       </aside>
     </>
   );
