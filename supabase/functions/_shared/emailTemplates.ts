@@ -115,6 +115,37 @@ export function renderInviteEmail({
   });
 }
 
+export function renderPasswordResetEmail({
+  recipientName,
+  actionLink,
+}: {
+  recipientName?: string | null;
+  actionLink: string;
+}): string {
+  const greeting = recipientName?.trim()
+    ? `Hello ${escapeHtml(recipientName.trim())},`
+    : 'Hello,';
+
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${BRAND.navy};font-weight:600;">Reset your password</h1>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      We received a request to reset your Gradito Intelligence password. Click the button below to choose a new one.
+    </p>
+    ${renderCta('Reset password', actionLink)}
+    <p style="margin:0;font-size:13px;line-height:1.5;color:${BRAND.muted};">
+      This link expires for security. If you did not request a password reset, you can safely ignore this email.<br /><br />
+      If the button does not work, copy and paste this URL into your browser:<br />
+      <a href="${escapeHtml(actionLink)}" style="color:${BRAND.gold};word-break:break-all;">${escapeHtml(actionLink)}</a>
+    </p>
+  `;
+
+  return renderLayout({
+    preheader: 'Reset your Gradito Intelligence password.',
+    bodyHtml,
+  });
+}
+
 export function renderNotificationEmail({
   title,
   bodyHtml,

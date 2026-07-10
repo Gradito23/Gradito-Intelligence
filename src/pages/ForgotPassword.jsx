@@ -16,11 +16,12 @@ export default function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
     try {
-      await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      await supabase.functions.invoke('auth-password-reset', {
+        method: 'POST',
+        body: { email: email.trim() },
       });
     } catch {
-      // Always show success regardless
+      // Always show success regardless — no email enumeration
     } finally {
       setLoading(false);
       setSent(true);
