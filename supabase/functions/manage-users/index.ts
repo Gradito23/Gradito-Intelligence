@@ -36,6 +36,32 @@ async function assertEmailProviderConfigured(adminClient: AdminClient) {
   }
 }
 
+async function upsertProvisionedEmail(
+  adminClient: AdminClient,
+  email: string,
+  roleId: string,
+  provisionedBy?: string,
+) {
+  const { error } = await adminClient
+    .from('provisioned_emails')
+    .upsert({
+      email: email.trim().toLowerCase(),
+      role_id: roleId,
+      provisioned_by: provisionedBy ?? null,
+    }, { onConflict: 'email' });
+
+  if (error) throw error;
+}
+
+async function removeProvisionedEmail(adminClient: AdminClient, email: string) {
+  const { error } = await adminClient
+    .from('provisioned_emails')
+    .delete()
+    .eq('email', email.trim().toLowerCase());
+
+  if (error) throw error;
+}
+
 async function getAdminRoleId(adminClient: AdminClient): Promise<string | null> {
   const { data } = await adminClient
     .from('app_roles')
@@ -151,7 +177,10 @@ async function generateAndSendInvite(
   email: string,
   roleId: string,
   roleName: string,
+  provisionedBy?: string,
 ) {
+  await upsertProvisionedEmail(adminClient, email, roleId, provisionedBy);
+
   const appUrl = getAppUrl();
   const redirectTo = appUrl ? `${appUrl}/accept-invite` : undefined;
 
@@ -178,6 +207,7 @@ async function generateAndSendInvite(
       id: userId,
       role_id: roleId,
       status: 'invited',
+      is_provisioned: true,
     }, { onConflict: 'id' });
 
   if (profileError) throw profileError;
@@ -190,6 +220,7 @@ async function generateAndSendInvite(
 async function handleInvite(
   body: Record<string, unknown>,
   adminClient: AdminClient,
+  callerId: string,
 ) {
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
   const roleId = typeof body.role_id === 'string' ? body.role_id.trim() : '';
@@ -210,7 +241,7 @@ async function handleInvite(
 
   await assertEmailProviderConfigured(adminClient);
 
-  const result = await generateAndSendInvite(adminClient, email, role.id, role.name);
+  const result = await generateAndSendInvite(adminClient, email, role.id, role.name, callerId);
   return jsonResponse({ ok: true, ...result });
 }
 
@@ -381,6 +412,14 @@ async function handleDelete(
     }
   }
 
+  const { data: authUser, error: authError } = await adminClient.auth.admin.getUserById(userId);
+  if (authError) throw authError;
+  const email = authUser.user?.email;
+
+  if (email) {
+    await removeProvisionedEmail(adminClient, email);
+  }
+
   const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId);
   if (deleteError) throw deleteError;
 
@@ -464,7 +503,7 @@ Deno.serve(async (req) => {
       case 'list':
         return handleList(adminClient);
       case 'invite':
-        return handleInvite(body, adminClient);
+        return handleInvite(body, adminClient, user.id);
       case 'update_role':
         return handleUpdateRole(body, user.id, adminClient);
       case 'deactivate':

@@ -4,6 +4,8 @@ import { permissionKey } from '@/lib/permissionMeta';
 
 const AuthContext = createContext();
 
+const ACCESS_DENIED_MSG = 'Access denied. Your account must be invited by an administrator.';
+
 function getIdentityFlags(identities) {
   const providers = (identities ?? []).map((i) => i.provider);
   const hasGoogle = providers.includes('google');
@@ -17,7 +19,7 @@ function getIdentityFlags(identities) {
 async function fetchProfile(userId) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('role_id, role, display_name, avatar_url, last_login_at, status')
+    .select('role_id, role, display_name, avatar_url, last_login_at, status, is_provisioned')
     .eq('id', userId)
     .maybeSingle();
   if (error) throw error;
@@ -32,6 +34,23 @@ async function fetchPermissions(roleId) {
     .eq('role_id', roleId);
   if (error) throw error;
   return new Set((data ?? []).map((p) => permissionKey(p.resource, p.action)));
+}
+
+async function cleanupUnauthorizedSession() {
+  try {
+    await supabase.functions.invoke('auth-gate', {
+      method: 'POST',
+      body: { action: 'cleanup_unauthorized' },
+    });
+  } catch {
+    // Best-effort orphan cleanup
+  }
+}
+
+async function denyUnauthorizedAccess() {
+  await cleanupUnauthorizedSession();
+  await supabase.auth.signOut();
+  throw new Error(ACCESS_DENIED_MSG);
 }
 
 async function activateInvitedUser(userId, profile) {
@@ -53,9 +72,8 @@ async function buildAppUser(session) {
 
   let profile = await fetchProfile(session.user.id);
 
-  if (!profile) {
-    await supabase.auth.signOut();
-    throw new Error('Access denied. Your account must be invited by an administrator.');
+  if (!profile || !profile.is_provisioned) {
+    await denyUnauthorizedAccess();
   }
 
   if (profile.status === 'deactivated') {
