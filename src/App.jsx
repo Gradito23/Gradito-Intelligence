@@ -23,7 +23,13 @@ import BulkUpload from '@/pages/BulkUpload';
 import DataHealth from '@/pages/DataHealth';
 import Profitability from '@/pages/Profitability';
 import Team from '@/pages/Team';
-import Users from '@/pages/Users';
+import Profile from '@/pages/Profile';
+import AdminRoute from '@/components/AdminRoute';
+import AdminPanelLayout from '@/components/admin/AdminPanelLayout';
+import IntegrationsComingSoon from '@/pages/admin/IntegrationsComingSoon';
+import UserManagementHub from '@/pages/admin/UserManagementHub';
+import ComingSoonPage from '@/pages/admin/ComingSoonPage';
+import ConfigCrudPage from '@/pages/admin/ConfigCrudPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
@@ -53,6 +59,7 @@ const AuthenticatedApp = () => {
 
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppLayout />}>
+          <Route path="/profile" element={<Profile />} />
           <Route path="/" element={<Chefs />} />
           <Route path="/events" element={<Events />} />
           <Route path="/match" element={<ChefMatch />} />
@@ -60,9 +67,21 @@ const AuthenticatedApp = () => {
           <Route path="/profitability" element={<Profitability />} />
           <Route path="/activity" element={<ActivityLog />} />
           <Route path="/team" element={<Team />} />
-          <Route path="/users" element={<Users />} />
+          <Route path="/users" element={<Navigate to="/admin/users" replace />} />
           <Route path="/bulk-upload" element={<BulkUpload />} />
           <Route path="/data-health" element={<DataHealth />} />
+
+          <Route element={<AdminRoute />}>
+            <Route path="/admin" element={<AdminPanelLayout />}>
+              <Route index element={<Navigate to="/admin/reference-data/service-areas" replace />} />
+              <Route path="integrations" element={<IntegrationsComingSoon />} />
+              <Route path="users" element={<UserManagementHub />} />
+              <Route path="users/list" element={<ComingSoonPage title="Users" description="Invite users, assign roles, and deactivate accounts. Available in Phase 5." />} />
+              <Route path="users/roles" element={<ComingSoonPage title="Roles" description="CRUD application roles. Available in Phase 5." />} />
+              <Route path="users/permissions" element={<ComingSoonPage title="Permissions" description="Editable role × resource permission matrix. Available in Phase 5." />} />
+              <Route path="reference-data/:configType" element={<ConfigCrudPage />} />
+            </Route>
+          </Route>
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

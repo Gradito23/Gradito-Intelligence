@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ChefHat, Calendar, Sparkles, BarChart3, Activity, Upload, Menu, X, HeartPulse, DollarSign, Users, UserCog } from 'lucide-react';
-import { useAuth } from '@/lib/AuthContext';
+import { ChefHat, Calendar, Sparkles, BarChart3, Activity, Upload, Menu, X, HeartPulse, DollarSign, Users } from 'lucide-react';
 import { useChefs } from '@/hooks/useAppData';
+import UserAccountMenu from './UserAccountMenu';
 
 function useDataHealthCount() {
   const { data: chefs } = useChefs();
@@ -42,15 +42,12 @@ export default function Sidebar() {
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const dataHealthCount = useDataHealthCount();
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
 
   const adminItems = [
     { path: '/team', label: 'Team', icon: Users },
     { path: '/data-health', label: 'Data Health', icon: HeartPulse },
     { path: '/activity', label: 'Activity Log', icon: Activity },
     { path: '/bulk-upload', label: 'Bulk Upload', icon: Upload },
-    ...(isAdmin ? [{ path: '/users', label: 'Users', icon: UserCog }] : []),
   ];
 
   const navSections = NAV_SECTIONS.map(s =>
@@ -101,10 +98,7 @@ export default function Sidebar() {
           </div>
         ))}
       </nav>
-      <div className="p-4 mx-3 mb-4 rounded-lg bg-sidebar-accent/50">
-        <p className="text-xs text-sidebar-foreground/50">Powered by</p>
-        <p className="text-sm font-heading text-sidebar-foreground">Gradito Platform</p>
-      </div>
+      <UserAccountMenu />
     </>
   );
 

@@ -117,6 +117,13 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, [applySession, checkAppState]);
 
+  const refreshUser = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      await applySession(session);
+    }
+  }, [applySession]);
+
   const logout = async (shouldRedirect = true) => {
     await supabase.auth.signOut();
     setUser(null);
@@ -144,6 +151,7 @@ export const AuthProvider = ({ children }) => {
       navigateToLogin,
       checkUserAuth,
       checkAppState,
+      refreshUser,
     }}>
       {children}
     </AuthContext.Provider>
