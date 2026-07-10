@@ -26,7 +26,7 @@ import Team from '@/pages/Team';
 import Users from '@/pages/Users';
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     return (
@@ -51,17 +51,19 @@ const AuthenticatedApp = () => {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/intake" element={<ChefIntake />} />
 
-      <Route element={<AppLayout />}>
-        <Route path="/" element={<Chefs />} />
-        <Route path="/events" element={<Events />} />
-        <Route path="/match" element={<ChefMatch />} />
-        <Route path="/reports" element={<Reports />} />
-        <Route path="/profitability" element={<Profitability />} />
-        <Route path="/activity" element={<ActivityLog />} />
-        <Route path="/team" element={<Team />} />
-        <Route path="/users" element={<Users />} />
-        <Route path="/bulk-upload" element={<BulkUpload />} />
-        <Route path="/data-health" element={<DataHealth />} />
+      <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Chefs />} />
+          <Route path="/events" element={<Events />} />
+          <Route path="/match" element={<ChefMatch />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/profitability" element={<Profitability />} />
+          <Route path="/activity" element={<ActivityLog />} />
+          <Route path="/team" element={<Team />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/bulk-upload" element={<BulkUpload />} />
+          <Route path="/data-health" element={<DataHealth />} />
+        </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
@@ -78,7 +80,7 @@ function App() {
         <Toaster />
       </QueryClientProvider>
     </AuthProvider>
-  )
+  );
 }
 
-export default App
+export default App;

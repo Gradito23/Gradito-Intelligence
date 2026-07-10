@@ -1,8 +1,11 @@
-/**
- * Repository layer — Supabase data access.
- * Stubs for Phase 0; implemented in Phases 1+.
- */
-
 export { ChefRepository } from './ChefRepository'
 export { EventRepository } from './EventRepository'
+export { ClientRepository } from './ClientRepository'
+export { EventChefRepository } from './EventChefRepository'
+export { EventVendorRepository } from './EventVendorRepository'
+export { TeamMemberRepository } from './TeamMemberRepository'
+export { CommissionLineRepository } from './CommissionLineRepository'
+export { MatchRunRepository } from './MatchRunRepository'
+export { ActivityLogRepository } from './ActivityLogRepository'
+export { ServiceAreaRepository } from './ServiceAreaRepository'
 export { ConfigRepository } from './ConfigRepository'

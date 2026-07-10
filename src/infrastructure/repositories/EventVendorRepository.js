@@ -1,6 +1,6 @@
 import { createRepository } from '@/infrastructure/supabase/BaseRepository'
 
-export const EventRepository = createRepository('events', {
-  column: 'date',
+export const EventVendorRepository = createRepository('event_vendors', {
+  column: 'created_at',
   ascending: false,
 })
