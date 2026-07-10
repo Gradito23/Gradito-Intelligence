@@ -27,7 +27,7 @@ import Team from '@/pages/Team';
 import Profile from '@/pages/Profile';
 import AdminRoute from '@/components/AdminRoute';
 import AdminPanelLayout from '@/components/admin/AdminPanelLayout';
-import IntegrationsComingSoon from '@/pages/admin/IntegrationsComingSoon';
+import Integrations from '@/pages/admin/Integrations';
 import UserManagementHub from '@/pages/admin/UserManagementHub';
 import ComingSoonPage from '@/pages/admin/ComingSoonPage';
 import ConfigCrudPage from '@/pages/admin/ConfigCrudPage';
@@ -81,7 +81,7 @@ const AuthenticatedApp = () => {
               <Route path="data-health" element={<DataHealth />} />
               <Route path="activity" element={<ActivityLog />} />
               <Route path="bulk-upload" element={<BulkUpload />} />
-              <Route path="integrations" element={<IntegrationsComingSoon />} />
+              <Route path="integrations" element={<Integrations />} />
               <Route path="users" element={<UserManagementHub />} />
               <Route path="users/list" element={<ComingSoonPage title="Users" description="Invite users, assign roles, and deactivate accounts. Available in Phase 5." />} />
               <Route path="users/roles" element={<ComingSoonPage title="Roles" description="CRUD application roles. Available in Phase 5." />} />

@@ -42,7 +42,8 @@ Migration from [gradito-chef-flow](../gradito-chef-flow) (Vite + Base44) into Gr
 | `base44.integrations.*` → Edge Functions | Component hierarchy & UI |
 | Hardcoded picklists → DB config tables | Tailwind/shadcn design system |
 | User menu + Profile + Admin Panel (new) | Business logic (`pnlUtils`, `commissionUtils`) |
-| Remove `/users` from main sidebar | Ops routes (Chefs, Events, Team, etc.) |
+| Dashboard + dual-mode sidebar (ops / admin) | Navy/gold design tokens |
+| Remove `/users` from main sidebar | Ops routes (Chefs, Events, Match, Reports) |
 
 ---
 
@@ -157,9 +158,9 @@ flowchart TB
   Reports --> E2E
 ```
 
-**Start:** Phase 1 — database (Phase 0 complete).
+**Start:** Phase 5 — User Management + Email.
 
-> **Current scope:** Phases 1–2 only. Complete all manual test cases below before starting Phase 3.
+> **Current status (Jul 2026):** Phases **0–4** and **sidebar UX polish** are **code-complete**. `npm run build` passes. Manual test gates in Sections 3B–3D still need sign-off in Supabase + browser before feature-module rewiring (Phase 6+).
 
 ---
 
@@ -316,99 +317,148 @@ Run `node scripts/test-business-regression.mjs` or verify manually:
 
 **Phase 2 complete when:** P2-01 through P2-27 all marked `[x]`.
 
-**Then proceed to Phase 3** (Sidebar User Menu + Profile).
+**Then proceed to Phase 3** (Sidebar User Menu + Profile). ✅ Code complete — see Section 3C.
 
 ---
 
-## 3A. Navigation & Admin Panel Design (ASCII — Phase 3+)
+## 3C. Phases 3–4 + Sidebar UX — Manual Test Gates
+
+**Prerequisite:** Phases 1–2 manual tests passed (or run in parallel with Supabase setup).
+
+### Phase 3 — User Menu + Profile
+
+| # | Test | Pass |
+|---|------|------|
+| P3-01 | All users see Profile + Log Out in user menu | [ ] |
+| P3-02 | Only `role = admin` sees Admin Panel in menu | [ ] |
+| P3-03 | `/profile` — avatar upload works (`avatars` bucket migration applied) | [ ] |
+| P3-04 | `/profile` — display name + change password work | [ ] |
+| P3-05 | Last login time displays after login | [ ] |
+
+### Phase 4 — Admin Panel + Reference Data CRUD
+
+| # | Test | Pass |
+|---|------|------|
+| P4-01 | Non-admin cannot access `/admin/*` (redirects to `/dashboard`) | [ ] |
+| P4-02 | Admin sees Integrations + User Management Coming Soon pages | [ ] |
+| P4-03 | All 10 Reference Data CRUD pages work | [ ] |
+| P4-04 | Deactivating config item hides from `useConfig()` results | [ ] |
+| P4-05 | `/team`, `/data-health`, `/activity`, `/bulk-upload` redirect to `/admin/*` | [ ] |
+
+### Sidebar redesign (v2) + polish
+
+| # | Test | Pass |
+|---|------|------|
+| R1 | All users see Dashboard above Operations in ops sidebar | [ ] |
+| R2 | Non-admin ops sidebar has NO Team / Data Health / Activity / Bulk Upload | [ ] |
+| R3 | Non-admin visiting `/admin/team` → redirected away | [ ] |
+| R4 | Admin clicks Admin Panel → sidebar switches to admin nav | [ ] |
+| R5 | Admin sidebar shows Platform Ops + Integrations + User Mgmt + Reference Data | [ ] |
+| R6 | "Back to dashboard" → `/dashboard` with ops sidebar restored | [ ] |
+| R7 | No duplicate admin sub-nav in content area | [ ] |
+| R8 | `/team` redirects to `/admin/team` for admin | [ ] |
+| R9 | Reference Data CRUD + Platform Ops pages work | [ ] |
+| S1 | Admin accordion sections collapse; active section auto-opens | [ ] |
+| S2 | Sidebar collapse toggle → icon rail (`w-16`) on ops + admin | [ ] |
+| S3 | Collapsed admin section icons open popover with child links | [ ] |
+| S4 | Collapse preference survives refresh (`localStorage`) | [ ] |
+| S5 | `npm run build` passes | [x] |
+
+**Phases 3–4 + sidebar complete when:** P3-01 through P4-05 and R1–S4 marked `[x]`.
+
+**Then proceed to Phase 5** (User Management + Resend email).
+
+---
+
+## 3A. Navigation & Admin Panel Design (current — post sidebar redesign)
+
+Two sidebar modes share the same navy left panel; navigation switches on route.
+
+### Mode A — Ops sidebar (`/dashboard`, `/`, `/events`, etc.) — all users
 
 ```
 +------------------------------------------------------------------+
-|  SIDEBAR (main nav — unchanged ops/analytics)                     |
-|  Operations: Chefs | Events | Chef Match                          |
-|  Analytics:  Reports | Profitability                              |
-|  Admin:      Team | Data Health | Activity | Bulk Upload          |
-|              (NO Users / Settings here anymore)                   |
+|  GRADITO                                    [collapse toggle]    |
+|  Chef Intelligence                                                |
 |                                                                   |
-|  ... scroll ...                                                   |
+|  DASHBOARD                                                        |
+|    Dashboard          -> /dashboard                               |
 |                                                                   |
-|  +--------------------------------------------------------------+ |
-|  |  [avatar]  Jane Admin  v          <- click opens menu       | |
-|  +--------------------------------------------------------------+ |
-|       |                                                           |
-|       +--->  Profile          -->  /profile                       |
-|       +--->  Admin Panel      -->  /admin  (admin role ONLY)      |
-|       +--->  Log Out          -->  supabase.auth.signOut()        |
+|  OPERATIONS                                                       |
+|    Chefs | Events | Chef Match                                    |
+|                                                                   |
+|  ANALYTICS                                                        |
+|    Reports | Profitability                                        |
+|                                                                   |
+|  (no Team / Data Health / Activity / Bulk Upload here)            |
+|                                                                   |
+|  [avatar]  User  v   -> Profile | Admin Panel* | Log Out          |
+|                         *admin only                               |
 +------------------------------------------------------------------+
+```
 
-/profile  (all authenticated users)
+### Mode B — Admin sidebar (`/admin/*`) — admin only
+
+```
++------------------------------------------------------------------+
+|  GRADITO                                    [collapse toggle]    |
+|  Chef Intelligence                                                |
+|                                                                   |
+|  <- Back to dashboard          -> /dashboard                      |
+|                                                                   |
+|  ADMIN PANEL                                                      |
+|  System configuration                                             |
+|                                                                   |
+|  > PLATFORM OPERATIONS     (accordion — click to expand)          |
+|      Team | Data Health | Activity Log | Bulk Upload              |
+|  > INTEGRATIONS            Integrations [Soon]                      |
+|  > USER MANAGEMENT         Overview / Users / Roles / Perms [Soon]|
+|  > REFERENCE DATA          10 config CRUD pages                     |
+|                                                                   |
+|  MAIN CONTENT (full width) — no inner left sub-nav                |
++------------------------------------------------------------------+
+```
+
+**Collapsed sidebar (both modes):** `w-16` icon rail; ops links show tooltips; admin sections show icon → popover submenu. Toggle persisted in `localStorage`. Shortcut: `Ctrl/Cmd+B`.
+
+### `/profile` (all authenticated users)
+
+```
 +------------------------------------------------------------------+
 |  Profile Picture [upload]                                         |
-|  Email:           jane@gradito.com                              |
-|  Role:            Admin                                           |
-|  Last Login:      Jul 10, 2026 1:30 PM                            |
+|  Email, Role, Last Login                                          |
 |  [ Change Password ]                                              |
 +------------------------------------------------------------------+
-
-/admin  (admin role only — AdminPanelLayout with left sub-nav)
-+------------------------------------------------------------------+
-|  ADMIN PANEL                                                      |
-|  +------------------+  +----------------------------------------+|
-|  | Integrations     |  |  COMING SOON                           ||
-|  |  (Coming Soon)   |  |  SMTP / Resend, future integrations    ||
-|  |------------------|  +----------------------------------------+|
-|  | User Management  |                                             |
-|  |  > Users         |  Phase 5: invite, list, deactivate        |
-|  |  > Roles         |  Phase 5: CRUD app roles                   |
-|  |  > Permissions   |  Phase 5: role x resource matrix           |
-|  |  (Coming Soon    |                                             |
-|  |   until Phase 5) |                                             |
-|  |------------------|                                             |
-|  | Reference Data   |  Phase 4: live ConfigCrudTable pages       |
-|  |  > Service Areas |                                             |
-|  |  > Holidays      |                                             |
-|  |  > Cuisines      |                                             |
-|  |  > Experience    |                                             |
-|  |    Types         |                                             |
-|  |  > Dietary       |                                             |
-|  |    Specialties   |                                             |
-|  |  > Languages     |                                             |
-|  |  > Event Types   |                                             |
-|  |  > Package Types |                                             |
-|  |  > Menu Tiers    |                                             |
-|  |  > Lead Types    |                                             |
-|  +------------------+  +----------------------------------------+|
-+------------------------------------------------------------------+
-
-Access rules:
-  Profile     -> any authenticated user
-  Admin Panel -> profiles.role = 'admin' OR has admin_panel permission (Phase 5)
-  Log Out     -> any authenticated user
 ```
 
-### Route map (new)
+**Access rules:**
+- `/dashboard` → any authenticated user
+- Profile → any authenticated user
+- Admin Panel (`/admin/*`) → `profiles.role = 'admin'` (Phase 5 adds `role_permissions` matrix)
+- Platform Ops (Team, Data Health, Activity, Bulk Upload) → admin only, under `/admin/*`
+- Log Out → any authenticated user
+
+### Route map (current)
 
 | Route | Page | Access |
 |-------|------|--------|
+| `/dashboard` | Dashboard (welcome + quick links) | authenticated |
 | `/profile` | Profile | authenticated |
-| `/admin` | Admin Panel home | admin |
+| `/admin` | Admin Panel index → reference data default | admin |
+| `/admin/team` | Team | admin |
+| `/admin/data-health` | Data Health | admin |
+| `/admin/activity` | Activity Log | admin |
+| `/admin/bulk-upload` | Bulk Upload | admin |
 | `/admin/integrations` | Integrations (Coming Soon) | admin |
 | `/admin/users` | User Management hub | admin |
-| `/admin/users/list` | Users | admin |
-| `/admin/users/roles` | Roles CRUD | admin |
-| `/admin/users/permissions` | Role permissions matrix | admin |
-| `/admin/reference-data/service-areas` | Service Areas CRUD | admin |
-| `/admin/reference-data/holidays` | Holidays CRUD | admin |
-| `/admin/reference-data/cuisines` | Cuisines CRUD | admin |
-| `/admin/reference-data/experience-types` | Experience Types CRUD | admin |
-| `/admin/reference-data/dietary-specialties` | Dietary Specialties CRUD | admin |
-| `/admin/reference-data/languages` | Languages CRUD | admin |
-| `/admin/reference-data/event-types` | Event Types CRUD | admin |
-| `/admin/reference-data/package-types` | Package Types CRUD | admin |
-| `/admin/reference-data/menu-tiers` | Menu Tiers CRUD | admin |
-| `/admin/reference-data/lead-types` | Lead Types CRUD | admin |
+| `/admin/users/list` | Users | admin (Phase 5) |
+| `/admin/users/roles` | Roles CRUD | admin (Phase 5) |
+| `/admin/users/permissions` | Role permissions matrix | admin (Phase 5) |
+| `/admin/reference-data/*` | 10 config CRUD pages | admin |
 
-**Removed from main sidebar:** `/users`, `/settings` (replaced by user menu → Admin Panel).
+**Legacy redirects:** `/team`, `/data-health`, `/activity`, `/bulk-upload`, `/users` → `/admin/*`
+
+**Removed from ops sidebar:** Team, Data Health, Activity, Bulk Upload (admin panel only); `/users`, `/settings` (replaced by Admin Panel).
 
 ---
 
@@ -430,12 +480,13 @@ Access rules:
 
 ---
 
-### Phase 1 — Database Schema, RLS, Seed Data
+### Phase 1 — Database Schema, RLS, Seed Data ✅ CODE COMPLETE
 
 > **Detailed plan:** [phase_1_database plan](/home/mazharul/.cursor/plans/phase_1_database_fcfba401.plan.md)
 
 | | |
 |---|---|
+| **Status** | Migrations + repositories written; apply via `supabase db push` |
 | **Depends on** | Phase 0 ✅ |
 | **Blocks** | Phases 2–12 |
 
@@ -454,10 +505,11 @@ Access rules:
 
 ---
 
-### Phase 2 — Auth (Email + Google OAuth)
+### Phase 2 — Auth (Email + Google OAuth) ✅ CODE COMPLETE
 
 | | |
 |---|---|
+| **Status** | AuthContext + auth pages + ProtectedRoute done; configure Supabase Dashboard (Email, Google OAuth, redirect URLs) |
 | **Depends on** | Phase 1 |
 | **Blocks** | Phases 3+ |
 
@@ -473,82 +525,93 @@ Access rules:
 
 ---
 
-### Phase 3 — Sidebar User Menu + Profile Page
+### Phase 3 — Sidebar User Menu + Profile Page ✅ CODE COMPLETE
 
 | | |
 |---|---|
+| **Status** | `UserAccountMenu`, `Profile.jsx`, `AdminRoute` delivered |
 | **Depends on** | Phase 2 |
 | **Blocks** | Phase 4 (admin gate uses profile role) |
 
-**Build:**
+**Delivered:**
 
-**Sidebar footer** — replace static "Powered by Gradito" block with `UserAccountMenu`:
-- Click avatar/name in lower-left → dropdown:
-  - **Profile** → `/profile`
-  - **Admin Panel** → `/admin` (visible only if `user.role === 'admin'`)
-  - **Log Out** → `supabase.auth.signOut()`
+**Sidebar footer** — `UserAccountMenu`:
+- **Profile** → `/profile`
+- **Admin Panel** → `/admin` (visible only if `user.role === 'admin'`)
+- **Log Out** → `supabase.auth.signOut()`
 
 **Profile page** (`/profile`):
-- Profile picture upload (Supabase Storage `avatars` bucket)
+- Profile picture upload (Supabase Storage `avatars` bucket — migration `20260710120500_avatars_storage.sql`)
 - Display: email, role, last login time
 - Change password form (`supabase.auth.updateUser`)
 - Update display name
 
-**Files:** `Sidebar.jsx`, `UserAccountMenu.jsx`, `pages/Profile.jsx`, `AdminRoute` guard stub
+**Files:** `UserAccountMenu.jsx`, `pages/Profile.jsx`, `AdminRoute.jsx`, `Sidebar.jsx`
 
-**Test gate:**
-- [ ] All users see Profile + Log Out
-- [ ] Only admin sees Admin Panel in menu
-- [ ] Avatar upload + password change work
-- [ ] Last login time displays correctly
+**Test gate:** See **Section 3C** P3-01 through P3-05.
 
 ---
 
-### Phase 4 — Admin Panel Shell + Reference Data CRUD
+### Phase 4 — Admin Panel + Reference Data CRUD ✅ CODE COMPLETE
 
 | | |
 |---|---|
+| **Status** | Admin routes, ConfigCrudTable, Coming Soon stubs delivered |
 | **Depends on** | Phase 1, Phase 3 |
 | **Blocks** | Phases 6–9 (config-driven picklists) |
 
-**Build:**
+**Delivered:**
 
-**Admin Panel layout** (`/admin/*`):
-- `AdminPanelLayout.jsx` — left sub-nav + content area
-- `AdminRoute` — redirects non-admin to `/`
+**Admin Panel** (`/admin/*`):
+- `AdminPanelLayout.jsx` — content-only `<Outlet />` (nav in main sidebar)
+- `AdminRoute` — redirects non-admin to `/dashboard`
 - Nested React Router routes under `/admin`
 
-**Sections:**
+**Sections (admin sidebar):**
 
-| Section | Route | Status in Phase 4 |
-|---------|-------|-------------------|
-| Integrations | `/admin/integrations` | **Coming Soon** placeholder (SMTP/Resend note) |
-| User Management | `/admin/users/*` | **Coming Soon** placeholder with links to 3 sub-pages (built Phase 5) |
+| Section | Route | Status |
+|---------|-------|--------|
+| Platform Operations | `/admin/team`, `/admin/data-health`, `/admin/activity`, `/admin/bulk-upload` | **Live** (admin only) |
+| Integrations | `/admin/integrations` | **Coming Soon** |
+| User Management | `/admin/users/*` | **Coming Soon** (Phase 5) |
 | Reference Data | `/admin/reference-data/*` | **Live CRUD** — 10 config pages |
 
-**Reference Data pages** (reusable `ConfigCrudTable`):
-- Service Areas, Holidays, Cuisines, Experience Types
-- Dietary Specialties, Languages
-- Event Types, Package Types, Menu Tiers, Lead Types
+**Reference Data pages** (`ConfigCrudTable` + `useConfig(type)`):
+- Service Areas, Holidays, Cuisines, Experience Types, Dietary Specialties, Languages, Event Types, Package Types, Menu Tiers, Lead Types
 
-**`useConfig(type)` hook** — for downstream phases
+**Sidebar redesign (v2):** `Dashboard.jsx`, `OpsSidebarNav`, `AdminSidebarNav`, `adminNav.js` — dual-mode sidebar; Platform Ops moved off ops nav.
 
-**Remove:** `/users` from main sidebar; delete or redirect old `/users` route
-
-**Test gate:**
-- [ ] Non-admin cannot access `/admin`
-- [ ] Admin sees Integrations + User Management "Coming Soon" pages
-- [ ] All 10 Reference Data CRUD pages work
-- [ ] Deactivating config item hides from `useConfig()` results
+**Test gate:** See **Section 3C** P4-01 through P4-05 and R1–R9.
 
 ---
 
-### Phase 5 — User Management + Email (under Admin Panel)
+### Phase 4b — Sidebar UX Polish ✅ CODE COMPLETE
 
 | | |
 |---|---|
+| **Status** | Accordion admin sections + collapse toggle delivered |
+| **Depends on** | Phase 4 sidebar redesign |
+| **Blocks** | nothing |
+
+**Delivered:**
+- `SidebarLayoutContext.jsx` — collapsed state, `localStorage`, `Ctrl/Cmd+B`
+- `SidebarNavSection.jsx` — accordion (expanded) + popover submenu (collapsed)
+- Collapsible sidebar: `w-60` expanded / `w-16` icon rail for ops + admin
+- `AppLayout.jsx` — dynamic main margin
+
+**Files:** `SidebarLayoutContext.jsx`, `SidebarNavSection.jsx`, updates to `Sidebar.jsx`, `AdminSidebarNav.jsx`, `OpsSidebarNav.jsx`, `UserAccountMenu.jsx`
+
+**Test gate:** See **Section 3C** S1–S5.
+
+---
+
+### Phase 5 — User Management + Email (under Admin Panel) ⬅️ NEXT
+
+| | |
+|---|---|
+| **Status** | Not started |
 | **Depends on** | Phase 2, Phase 4 |
-| **Blocks** | nothing critical |
+| **Blocks** | Fine-grained permissions (optional before Phase 6) |
 
 **Build:**
 
@@ -682,23 +745,43 @@ Access rules:
 
 ## 5. Implementation Summary
 
-| Phase | Name | Deliverable | Test Before Next |
-|-------|------|-------------|------------------|
-| **0** ✅ | Copy + Wire | Vite app, Base44 removed, Supabase client | `npm run dev` + `npm run build` |
-| 1 | Database | Migrations, RLS, seed, `profiles` + `app_roles` | Config data in Supabase |
-| 2 | Auth | Supabase auth + Google OAuth + `last_login_at` | Login/OAuth works |
-| 3 | User Menu + Profile | `UserAccountMenu`, `/profile` (avatar, password) | Menu + profile page |
-| 4 | Admin Panel | Shell, Reference Data CRUD, Coming Soon stubs | 10 config CRUD pages |
-| 5 | User Management | Users / Roles / Permissions + Resend email | Admin invite + matrix |
-| 6 | Chefs | Chef module + activity log | Chef CRUD |
-| 7 | Intake | Public form + storage | Submit without auth |
-| 8 | Team + Events | Events module | Event + chef assignment |
-| 8b | P&L + Commissions | Financial engine | Commission finalize |
-| 9 | Chef Match AI | Edge function + scoring | Match flow |
-| 10 | Analytics | Reports + profitability | Charts + export |
-| 11 | Admin Ops | Bulk upload, data health, invoice | Import flows |
-| 12 | Deploy + E2E | Netlify production + tests | Live site works |
-| 13 | Data migration | Base44 → Supabase import | Record parity (future) |
+| Phase | Name | Status | Deliverable | Test Before Next |
+|-------|------|--------|-------------|------------------|
+| **0** | Copy + Wire | ✅ Done | Vite app, Base44 removed, Supabase client | `npm run dev` + `npm run build` |
+| **1** | Database | ✅ Code | Migrations, RLS, seed, repositories | Section 3B P1-01–P1-30 |
+| **2** | Auth | ✅ Code | Supabase auth + Google OAuth + `last_login_at` | Section 3B P2-01–P2-27 |
+| **3** | User Menu + Profile | ✅ Code | `UserAccountMenu`, `/profile` | Section 3C P3-01–P3-05 |
+| **4** | Admin Panel | ✅ Code | Reference Data CRUD, Coming Soon stubs, dual sidebar | Section 3C P4-01–P4-05, R1–R9 |
+| **4b** | Sidebar UX | ✅ Code | Accordion sections + collapse toggle | Section 3C S1–S5 |
+| **5** | User Management | ⬅️ Next | Users / Roles / Permissions + Resend email | Admin invite + matrix |
+| **6** | Chefs | Pending | Chef module + activity log → Supabase | Chef CRUD |
+| **7** | Intake | Pending | Public form + storage | Submit without auth |
+| **8** | Team + Events | Pending | Events module → Supabase | Event + chef assignment |
+| **8b** | P&L + Commissions | Pending | Financial engine | Commission finalize |
+| **9** | Chef Match AI | Pending | Edge function + scoring | Match flow |
+| **10** | Analytics | Pending | Reports + profitability → Supabase | Charts + export |
+| **11** | Admin Ops | Pending | Bulk upload, data health, invoice → Supabase | Import flows |
+| **12** | Deploy + E2E | Pending | Netlify production + tests | Live site works |
+| **13** | Data migration | Future | Base44 → Supabase import | Record parity |
+
+### What's next (recommended order)
+
+1. **Sign off manual tests** — Sections 3B (Phases 1–2), 3C (Phases 3–4 + sidebar). Apply pending migrations if not done:
+   - All files in `supabase/migrations/`
+   - `20260710120500_avatars_storage.sql` (profile avatars)
+   - Run seed; promote admin: `UPDATE profiles SET role = 'admin' WHERE ...`
+2. **Phase 5 — User Management** — replace Coming Soon stubs with live pages:
+   - `/admin/users/list` — list, invite, deactivate, assign role
+   - `/admin/users/roles` — CRUD `app_roles`
+   - `/admin/users/permissions` — role × resource matrix
+   - Edge functions: `invite-user`, `send-email` (Resend)
+   - Hooks: `usePermission()`, wire `AdminRoute` to permissions (optional)
+3. **Phase 6 — Chefs** — first **data rewiring** phase: `useAppData.js` → repositories; config picklists from `useConfig()`. Unblocks Phases 7–11.
+4. **Phases 7–8b** — Intake, Team, Events, P&L (core business workflows)
+5. **Phases 9–11** — AI match, analytics, bulk ops (still on Base44 stubs until rewired)
+6. **Phase 12** — E2E + Netlify deploy
+
+> **Note:** Team, Data Health, Activity Log, and Bulk Upload **UI exists** but still reads Base44 stubs via `useAppData.js` until their respective rewiring phases (6 / 8 / 11).
 
 ---
 
@@ -764,10 +847,11 @@ Access rules:
 
 ## 8. Source Feature Inventory
 
-### Operations Routes
+### Operations Routes (ops sidebar)
 
 | Route | Page | Key Actions |
 |-------|------|---------------|
+| `/dashboard` | Dashboard | Welcome + quick links; admin card → Admin Panel |
 | `/` | Chefs | Add Chef, filters, detail panel, quick-edit |
 | `/events` | Events | Create Event, filters, detail panel, status change |
 | `/match` | Chef Match | Transcript → criteria → scored matches |
@@ -779,16 +863,18 @@ Access rules:
 | `/reports` | Reports | By Area / Cuisine / Chef tabs |
 | `/profitability` | Profitability | Period selector, 6 tabs, XLSX export |
 
-### Admin Routes (main sidebar — ops only)
+### Admin Routes (admin sidebar — Platform Operations)
 
 | Route | Page | Key Actions |
 |-------|------|---------------|
-| `/team` | Team | CRUD team members, Closer/Facilitator roles |
-| `/data-health` | Data Health | Cleanup queues, bulk actions, export |
-| `/activity` | Activity Log | Filter by entity type |
-| `/bulk-upload` | Bulk Upload | Chefs XLSX, Events XLSX, Invoices PDF |
+| `/admin/team` | Team | CRUD team members, Closer/Facilitator roles |
+| `/admin/data-health` | Data Health | Cleanup queues, bulk actions, export |
+| `/admin/activity` | Activity Log | Filter by entity type |
+| `/admin/bulk-upload` | Bulk Upload | Chefs XLSX, Events XLSX, Invoices PDF |
 
-**Removed from main sidebar:** `/users` → moved to Admin Panel; `/settings` → replaced by `/admin/reference-data/*`
+**Legacy redirects:** `/team`, `/data-health`, `/activity`, `/bulk-upload` → `/admin/*`
+
+**Removed from ops sidebar:** Platform Ops pages (admin only); `/users` → Admin Panel; `/settings` → `/admin/reference-data/*`
 
 ### User Menu Routes (sidebar footer click)
 
@@ -802,21 +888,21 @@ Access rules:
 
 | Route | Page | Status | Key Actions |
 |-------|------|--------|---------------|
-| `/admin/integrations` | Integrations | Coming Soon (Phase 4) | SMTP/Resend placeholder |
-| `/admin/users` | User Management hub | Coming Soon (Phase 4) | Links to sub-pages |
+| `/admin/integrations` | Integrations | Coming Soon | SMTP/Resend placeholder |
+| `/admin/users` | User Management hub | Coming Soon | Links to sub-pages |
 | `/admin/users/list` | Users | Phase 5 | Invite, deactivate, assign role |
 | `/admin/users/roles` | Roles | Phase 5 | CRUD `app_roles` |
 | `/admin/users/permissions` | Permissions | Phase 5 | Role × resource matrix |
-| `/admin/reference-data/service-areas` | Service Areas | Phase 4 | Config CRUD |
-| `/admin/reference-data/holidays` | Holidays | Phase 4 | Config CRUD |
-| `/admin/reference-data/cuisines` | Cuisines | Phase 4 | Config CRUD |
-| `/admin/reference-data/experience-types` | Experience Types | Phase 4 | Config CRUD |
-| `/admin/reference-data/dietary-specialties` | Dietary Specialties | Phase 4 | Config CRUD |
-| `/admin/reference-data/languages` | Languages | Phase 4 | Config CRUD |
-| `/admin/reference-data/event-types` | Event Types | Phase 4 | Config CRUD |
-| `/admin/reference-data/package-types` | Package Types | Phase 4 | Config CRUD |
-| `/admin/reference-data/menu-tiers` | Menu Tiers | Phase 4 | Config CRUD |
-| `/admin/reference-data/lead-types` | Lead Types | Phase 4 | Config CRUD |
+| `/admin/reference-data/service-areas` | Service Areas | Live | Config CRUD |
+| `/admin/reference-data/holidays` | Holidays | Live | Config CRUD |
+| `/admin/reference-data/cuisines` | Cuisines | Live | Config CRUD |
+| `/admin/reference-data/experience-types` | Experience Types | Live | Config CRUD |
+| `/admin/reference-data/dietary-specialties` | Dietary Specialties | Live | Config CRUD |
+| `/admin/reference-data/languages` | Languages | Live | Config CRUD |
+| `/admin/reference-data/event-types` | Event Types | Live | Config CRUD |
+| `/admin/reference-data/package-types` | Package Types | Live | Config CRUD |
+| `/admin/reference-data/menu-tiers` | Menu Tiers | Live | Config CRUD |
+| `/admin/reference-data/lead-types` | Lead Types | Live | Config CRUD |
 
 ### Public / Auth Routes
 
@@ -839,16 +925,17 @@ Access rules:
 - Custom: `GoldStars`, `ChefAvatar`, `StatCard`
 
 **Copy and modify (data calls only):**
-- All `src/pages/*.jsx`
+- All `src/pages/*.jsx` (except Profile, Dashboard, admin — done for shell)
 - Feature components (`chefs/`, `events/`, `match/`, etc.)
-- `AuthContext.jsx`, `useAppData.js`
-- `Sidebar.jsx` — replace footer with `UserAccountMenu`; remove `/users` from nav
+- `useAppData.js` → repositories (Phase 6+)
 
-**Add (new):**
-- `src/components/layout/UserAccountMenu.jsx` — Profile / Admin Panel / Log Out dropdown
-- `src/pages/Profile.jsx` — avatar, email, role, last login, password change
-- `src/pages/admin/` — Admin Panel layout + Reference Data + User Management pages
+**Delivered (new layout + admin shell):**
+- `src/components/layout/UserAccountMenu.jsx`, `OpsSidebarNav.jsx`, `AdminSidebarNav.jsx`
+- `src/components/layout/SidebarLayoutContext.jsx`, `SidebarNavSection.jsx`
+- `src/pages/Dashboard.jsx`, `src/pages/Profile.jsx`
+- `src/pages/admin/` — Reference Data + Coming Soon pages
 - `src/components/admin/AdminPanelLayout.jsx`, `ConfigCrudTable.jsx`
+- `src/lib/adminNav.js`, `configMeta.js`, `useConfig.js`
 
 **Remove:**
 - `@base44/sdk`, `@base44/vite-plugin`, `base44/` folder, `base44Client.js`
@@ -861,7 +948,7 @@ Access rules:
 ## 10. Risk Notes
 
 1. **Lead type mismatch:** Event schema uses `"House Account"` but UI uses `"House Account / Referral"` — normalize in seed.
-2. **ProtectedRoute unused:** Enable in `App.jsx` during Phase 2.
+2. **ProtectedRoute:** Enabled in `App.jsx` (Phase 2).
 3. **Public intake RLS:** Anon insert only; no read access to other chefs.
 4. **LLM provider:** Edge functions need OpenAI/Anthropic API key as Supabase secret.
 5. **Google OAuth:** Configure redirect URI in Google Console + Supabase Auth → Netlify URL.

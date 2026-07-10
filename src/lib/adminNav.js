@@ -23,7 +23,7 @@ export const ADMIN_NAV_SECTIONS = [
     label: 'Integrations',
     icon: Plug,
     items: [
-      { path: '/admin/integrations', label: 'Integrations', icon: Plug, comingSoon: true },
+      { path: '/admin/integrations', label: 'Integrations', icon: Plug },
     ],
   },
   {
