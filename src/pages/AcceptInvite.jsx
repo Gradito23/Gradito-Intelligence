@@ -72,7 +72,8 @@ export default function AcceptInvite() {
           .eq('id', user.id);
       }
 
-      window.location.href = '/login';
+      await supabase.auth.signOut();
+      window.location.href = '/login?activated=1';
     } catch (err) {
       setError(err.message || 'Failed to set password');
     } finally {

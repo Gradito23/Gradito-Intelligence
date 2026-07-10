@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/api/supabaseClient";
 import { useAuth } from "@/lib/AuthContext";
+import { getDefaultLandingPath } from "@/lib/permissionMeta";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,11 +27,22 @@ function getOAuthErrorFromUrl() {
 }
 
 export default function Login() {
-  const { isAuthenticated, isLoadingAuth } = useAuth();
+  const { user, isAuthenticated, isLoadingAuth, hasPermission } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('activated') === '1') {
+      setSuccess('Account activated. Sign in with your new password.');
+      params.delete('activated');
+      const next = params.toString();
+      window.history.replaceState({}, '', next ? `/login?${next}` : '/login');
+    }
+  }, []);
 
   useEffect(() => {
     const oauthError = getOAuthErrorFromUrl();
@@ -47,10 +59,15 @@ export default function Login() {
 
   useEffect(() => {
     if (!isLoadingAuth && isAuthenticated) {
+      if (user?.needsPasswordSetup) {
+        window.location.href = '/accept-invite';
+        return;
+      }
       const params = new URLSearchParams(window.location.search);
-      window.location.href = params.get("next") || "/";
+      const next = params.get("next");
+      window.location.href = next || getDefaultLandingPath(hasPermission);
     }
-  }, [isAuthenticated, isLoadingAuth]);
+  }, [isAuthenticated, isLoadingAuth, user, hasPermission]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -59,8 +76,6 @@ export default function Login() {
     try {
       const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
       if (signInError) throw signInError;
-      const params = new URLSearchParams(window.location.search);
-      window.location.href = params.get("next") || "/";
     } catch (err) {
       setError(err.message || "Invalid email or password");
     } finally {
@@ -71,8 +86,8 @@ export default function Login() {
   const handleGoogle = async () => {
     setError("");
     const params = new URLSearchParams(window.location.search);
-    const next = params.get("next") || "/";
-    const redirectTo = next === "/"
+    const next = params.get("next") || getDefaultLandingPath(hasPermission);
+    const redirectTo = !params.get("next")
       ? `${window.location.origin}/login`
       : `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -105,6 +120,12 @@ export default function Login() {
           <span className="bg-card px-3 text-muted-foreground">or</span>
         </div>
       </div>
+
+      {success && (
+        <div className="mb-4 p-3 rounded-lg bg-emerald-500/10 text-emerald-700 text-sm">
+          {success}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">

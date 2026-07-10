@@ -8,6 +8,8 @@ import {
   DollarSign,
   LayoutDashboard,
 } from 'lucide-react';
+import { useAuth } from '@/lib/AuthContext';
+import { checkPermission } from '@/lib/permissionMeta';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
@@ -15,28 +17,29 @@ const NAV_SECTIONS = [
   {
     label: 'Dashboard',
     items: [
-      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { path: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, permission: null },
     ],
   },
   {
     label: 'Operations',
     items: [
-      { path: '/', label: 'Chefs', icon: ChefHat },
-      { path: '/events', label: 'Events', icon: Calendar },
-      { path: '/match', label: 'Chef Match', icon: Sparkles },
+      { path: '/', label: 'Chefs', icon: ChefHat, permission: { resource: 'chefs', action: 'read' } },
+      { path: '/events', label: 'Events', icon: Calendar, permission: { resource: 'events', action: 'read' } },
+      { path: '/match', label: 'Chef Match', icon: Sparkles, permission: { resource: 'chefs', action: 'read' } },
     ],
   },
   {
     label: 'Analytics',
     items: [
-      { path: '/reports', label: 'Reports', icon: BarChart3 },
-      { path: '/profitability', label: 'Profitability', icon: DollarSign },
+      { path: '/reports', label: 'Reports', icon: BarChart3, permission: { resource: 'reports', action: 'read' } },
+      { path: '/profitability', label: 'Profitability', icon: DollarSign, permission: { resource: 'reports', action: 'read' } },
     ],
   },
 ];
 
 export default function OpsSidebarNav({ onNavigate, collapsed = false }) {
   const location = useLocation();
+  const { hasPermission } = useAuth();
 
   const isActive = (path) => {
     if (path === '/') return location.pathname === '/';
@@ -80,9 +83,14 @@ export default function OpsSidebarNav({ onNavigate, collapsed = false }) {
     return link;
   };
 
+  const visibleSections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => checkPermission(hasPermission, item.permission)),
+  })).filter((section) => section.items.length > 0);
+
   return (
     <TooltipProvider delayDuration={0}>
-      {NAV_SECTIONS.map(({ label: sectionLabel, items }) => (
+      {visibleSections.map(({ label: sectionLabel, items }) => (
         <div key={sectionLabel} className={collapsed ? 'mb-2' : ''}>
           {!collapsed && (
             <p className="text-xs font-semibold uppercase tracking-widest text-sidebar-foreground/30 px-3 mb-1">

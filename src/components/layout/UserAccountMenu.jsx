@@ -30,8 +30,8 @@ function getDisplayLabel(user) {
 
 export default function UserAccountMenu({ collapsed = false }) {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { user, logout, hasPermission } = useAuth();
+  const showAdminPanel = hasPermission('admin_panel', 'access');
 
   if (!user) return null;
 
@@ -76,7 +76,7 @@ export default function UserAccountMenu({ collapsed = false }) {
               <User className="mr-2 h-4 w-4" />
               Profile
             </DropdownMenuItem>
-            {isAdmin && (
+            {showAdminPanel && (
               <DropdownMenuItem onClick={() => navigate('/admin')}>
                 <Settings className="mr-2 h-4 w-4" />
                 Admin Panel

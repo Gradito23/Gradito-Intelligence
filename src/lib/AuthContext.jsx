@@ -19,7 +19,7 @@ function getIdentityFlags(identities) {
 async function fetchProfile(userId) {
   const { data, error } = await supabase
     .from('profiles')
-    .select('role_id, role, display_name, avatar_url, last_login_at, status, is_provisioned')
+    .select('role_id, role, display_name, avatar_url, last_login_at, status, is_provisioned, password_setup_required')
     .eq('id', userId)
     .maybeSingle();
   if (error) throw error;
@@ -53,24 +53,13 @@ async function denyUnauthorizedAccess() {
   throw new Error(ACCESS_DENIED_MSG);
 }
 
-async function activateInvitedUser(userId, profile) {
-  if (profile?.status === 'invited') {
-    await supabase
-      .from('profiles')
-      .update({ status: 'active' })
-      .eq('id', userId);
-    return 'active';
-  }
-  return profile?.status ?? 'active';
-}
-
 async function buildAppUser(session) {
   if (!session?.user) return null;
 
   const { data: { user: authUser } } = await supabase.auth.getUser();
   const identities = authUser?.identities ?? session.user.identities ?? [];
 
-  let profile = await fetchProfile(session.user.id);
+  const profile = await fetchProfile(session.user.id);
 
   if (!profile || !profile.is_provisioned) {
     await denyUnauthorizedAccess();
@@ -81,11 +70,7 @@ async function buildAppUser(session) {
     throw new Error('Your account has been deactivated. Contact an administrator.');
   }
 
-  const status = await activateInvitedUser(session.user.id, profile);
-  if (status !== profile.status) {
-    profile = await fetchProfile(session.user.id);
-  }
-
+  const needsPasswordSetup = profile.status === 'invited' || profile.password_setup_required === true;
   const permissions = await fetchPermissions(profile?.role_id);
   const identityFlags = getIdentityFlags(identities);
 
@@ -97,7 +82,9 @@ async function buildAppUser(session) {
     display_name: profile.display_name ?? null,
     avatar_url: profile.avatar_url ?? null,
     last_login_at: profile.last_login_at ?? null,
-    status: profile.status ?? status,
+    status: profile.status ?? 'active',
+    password_setup_required: profile.password_setup_required ?? false,
+    needsPasswordSetup,
     permissions,
     ...identityFlags,
   };
@@ -121,6 +108,7 @@ export const AuthProvider = ({ children }) => {
   const [appPublicSettings, setAppPublicSettings] = useState(null);
 
   const hasPermission = useCallback((resource, action) => {
+    if (user?.role === 'admin') return true;
     if (!user?.permissions) return false;
     return user.permissions.has(permissionKey(resource, action));
   }, [user]);
@@ -131,11 +119,11 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false);
       return;
     }
-    if (touchLogin) {
-      await touchLastLogin(session.user.id);
-    }
     try {
       const appUser = await buildAppUser(session);
+      if (touchLogin && !appUser.needsPasswordSetup) {
+        await touchLastLogin(session.user.id);
+      }
       setUser(appUser);
       setIsAuthenticated(true);
       setAuthError(null);

@@ -1,8 +1,9 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
+import { getDefaultLandingPath } from '@/lib/permissionMeta';
 
 export default function AdminRoute() {
-  const { user, isLoadingAuth } = useAuth();
+  const { user, isLoadingAuth, hasPermission } = useAuth();
 
   if (isLoadingAuth) {
     return (
@@ -12,8 +13,12 @@ export default function AdminRoute() {
     );
   }
 
-  if (user?.role !== 'admin') {
-    return <Navigate to="/dashboard" replace />;
+  if (!hasPermission('admin_panel', 'access')) {
+    return <Navigate to={getDefaultLandingPath(hasPermission)} replace />;
+  }
+
+  if (user?.needsPasswordSetup) {
+    return <Navigate to="/accept-invite" replace />;
   }
 
   return <Outlet />;

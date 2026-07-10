@@ -1,8 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useChefs } from '@/hooks/useAppData';
+import { useAuth } from '@/lib/AuthContext';
 import { ADMIN_NAV_SECTIONS } from '@/lib/adminNav';
+import { checkPermission } from '@/lib/permissionMeta';
 import SidebarNavSection from './SidebarNavSection';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -22,7 +24,8 @@ function isPathActive(pathname, path) {
 
 function getOpenSectionsForPath(pathname) {
   const open = {};
-  ADMIN_NAV_SECTIONS.forEach(({ label, items }) => {
+  ADMIN_NAV_SECTIONS.forEach(({ label, items, defaultCollapsed }) => {
+    if (defaultCollapsed || label === 'Reference Data') return;
     if (items.some((item) => isPathActive(pathname, item.path))) {
       open[label] = true;
     }
@@ -32,15 +35,22 @@ function getOpenSectionsForPath(pathname) {
 
 export default function AdminSidebarNav({ onNavigate, collapsed = false }) {
   const location = useLocation();
+  const { hasPermission } = useAuth();
   const dataHealthCount = useDataHealthCount();
   const [openSections, setOpenSections] = useState(() =>
     getOpenSectionsForPath(location.pathname),
   );
 
+  const visibleSections = useMemo(() => ADMIN_NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => checkPermission(hasPermission, item.permission)),
+  })).filter((section) => section.items.length > 0), [hasPermission]);
+
   useEffect(() => {
     setOpenSections((prev) => {
       const next = { ...prev };
-      ADMIN_NAV_SECTIONS.forEach(({ label, items }) => {
+      ADMIN_NAV_SECTIONS.forEach(({ label, items, defaultCollapsed }) => {
+        if (defaultCollapsed || label === 'Reference Data') return;
         if (items.some((item) => isPathActive(location.pathname, item.path))) {
           next[label] = true;
         }
@@ -92,7 +102,7 @@ export default function AdminSidebarNav({ onNavigate, collapsed = false }) {
           </div>
         )}
 
-        {ADMIN_NAV_SECTIONS.map(({ label, icon, items }) => (
+        {visibleSections.map(({ label, icon, items }) => (
           <SidebarNavSection
             key={label}
             label={label}

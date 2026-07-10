@@ -19,6 +19,16 @@ function getAppUrl(): string {
   return Deno.env.get('APP_URL')?.trim() || Deno.env.get('SITE_URL')?.trim() || '';
 }
 
+function requireAppUrl(): string {
+  const appUrl = getAppUrl();
+  if (!appUrl) {
+    throw new Error(
+      'Set APP_URL secret on the manage-users edge function (e.g. http://localhost:5173 or your production URL).',
+    );
+  }
+  return appUrl.replace(/\/$/, '');
+}
+
 async function assertEmailProviderConfigured(adminClient: AdminClient) {
   const provider = await getActiveProvider(adminClient);
 
@@ -181,8 +191,8 @@ async function generateAndSendInvite(
 ) {
   await upsertProvisionedEmail(adminClient, email, roleId, provisionedBy);
 
-  const appUrl = getAppUrl();
-  const redirectTo = appUrl ? `${appUrl}/accept-invite` : undefined;
+  const appUrl = requireAppUrl();
+  const redirectTo = `${appUrl}/accept-invite`;
 
   const { data, error } = await adminClient.auth.admin.generateLink({
     type: 'invite',
@@ -208,6 +218,7 @@ async function generateAndSendInvite(
       role_id: roleId,
       status: 'invited',
       is_provisioned: true,
+      password_setup_required: true,
     }, { onConflict: 'id' });
 
   if (profileError) throw profileError;
@@ -374,8 +385,8 @@ async function handleResendInvite(
 
   if (!roleId) return jsonResponse({ error: 'User has no role assigned' }, 400);
 
-  const appUrl = getAppUrl();
-  const redirectTo = appUrl ? `${appUrl}/accept-invite` : undefined;
+  const appUrl = requireAppUrl();
+  const redirectTo = `${appUrl}/accept-invite`;
 
   const { data, error } = await adminClient.auth.admin.generateLink({
     type: 'invite',
