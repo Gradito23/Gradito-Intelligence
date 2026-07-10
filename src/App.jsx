@@ -13,6 +13,7 @@ import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
 
 import AppLayout from '@/components/layout/AppLayout';
+import Dashboard from '@/pages/Dashboard';
 import Chefs from '@/pages/Chefs';
 import Events from '@/pages/Events';
 import ChefMatch from '@/pages/ChefMatch';
@@ -59,21 +60,27 @@ const AuthenticatedApp = () => {
 
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppLayout />}>
+          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/" element={<Chefs />} />
           <Route path="/events" element={<Events />} />
           <Route path="/match" element={<ChefMatch />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/profitability" element={<Profitability />} />
-          <Route path="/activity" element={<ActivityLog />} />
-          <Route path="/team" element={<Team />} />
+
+          <Route path="/team" element={<Navigate to="/admin/team" replace />} />
+          <Route path="/data-health" element={<Navigate to="/admin/data-health" replace />} />
+          <Route path="/activity" element={<Navigate to="/admin/activity" replace />} />
+          <Route path="/bulk-upload" element={<Navigate to="/admin/bulk-upload" replace />} />
           <Route path="/users" element={<Navigate to="/admin/users" replace />} />
-          <Route path="/bulk-upload" element={<BulkUpload />} />
-          <Route path="/data-health" element={<DataHealth />} />
 
           <Route element={<AdminRoute />}>
             <Route path="/admin" element={<AdminPanelLayout />}>
               <Route index element={<Navigate to="/admin/reference-data/service-areas" replace />} />
+              <Route path="team" element={<Team />} />
+              <Route path="data-health" element={<DataHealth />} />
+              <Route path="activity" element={<ActivityLog />} />
+              <Route path="bulk-upload" element={<BulkUpload />} />
               <Route path="integrations" element={<IntegrationsComingSoon />} />
               <Route path="users" element={<UserManagementHub />} />
               <Route path="users/list" element={<ComingSoonPage title="Users" description="Invite users, assign roles, and deactivate accounts. Available in Phase 5." />} />
