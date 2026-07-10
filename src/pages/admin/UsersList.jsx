@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import {
   Loader2, Mail, Shield, User, UserPlus, UserX, RefreshCw, KeyRound, Trash2,
@@ -28,7 +28,25 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import ConfirmDialog from '@/components/ui/confirm-dialog';
+import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from '@/components/ui/use-toast';
+
+function UsersListSkeleton() {
+  return (
+    <div className="space-y-2">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <Card key={i} className="p-4 flex items-center gap-4">
+          <Skeleton className="h-9 w-9 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-56" />
+          </div>
+          <Skeleton className="h-8 w-24" />
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 const STATUS_STYLES = {
   active: 'border-green-500/40 text-green-700 bg-green-50',
@@ -132,32 +150,42 @@ function LoginMethodIcons({ hasGoogle, hasPassword }) {
 export default function UsersList() {
   const { user: currentUser } = useAuth();
   const canWrite = usePermission('users', 'write');
-  const { data, isLoading, error } = useUsers();
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const listParams = { page, perPage, search: debouncedSearch, status: statusFilter };
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, perPage]);
+
+  const { data, isLoading, isFetching, error } = useUsers(listParams);
   const { data: roles = [] } = useAppRoles();
-  const updateRole = useUpdateUserRole();
-  const deactivate = useDeactivateUser();
-  const reactivate = useReactivateUser();
-  const resendInvite = useResendInvite();
-  const deleteUser = useDeleteUser();
+  const updateRole = useUpdateUserRole(listParams);
+  const deactivate = useDeactivateUser(listParams);
+  const reactivate = useReactivateUser(listParams);
+  const resendInvite = useResendInvite(listParams);
+  const deleteUser = useDeleteUser(listParams);
 
   const [showInvite, setShowInvite] = useState(false);
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [updatingId, setUpdatingId] = useState(null);
+  const [pendingActionId, setPendingActionId] = useState(null);
   const [confirmAction, setConfirmAction] = useState(null);
 
   const users = data?.users ?? [];
-
-  const filtered = useMemo(() => {
-    return users.filter((u) => {
-      const q = search.trim().toLowerCase();
-      const matchesSearch = !q
-        || u.email.toLowerCase().includes(q)
-        || (u.display_name ?? '').toLowerCase().includes(q);
-      const matchesStatus = statusFilter === 'all' || u.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [users, search, statusFilter]);
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   const handleRoleChange = async (userId, roleId) => {
     setUpdatingId(userId);
@@ -174,6 +202,7 @@ export default function UsersList() {
   const runConfirmAction = async () => {
     if (!confirmAction) return;
     const { type, userId } = confirmAction;
+    setPendingActionId(userId);
     try {
       if (type === 'deactivate') await deactivate.mutateAsync(userId);
       else if (type === 'reactivate') await reactivate.mutateAsync(userId);
@@ -185,19 +214,14 @@ export default function UsersList() {
           : type === 'delete' ? 'User deleted'
           : 'Invite resent',
       });
+      setConfirmAction(null);
     } catch (err) {
       toast({ title: 'Action failed', description: err.message, variant: 'destructive' });
       throw err;
+    } finally {
+      setPendingActionId(null);
     }
   };
-
-  if (isLoading) {
-    return (
-      <div className="flex justify-center py-16">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
 
   if (error) {
     return (
@@ -211,7 +235,7 @@ export default function UsersList() {
         <div>
           <h2 className="font-heading text-xl font-semibold text-navy">Users</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Manage login accounts. Separate from Team Members (commission reps).
+            Manage login accounts for the platform (not commission reps).
           </p>
         </div>
         {canWrite && (
@@ -247,17 +271,21 @@ export default function UsersList() {
       </div>
 
       <div className="space-y-2">
-        {filtered.length === 0 && (
+        {isLoading ? (
+          <UsersListSkeleton />
+        ) : users.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-8">No users found.</p>
-        )}
-        {filtered.map((u) => {
+        ) : (
+          users.map((u) => {
           const isAdmin = u.role === 'admin';
           const isCurrentUser = currentUser?.id === u.id;
           const isDeactivated = u.status === 'deactivated';
           const isInvited = u.status === 'invited';
 
+          const isRowPending = pendingActionId === u.id;
+
           return (
-            <Card key={u.id} className="p-4 flex items-center gap-4 flex-wrap">
+            <Card key={u.id} className={`p-4 flex items-center gap-4 flex-wrap ${isRowPending ? 'opacity-60' : ''}`}>
               <Avatar className="h-9 w-9 shrink-0">
                 <AvatarImage src={u.avatar_url ?? undefined} />
                 <AvatarFallback className="bg-navy/10 text-xs">
@@ -320,6 +348,7 @@ export default function UsersList() {
                         description: `Send a new invitation email to ${u.email}?`,
                         confirmLabel: 'Resend',
                       })}
+                      disabled={isRowPending}
                     >
                       <RefreshCw size={12} className="mr-1" />
                       Resend
@@ -354,6 +383,7 @@ export default function UsersList() {
                         confirmLabel: 'Deactivate',
                         variant: 'destructive',
                       })}
+                      disabled={isRowPending}
                     >
                       <UserX size={12} className="mr-1" />
                       Deactivate
@@ -363,6 +393,7 @@ export default function UsersList() {
                     variant="outline"
                     size="sm"
                     className="h-8 text-xs text-destructive hover:text-destructive"
+                    disabled={isRowPending}
                     onClick={() => setConfirmAction({
                       type: 'delete',
                       userId: u.id,
@@ -379,7 +410,36 @@ export default function UsersList() {
               )}
             </Card>
           );
-        })}
+        })
+        )}
+      </div>
+
+      <div className="flex items-center justify-between gap-4 flex-wrap pt-2">
+        <p className="text-xs text-muted-foreground">
+          {total === 0 ? 'No users' : `Showing ${(page - 1) * perPage + 1}–${Math.min(page * perPage, total)} of ${total}`}
+          {isFetching && !isLoading && (
+            <Loader2 className="inline-block ml-2 h-3 w-3 animate-spin" />
+          )}
+        </p>
+        <div className="flex items-center gap-2">
+          <Select value={String(perPage)} onValueChange={(v) => setPerPage(Number(v))}>
+            <SelectTrigger className="h-8 w-20 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="10">10</SelectItem>
+              <SelectItem value="25">25</SelectItem>
+              <SelectItem value="50">50</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="sm" className="h-8" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
+          <Button variant="outline" size="sm" className="h-8" disabled={page >= totalPages} onClick={() => setPage((p) => p + 1)}>
+            Next
+          </Button>
+        </div>
       </div>
 
       <InviteDialog

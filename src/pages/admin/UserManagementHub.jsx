@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronRight, Users } from 'lucide-react';
-import { useUsers } from '@/hooks/useUsers';
+import { useUsersStats } from '@/hooks/useUsers';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 
 const SUB_PAGES = [
   {
@@ -35,8 +34,7 @@ function StatCard({ label, value }) {
 }
 
 export default function UserManagementHub() {
-  const { data } = useUsers();
-  const stats = data?.stats;
+  const { data: stats, isLoading } = useUsersStats();
 
   return (
     <div className="space-y-4">
@@ -50,14 +48,12 @@ export default function UserManagementHub() {
         </p>
       </div>
 
-      {stats && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard label="Total users" value={stats.total} />
-          <StatCard label="Active" value={stats.active} />
-          <StatCard label="Invited" value={stats.invited} />
-          <StatCard label="Admins" value={stats.admins} />
-        </div>
-      )}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <StatCard label="Total users" value={isLoading ? '…' : stats?.total} />
+        <StatCard label="Active" value={isLoading ? '…' : stats?.active} />
+        <StatCard label="Invited" value={isLoading ? '…' : stats?.invited} />
+        <StatCard label="Admins" value={isLoading ? '…' : stats?.admins} />
+      </div>
 
       <div className="grid gap-3">
         {SUB_PAGES.map(({ path, title, description }) => (

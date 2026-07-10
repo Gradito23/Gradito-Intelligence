@@ -183,8 +183,8 @@ export default function Team() {
   return (
     <div className="max-w-2xl mx-auto py-8 px-4 space-y-6">
       <div>
-        <h1 className="font-heading text-2xl font-bold text-navy">Team Members</h1>
-        <p className="text-sm text-muted-foreground mt-1">Sales Specialists (Closers) and Execution Specialists (Facilitators) for commission attribution.</p>
+        <h1 className="font-heading text-2xl font-bold text-navy">Commission Team</h1>
+        <p className="text-sm text-muted-foreground mt-1">Facilitators and commission reps for event attribution (not login users).</p>
       </div>
 
       {/* Add form */}

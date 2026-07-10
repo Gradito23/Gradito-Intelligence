@@ -121,11 +121,62 @@ function summarizeIdentities(identities: Array<{ provider: string }> | undefined
   };
 }
 
-async function handleList(adminClient: AdminClient) {
-  const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({
-    perPage: 1000,
+async function handleStats(adminClient: AdminClient) {
+  const { data: profiles, error } = await adminClient
+    .from('profiles')
+    .select('status, role');
+
+  if (error) throw error;
+
+  const rows = profiles ?? [];
+  return jsonResponse({
+    stats: {
+      total: rows.length,
+      active: rows.filter((p) => p.status === 'active').length,
+      invited: rows.filter((p) => p.status === 'invited').length,
+      deactivated: rows.filter((p) => p.status === 'deactivated').length,
+      admins: rows.filter((p) => p.role === 'admin').length,
+    },
   });
-  if (authError) throw authError;
+}
+
+function mapAuthUserToListItem(
+  u: {
+    id: string;
+    email?: string;
+    created_at?: string;
+    invited_at?: string | null;
+    banned_until?: string | null;
+    identities?: Array<{ provider: string }>;
+    user_metadata?: Record<string, unknown>;
+  },
+  profileMap: Map<string, Record<string, unknown>>,
+) {
+  const profile = profileMap.get(u.id);
+  const identitySummary = summarizeIdentities(u.identities);
+  return {
+    id: u.id,
+    email: u.email ?? '',
+    display_name: (profile?.display_name as string | null) ?? (u.user_metadata?.display_name as string | undefined) ?? null,
+    avatar_url: (profile?.avatar_url as string | null) ?? null,
+    role_id: (profile?.role_id as string | null) ?? null,
+    role: (profile?.role as string) ?? 'user',
+    role_name: (profile?.app_roles as { name?: string } | null)?.name ?? (profile?.role as string) ?? 'user',
+    status: (profile?.status as string) ?? 'active',
+    last_login_at: (profile?.last_login_at as string | null) ?? null,
+    created_at: u.created_at,
+    invited_at: u.invited_at ?? null,
+    banned_until: u.banned_until ?? null,
+    password_setup_required: (profile?.password_setup_required as boolean) ?? false,
+    ...identitySummary,
+  };
+}
+
+async function handleList(adminClient: AdminClient, body: Record<string, unknown>) {
+  const page = Math.max(1, Number(body.page) || 1);
+  const perPage = Math.min(100, Math.max(1, Number(body.per_page) || 25));
+  const search = typeof body.search === 'string' ? body.search.trim().toLowerCase() : '';
+  const status = typeof body.status === 'string' && body.status !== 'all' ? body.status : '';
 
   const { data: profiles, error: profileError } = await adminClient
     .from('profiles')
@@ -135,36 +186,49 @@ async function handleList(adminClient: AdminClient) {
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  const users = (authData.users ?? []).map((u) => {
-    const profile = profileMap.get(u.id);
-    const identitySummary = summarizeIdentities(u.identities);
-    return {
-      id: u.id,
-      email: u.email ?? '',
-      display_name: profile?.display_name ?? u.user_metadata?.display_name ?? null,
-      avatar_url: profile?.avatar_url ?? null,
-      role_id: profile?.role_id ?? null,
-      role: profile?.role ?? 'user',
-      role_name: (profile?.app_roles as { name?: string } | null)?.name ?? profile?.role ?? 'user',
-      status: profile?.status ?? 'active',
-      last_login_at: profile?.last_login_at ?? null,
-      created_at: u.created_at,
-      invited_at: u.invited_at ?? null,
-      banned_until: u.banned_until ?? null,
-      password_setup_required: profile?.password_setup_required ?? false,
-      ...identitySummary,
-    };
+  if (!search && !status) {
+    const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({
+      page,
+      perPage,
+    });
+    if (authError) throw authError;
+
+    const users = (authData.users ?? []).map((u) => mapAuthUserToListItem(u, profileMap));
+    return jsonResponse({
+      users,
+      page,
+      per_page: perPage,
+      total: authData.total ?? users.length,
+    });
+  }
+
+  const { data: authData, error: authError } = await adminClient.auth.admin.listUsers({
+    perPage: 1000,
   });
+  if (authError) throw authError;
 
-  const stats = {
-    total: users.length,
-    active: users.filter((u) => u.status === 'active').length,
-    invited: users.filter((u) => u.status === 'invited').length,
-    deactivated: users.filter((u) => u.status === 'deactivated').length,
-    admins: users.filter((u) => u.role === 'admin').length,
-  };
+  let users = (authData.users ?? []).map((u) => mapAuthUserToListItem(u, profileMap));
 
-  return jsonResponse({ users, stats });
+  if (status) {
+    users = users.filter((u) => u.status === status);
+  }
+  if (search) {
+    users = users.filter((u) =>
+      u.email.toLowerCase().includes(search)
+      || (u.display_name ?? '').toLowerCase().includes(search),
+    );
+  }
+
+  const total = users.length;
+  const start = (page - 1) * perPage;
+  const pageUsers = users.slice(start, start + perPage);
+
+  return jsonResponse({
+    users: pageUsers,
+    page,
+    per_page: perPage,
+    total,
+  });
 }
 
 async function sendInviteEmail(
@@ -511,8 +575,10 @@ Deno.serve(async (req) => {
     const action = typeof body.action === 'string' ? body.action : 'list';
 
     switch (action) {
+      case 'stats':
+        return handleStats(adminClient);
       case 'list':
-        return handleList(adminClient);
+        return handleList(adminClient, body);
       case 'invite':
         return handleInvite(body, adminClient, user.id);
       case 'update_role':

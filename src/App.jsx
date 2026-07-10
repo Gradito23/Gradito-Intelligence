@@ -35,7 +35,7 @@ const UserManagementHub = lazy(() => import('@/pages/admin/UserManagementHub'));
 const UsersList = lazy(() => import('@/pages/admin/UsersList'));
 const RolesList = lazy(() => import('@/pages/admin/RolesList'));
 const PermissionsMatrix = lazy(() => import('@/pages/admin/PermissionsMatrix'));
-const ComingSoonPage = lazy(() => import('@/pages/admin/ComingSoonPage'));
+const OpenAIIntegration = lazy(() => import('@/pages/admin/OpenAIIntegration'));
 const ConfigCrudPage = lazy(() => import('@/pages/admin/ConfigCrudPage'));
 
 const PUBLIC_PATHS = new Set([
@@ -156,7 +156,8 @@ function AuthenticatedApp() {
                 )}
               />
 
-              <Route path="/team" element={<Navigate to="/admin/team" replace />} />
+              <Route path="/team" element={<Navigate to="/admin/commission-team" replace />} />
+              <Route path="/admin/team" element={<Navigate to="/admin/commission-team" replace />} />
               <Route path="/data-health" element={<Navigate to="/admin/data-health" replace />} />
               <Route path="/activity" element={<Navigate to="/admin/activity" replace />} />
               <Route path="/bulk-upload" element={<Navigate to="/admin/bulk-upload" replace />} />
@@ -166,7 +167,7 @@ function AuthenticatedApp() {
                 <Route path="/admin" element={<AdminPanelLayout />}>
                   <Route index element={<Navigate to="/admin/users" replace />} />
                   <Route
-                    path="team"
+                    path="commission-team"
                     element={(
                       <PermissionRoute permission={{ resource: 'team', action: 'read' }}>
                         <Team />
@@ -217,12 +218,7 @@ function AuthenticatedApp() {
                     path="integrations/ai"
                     element={(
                       <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
-                        <ComingSoonPage
-                          title="OpenAI"
-                          description="Connect OpenAI API for AI-assisted workflows."
-                          backTo="/admin/integrations"
-                          backLabel="Integrations"
-                        />
+                        <OpenAIIntegration />
                       </PermissionRoute>
                     )}
                   />

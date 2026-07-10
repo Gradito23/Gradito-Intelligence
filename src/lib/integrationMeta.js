@@ -25,7 +25,7 @@ export const INTEGRATION_CATEGORIES = [
         description: 'Connect OpenAI API for AI-assisted workflows.',
         path: '/admin/integrations/ai',
         icon: Bot,
-        status: 'coming_soon',
+        status: 'active',
       },
       {
         id: 'anthropic',
@@ -59,4 +59,12 @@ export function getEmailIntegrationStatus(emailData) {
   return customCount > 0
     ? `Custom SMTP · ${customCount} config(s)`
     : 'Custom SMTP · No configs';
+}
+
+export function getOpenAIIntegrationStatus(openaiData) {
+  if (!openaiData) return 'Loading…';
+  if (!openaiData.configured) return 'Not configured';
+  if (!openaiData.enabled) return 'Configured · Disabled';
+  const model = openaiData.default_model_id;
+  return model ? `Connected · Default: ${model}` : 'Connected · No default model';
 }

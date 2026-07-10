@@ -13,7 +13,7 @@ export const ADMIN_NAV_SECTIONS = [
     label: 'Platform Operations',
     icon: Users,
     items: [
-      { path: '/admin/team', label: 'Team', icon: Users, permission: { resource: 'team', action: 'read' } },
+      { path: '/admin/commission-team', label: 'Commission Team', icon: Users, permission: { resource: 'team', action: 'read' } },
       { path: '/admin/data-health', label: 'Data Health', icon: HeartPulse, badgeKey: 'dataHealth', permission: { resource: 'chefs', action: 'read' } },
       { path: '/admin/activity', label: 'Activity Log', icon: Activity, permission: { resource: 'team', action: 'read' } },
       { path: '/admin/bulk-upload', label: 'Bulk Upload', icon: Upload, permission: { resource: 'chefs', action: 'write' } },
@@ -25,7 +25,7 @@ export const ADMIN_NAV_SECTIONS = [
     items: [
       { path: '/admin/integrations', label: 'Overview', icon: Plug, permission: { resource: 'integrations', action: 'read' } },
       { path: '/admin/integrations/email', label: 'Email', icon: Plug, permission: { resource: 'integrations', action: 'read' } },
-      { path: '/admin/integrations/ai', label: 'OpenAI', comingSoon: true, permission: { resource: 'integrations', action: 'read' } },
+      { path: '/admin/integrations/ai', label: 'OpenAI', permission: { resource: 'integrations', action: 'read' } },
     ],
   },
   {

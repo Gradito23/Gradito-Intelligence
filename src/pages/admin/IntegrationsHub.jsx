@@ -2,14 +2,19 @@ import React from 'react';
 import { Plug } from 'lucide-react';
 import IntegrationCategorySection from '@/components/admin/IntegrationCategorySection';
 import { useEmailIntegration } from '@/hooks/useEmailIntegration';
-import { INTEGRATION_CATEGORIES, getEmailIntegrationStatus } from '@/lib/integrationMeta';
+import { useOpenAIIntegration } from '@/hooks/useOpenAIIntegration';
+import { INTEGRATION_CATEGORIES, getEmailIntegrationStatus, getOpenAIIntegrationStatus } from '@/lib/integrationMeta';
 
 export default function IntegrationsHub() {
   const { data: emailData } = useEmailIntegration();
+  const { data: openaiData } = useOpenAIIntegration();
 
   const getStatusText = (integration) => {
     if (integration.id === 'email') {
       return getEmailIntegrationStatus(emailData);
+    }
+    if (integration.id === 'openai') {
+      return getOpenAIIntegrationStatus(openaiData);
     }
     return null;
   };

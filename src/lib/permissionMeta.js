@@ -7,7 +7,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'users', label: 'Users', actions: ['read', 'write'] },
   { key: 'chefs', label: 'Chefs', actions: ['read', 'write'] },
   { key: 'events', label: 'Events', actions: ['read', 'write'] },
-  { key: 'team', label: 'Team', actions: ['read', 'write'] },
+  { key: 'team', label: 'Commission Team', actions: ['read', 'write'] },
   { key: 'reports', label: 'Reports', actions: ['read'] },
   { key: 'integrations', label: 'Integrations', actions: ['read', 'write'] },
   { key: 'admin_panel', label: 'Admin Panel', actions: ['access'] },
