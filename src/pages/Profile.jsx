@@ -29,6 +29,7 @@ export default function Profile() {
   const [savingName, setSavingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
+  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
@@ -96,6 +97,10 @@ export default function Profile() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
+    if (!currentPassword) {
+      toast({ title: 'Current password is required', variant: 'destructive' });
+      return;
+    }
     if (newPassword !== confirmPassword) {
       toast({ title: 'Passwords do not match', variant: 'destructive' });
       return;
@@ -104,12 +109,25 @@ export default function Profile() {
       toast({ title: 'Password must be at least 6 characters', variant: 'destructive' });
       return;
     }
+    if (currentPassword === newPassword) {
+      toast({ title: 'Choose a different password', description: 'New password must not match your current password.', variant: 'destructive' });
+      return;
+    }
     setSavingPassword(true);
     try {
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: currentPassword,
+      });
+      if (verifyError) {
+        throw new Error('Current password is incorrect');
+      }
+
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
 
       await refreshUser();
+      setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
       toast({ title: 'Password updated' });
@@ -241,6 +259,17 @@ export default function Profile() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleChangePassword} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="currentPassword">Current Password</Label>
+              <Input
+                id="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="newPassword">New Password</Label>
               <Input
