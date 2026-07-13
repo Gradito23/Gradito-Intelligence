@@ -1,9 +1,12 @@
 import React, { useState } from 'react';
-import { Loader2, Pencil, Plus } from 'lucide-react';
+import { format } from 'date-fns';
+import { Calendar as CalendarIcon, Loader2, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ConfigRepository } from '@/infrastructure/repositories/ConfigRepository';
 import { useConfigAdmin, useInvalidateConfig } from '@/hooks/useConfig';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -12,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Switch } from '@/components/ui/switch';
 import {
   Table,
@@ -23,6 +27,9 @@ import {
 } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
+import { cn } from '@/lib/utils';
+
+const HOLIDAY_REF_YEAR = 2024;
 
 function getDefaultValues(columns) {
   const values = {};
@@ -55,11 +62,78 @@ function parseFieldValue(value, type) {
   return value === '' ? null : value;
 }
 
-function ConfigFormFields({ columns, values, onChange }) {
+function monthDayToDate(month, day) {
+  const m = Number(month);
+  const d = Number(day);
+  if (!m || !d) return undefined;
+  return new Date(HOLIDAY_REF_YEAR, m - 1, d);
+}
+
+function HolidayDateField({ values, onMonthDayChange }) {
+  const selected = monthDayToDate(values.month, values.day);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="space-y-2">
+      <Label>Date *</Label>
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className={cn(
+              'w-full justify-start text-left font-normal',
+              !selected && 'text-muted-foreground',
+            )}
+          >
+            <CalendarIcon className="mr-2 h-4 w-4" />
+            {selected ? format(selected, 'MMM d') : 'Pick a date'}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start">
+          <Calendar
+            mode="single"
+            selected={selected}
+            defaultMonth={selected}
+            onSelect={(date) => {
+              if (!date) return;
+              onMonthDayChange(date.getMonth() + 1, date.getDate());
+              setOpen(false);
+            }}
+            initialFocus
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
+}
+
+function ConfigFormFields({ columns, values, onChange, onMonthDayChange, showHolidayDate }) {
   return (
     <div className="space-y-4">
       {columns.map((col) => {
-        if (col.key === 'active' && values.id) {
+        if (col.formHidden) return null;
+
+        if (col.key === 'name' && showHolidayDate) {
+          return (
+            <React.Fragment key={col.key}>
+              <div className="space-y-2">
+                <Label htmlFor={col.key}>{col.label}{col.required ? ' *' : ''}</Label>
+                <Input
+                  id={col.key}
+                  type="text"
+                  value={values[col.key] ?? ''}
+                  onChange={(e) => onChange(col.key, e.target.value)}
+                  required={col.required}
+                />
+              </div>
+              <HolidayDateField values={values} onMonthDayChange={onMonthDayChange} />
+            </React.Fragment>
+          );
+        }
+
+        if (col.key === 'active') {
+          if (!values.id) return null;
           return (
             <div key={col.key} className="flex items-center justify-between">
               <Label htmlFor={col.key}>{col.label}</Label>
@@ -123,10 +197,13 @@ export default function ConfigCrudTable({ configType, label, columns }) {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [editing, setEditing] = useState(null);
   const [formValues, setFormValues] = useState(() => getDefaultValues(columns));
 
   const displayColumns = columns;
+  const isHolidays = configType === 'holidays';
 
   const openCreate = () => {
     setEditing(null);
@@ -155,6 +232,10 @@ export default function ConfigCrudTable({ configType, label, columns }) {
     setFormValues((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handleMonthDayChange = (month, day) => {
+    setFormValues((prev) => ({ ...prev, month, day }));
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -163,6 +244,32 @@ export default function ConfigCrudTable({ configType, label, columns }) {
       for (const col of columns) {
         if (col.key === 'active' && !editing) payload[col.key] = true;
         else payload[col.key] = parseFieldValue(formValues[col.key], col.type);
+      }
+
+      if (isHolidays) {
+        if (payload.month == null || payload.day == null) {
+          toast({
+            title: 'Date required',
+            description: 'Pick a date for this holiday.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        const duplicate = (rows ?? []).find(
+          (row) =>
+            Number(row.month) === Number(payload.month)
+            && Number(row.day) === Number(payload.day)
+            && row.id !== editing?.id,
+        );
+        if (duplicate) {
+          toast({
+            title: 'A holiday already exists on this date',
+            description: `"${duplicate.name}" uses the same month and day.`,
+            variant: 'destructive',
+          });
+          return;
+        }
       }
 
       if (editing) {
@@ -203,6 +310,22 @@ export default function ConfigCrudTable({ configType, label, columns }) {
     }
   };
 
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await ConfigRepository.delete(configType, deleteTarget.id);
+      toast({ title: 'Deleted successfully' });
+      invalidateConfig(configType);
+      await refetch();
+      setDeleteTarget(null);
+    } catch (err) {
+      toast({ title: 'Delete failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center py-16">
@@ -234,7 +357,7 @@ export default function ConfigCrudTable({ configType, label, columns }) {
                 <TableHead key={col.key}>{col.label}</TableHead>
               ))}
               <TableHead className="w-28">Status</TableHead>
-              <TableHead className="w-24 text-right">Actions</TableHead>
+              <TableHead className="w-40 text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -264,6 +387,14 @@ export default function ConfigCrudTable({ configType, label, columns }) {
                     <Button
                       variant="ghost"
                       size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteTarget(row)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
                       onClick={() => handleToggleActive(row)}
                     >
                       {row.active ? 'Deactivate' : 'Activate'}
@@ -282,13 +413,30 @@ export default function ConfigCrudTable({ configType, label, columns }) {
             <DialogTitle>{editing ? `Edit ${label}` : `Add ${label}`}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSave} className="space-y-4 mt-2">
-            <ConfigFormFields columns={columns} values={formValues} onChange={handleChange} />
+            <ConfigFormFields
+              columns={columns}
+              values={formValues}
+              onChange={handleChange}
+              onMonthDayChange={handleMonthDayChange}
+              showHolidayDate={isHolidays}
+            />
             <Button type="submit" className="w-full" disabled={saving}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : editing ? 'Save changes' : 'Create'}
             </Button>
           </form>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={`Delete "${deleteTarget?.name}"?`}
+        description="This permanently removes the record. This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }

@@ -5,19 +5,18 @@ export const CONFIG_TYPES = {
     columns: [
       { key: 'name', label: 'Name', required: true },
       { key: 'region', label: 'Region' },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
   holidays: {
     label: 'Holidays',
     slug: 'holidays',
+    icon: 'Calendar',
     columns: [
       { key: 'name', label: 'Name', required: true },
-      { key: 'month', label: 'Month', type: 'number' },
-      { key: 'day', label: 'Day', type: 'number' },
+      { key: 'month', label: 'Month', type: 'number', formHidden: true },
+      { key: 'day', label: 'Day', type: 'number', formHidden: true },
       { key: 'recurring', label: 'Recurring', type: 'boolean', default: true },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -26,7 +25,6 @@ export const CONFIG_TYPES = {
     slug: 'cuisines',
     columns: [
       { key: 'name', label: 'Name', required: true },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -35,7 +33,6 @@ export const CONFIG_TYPES = {
     slug: 'experience-types',
     columns: [
       { key: 'name', label: 'Name', required: true },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -44,7 +41,6 @@ export const CONFIG_TYPES = {
     slug: 'dietary-specialties',
     columns: [
       { key: 'name', label: 'Name', required: true },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -53,7 +49,6 @@ export const CONFIG_TYPES = {
     slug: 'languages',
     columns: [
       { key: 'name', label: 'Name', required: true },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -62,7 +57,6 @@ export const CONFIG_TYPES = {
     slug: 'event-types',
     columns: [
       { key: 'name', label: 'Name', required: true },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -72,7 +66,6 @@ export const CONFIG_TYPES = {
     columns: [
       { key: 'name', label: 'Name', required: true },
       { key: 'pricing_formula', label: 'Pricing Formula (JSON)', type: 'json' },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -82,7 +75,6 @@ export const CONFIG_TYPES = {
     columns: [
       { key: 'name', label: 'Name', required: true },
       { key: 'price_per_guest', label: 'Price Per Guest', type: 'number' },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
@@ -93,7 +85,6 @@ export const CONFIG_TYPES = {
       { key: 'name', label: 'Name', required: true },
       { key: 'closer_pct', label: 'Closer %', type: 'number', default: 0 },
       { key: 'facilitator_pct', label: 'Facilitator %', type: 'number', default: 0 },
-      { key: 'sort_order', label: 'Sort Order', type: 'number', default: 0 },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },

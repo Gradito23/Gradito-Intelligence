@@ -1,5 +1,6 @@
 import {
   Activity,
+  Calendar,
   HeartPulse,
   Plug,
   Settings2,
@@ -7,6 +8,10 @@ import {
   Users,
 } from 'lucide-react';
 import { CONFIG_TYPE_LIST } from '@/lib/configMeta';
+
+const CONFIG_NAV_ICONS = {
+  Calendar,
+};
 
 export const ADMIN_NAV_SECTIONS = [
   {
@@ -45,6 +50,7 @@ export const ADMIN_NAV_SECTIONS = [
     items: CONFIG_TYPE_LIST.map((c) => ({
       path: `/admin/reference-data/${c.slug}`,
       label: c.label,
+      icon: c.icon ? CONFIG_NAV_ICONS[c.icon] : undefined,
       permission: { resource: 'config', action: 'read' },
     })),
   },

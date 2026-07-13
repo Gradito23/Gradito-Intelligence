@@ -29,7 +29,7 @@ export const ConfigRepository = {
         .from(table)
         .select('*')
         .eq('active', true)
-        .order('sort_order')
+        .order('name')
       if (error) throw error
       return toAppRows(data ?? [])
     } catch (error) {
@@ -43,7 +43,7 @@ export const ConfigRepository = {
       const { data, error } = await supabase
         .from(table)
         .select('*')
-        .order('sort_order')
+        .order('name')
       if (error) throw error
       return toAppRows(data ?? [])
     } catch (error) {
@@ -88,5 +88,15 @@ export const ConfigRepository = {
 
   async activate(type, id) {
     return this.update(type, id, { active: true })
+  },
+
+  async delete(type, id) {
+    const table = getTable(type)
+    try {
+      const { error } = await supabase.from(table).delete().eq('id', id)
+      if (error) throw error
+    } catch (error) {
+      wrapError(error, `ConfigRepository.delete(${type})`)
+    }
   },
 }
