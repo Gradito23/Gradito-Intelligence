@@ -23,6 +23,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
+import { isReasoningModel, isRecommendedChatModel } from '@/lib/openaiModels';
 
 export default function OpenAIIntegration() {
   const { data, isLoading, isError, error } = useOpenAIIntegration();
@@ -187,6 +188,10 @@ export default function OpenAIIntegration() {
             <CardTitle className="text-base font-heading">Models</CardTitle>
             <CardDescription>
               Sync from OpenAI and choose the platform default model.
+              {' '}
+              <span className="text-foreground/80">
+                Used by Chef Match and other AI features in the app.
+              </span>
               {data?.last_synced_at && (
                 <span className="block mt-1">
                   Last synced: {format(new Date(data.last_synced_at), 'PPp')}
@@ -227,10 +232,21 @@ export default function OpenAIIntegration() {
                 </SelectTrigger>
                 <SelectContent>
                   {(data?.synced_models ?? []).map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.id}</SelectItem>
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.id}
+                      {isRecommendedChatModel(m.id) ? ' · Recommended' : ''}
+                      {isReasoningModel(m.id) ? ' · Advanced' : ''}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                Prefer a <span className="font-medium text-foreground">Recommended</span> model
+                (e.g. gpt-4o-mini) for Chef Match.
+                {' '}
+                <span className="font-medium text-foreground">Advanced</span> models may be slower;
+                some settings are fixed by OpenAI.
+              </p>
             </div>
             <div className="flex-1 space-y-2">
               <Label htmlFor="model-filter">Filter models</Label>
@@ -253,6 +269,7 @@ export default function OpenAIIntegration() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Model</TableHead>
+                    <TableHead>Type</TableHead>
                     <TableHead>Owner</TableHead>
                     <TableHead className="w-28">Default</TableHead>
                   </TableRow>
@@ -261,6 +278,19 @@ export default function OpenAIIntegration() {
                   {filteredModels.map((m) => (
                     <TableRow key={m.id}>
                       <TableCell className="font-mono text-sm">{m.id}</TableCell>
+                      <TableCell>
+                        {isRecommendedChatModel(m.id) ? (
+                          <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-0">
+                            Recommended
+                          </Badge>
+                        ) : isReasoningModel(m.id) ? (
+                          <Badge variant="outline" className="text-muted-foreground">
+                            Advanced
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-sm">{m.owned_by}</TableCell>
                       <TableCell>
                         {data?.default_model_id === m.id ? (

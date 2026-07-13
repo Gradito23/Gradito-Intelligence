@@ -261,6 +261,10 @@ async function handleInvokeLlm(
   const model = settings.default_model_id?.trim() || 'gpt-4o-mini';
   const wantsJson = body.response_json_schema != null && typeof body.response_json_schema === 'object';
 
+  // Reasoning models (o1/o3/o4, gpt-5*) often reject custom temperature.
+  const modelLower = model.toLowerCase();
+  const omitTemperature = /^o[0-9]/.test(modelLower) || modelLower.startsWith('gpt-5');
+
   const messages: Array<{ role: string; content: string }> = [
     {
       role: 'system',
@@ -276,25 +280,38 @@ async function handleInvokeLlm(
     },
   ];
 
-  const payload: Record<string, unknown> = {
-    model,
-    messages,
-    temperature: 0.2,
+  const buildPayload = (includeTemperature: boolean): Record<string, unknown> => {
+    const payload: Record<string, unknown> = { model, messages };
+    if (includeTemperature) payload.temperature = 0.2;
+    if (wantsJson) payload.response_format = { type: 'json_object' };
+    return payload;
   };
-  if (wantsJson) {
-    payload.response_format = { type: 'json_object' };
+
+  const callCompletions = async (payload: Record<string, unknown>) => {
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+    const completion = await response.json().catch(() => ({}));
+    return { response, completion };
+  };
+
+  let { response, completion } = await callCompletions(buildPayload(!omitTemperature));
+
+  // Safety net: retry once without temperature if the model rejects it.
+  if (
+    !response.ok
+    && !omitTemperature
+    && typeof completion?.error?.message === 'string'
+    && /temperature/i.test(completion.error.message)
+  ) {
+    ({ response, completion } = await callCompletions(buildPayload(false)));
   }
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-
-  const completion = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof completion?.error?.message === 'string'
       ? completion.error.message
