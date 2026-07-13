@@ -3,6 +3,7 @@ import {
   createServiceClient,
   jsonResponse,
   requireAdmin,
+  requireAuth,
   SECRET_MASK,
 } from '../_shared/auth.ts';
 
@@ -239,6 +240,85 @@ async function handleSetDefaultModel(
   }));
 }
 
+async function handleInvokeLlm(
+  body: Record<string, unknown>,
+  adminClient: ReturnType<typeof createServiceClient>,
+) {
+  const prompt = typeof body.prompt === 'string' ? body.prompt.trim() : '';
+  if (!prompt) {
+    return jsonResponse({ error: 'prompt is required' }, 400);
+  }
+
+  const settings = await loadSettings(adminClient);
+  const apiKey = settings?.api_key?.trim();
+  if (!apiKey) {
+    return jsonResponse({ error: 'OpenAI is not configured. Set an API key under Admin → Integrations → OpenAI.' }, 400);
+  }
+  if (!settings?.enabled) {
+    return jsonResponse({ error: 'OpenAI integration is disabled. Enable it under Admin → Integrations → OpenAI.' }, 400);
+  }
+
+  const model = settings.default_model_id?.trim() || 'gpt-4o-mini';
+  const wantsJson = body.response_json_schema != null && typeof body.response_json_schema === 'object';
+
+  const messages: Array<{ role: string; content: string }> = [
+    {
+      role: 'system',
+      content: wantsJson
+        ? 'You are a careful assistant. Respond with a single valid JSON object only — no markdown fences, no commentary.'
+        : 'You are a concise assistant. Follow the user instructions exactly.',
+    },
+    {
+      role: 'user',
+      content: wantsJson
+        ? `${prompt}\n\nJSON schema to follow:\n${JSON.stringify(body.response_json_schema)}`
+        : prompt,
+    },
+  ];
+
+  const payload: Record<string, unknown> = {
+    model,
+    messages,
+    temperature: 0.2,
+  };
+  if (wantsJson) {
+    payload.response_format = { type: 'json_object' };
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const completion = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = typeof completion?.error?.message === 'string'
+      ? completion.error.message
+      : `OpenAI API error (${response.status})`;
+    return jsonResponse({ error: message }, 400);
+  }
+
+  const content = completion?.choices?.[0]?.message?.content;
+  if (typeof content !== 'string' || !content.trim()) {
+    return jsonResponse({ error: 'OpenAI returned an empty response' }, 502);
+  }
+
+  if (wantsJson) {
+    try {
+      const parsed = JSON.parse(content);
+      return jsonResponse({ result: parsed });
+    } catch {
+      return jsonResponse({ error: 'OpenAI returned invalid JSON' }, 502);
+    }
+  }
+
+  return jsonResponse({ result: content.trim() });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -249,12 +329,19 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const body = await req.json().catch(() => ({}));
+    const action = typeof body.action === 'string' ? body.action : 'get';
+
+    if (action === 'invoke_llm') {
+      const authResult = await requireAuth(req);
+      if (authResult.error) return authResult.error;
+      return handleInvokeLlm(body, authResult.adminClient);
+    }
+
     const authResult = await requireAdmin(req);
     if (authResult.error) return authResult.error;
 
     const { user, adminClient } = authResult;
-    const body = await req.json().catch(() => ({}));
-    const action = typeof body.action === 'string' ? body.action : 'get';
 
     switch (action) {
       case 'get':

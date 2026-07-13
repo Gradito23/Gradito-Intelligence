@@ -57,6 +57,31 @@ export async function requireAdmin(req: Request) {
   return { user, adminClient };
 }
 
+/** Any authenticated user (ops pages like Chef Match). */
+export async function requireAuth(req: Request) {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader) {
+    return { error: jsonResponse({ error: 'Unauthorized' }, 401) };
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !anonKey) {
+    return { error: jsonResponse({ error: 'Server configuration error' }, 500) };
+  }
+
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const { data: { user }, error: userError } = await userClient.auth.getUser();
+  if (userError || !user) {
+    return { error: jsonResponse({ error: 'Unauthorized' }, 401) };
+  }
+
+  return { user, adminClient: createServiceClient() };
+}
+
 export function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }

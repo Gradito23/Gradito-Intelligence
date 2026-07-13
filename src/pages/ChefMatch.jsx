@@ -10,6 +10,7 @@ import CriteriaChips from '@/components/match/CriteriaChips';
 import MatchResultCard from '@/components/match/MatchResultCard';
 import { Sparkles, Loader2, FileText, AlertCircle } from 'lucide-react';
 import { SAMPLE_TRANSCRIPT } from '@/lib/constants';
+import { toast } from '@/components/ui/use-toast';
 
 function computeMatchScore(chef, criteria, events, eventChefs, clients) {
   let score = 0;
@@ -129,8 +130,9 @@ export default function ChefMatch() {
 
   const extractCriteria = async () => {
     setLoading(true);
-    const resp = await base44.integrations.Core.InvokeLLM({
-      prompt: `Extract structured event criteria from this client call transcript. Return ONLY the JSON object with these fields (use null for anything not mentioned):
+    try {
+      const resp = await base44.integrations.Core.InvokeLLM({
+        prompt: `Extract structured event criteria from this client call transcript. Return ONLY the JSON object with these fields (use null for anything not mentioned):
 - client_name: string or null
 - service_area: one of [Manhattan, Brooklyn, Westchester, The Hamptons, Miami, Los Angeles, Philadelphia, Washington DC, San Francisco] or null
 - date: string or null
@@ -144,101 +146,126 @@ export default function ChefMatch() {
 
 Transcript:
 ${transcript}`,
-      response_json_schema: {
-        type: 'object',
-        properties: {
-          client_name: { type: ['string', 'null'] },
-          service_area: { type: ['string', 'null'] },
-          date: { type: ['string', 'null'] },
-          cuisines: { type: 'array', items: { type: 'string' } },
-          guest_count: { type: ['number', 'null'] },
-          budget: { type: ['number', 'null'] },
-          event_type: { type: ['string', 'null'] },
-          experience_type: { type: ['string', 'null'] },
-          dietary: { type: ['string', 'null'] },
-          vibe: { type: ['string', 'null'] },
+        response_json_schema: {
+          type: 'object',
+          properties: {
+            client_name: { type: ['string', 'null'] },
+            service_area: { type: ['string', 'null'] },
+            date: { type: ['string', 'null'] },
+            cuisines: { type: 'array', items: { type: 'string' } },
+            guest_count: { type: ['number', 'null'] },
+            budget: { type: ['number', 'null'] },
+            event_type: { type: ['string', 'null'] },
+            experience_type: { type: ['string', 'null'] },
+            dietary: { type: ['string', 'null'] },
+            vibe: { type: ['string', 'null'] },
+          },
         },
-      },
-    });
-    setCriteria(resp);
-    setStep('criteria');
-    setLoading(false);
+      });
+      setCriteria(resp);
+      setStep('criteria');
+    } catch (err) {
+      toast({
+        title: 'Could not extract criteria',
+        description: err.message || 'Check OpenAI under Admin → Integrations → OpenAI.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const runMatch = async () => {
     setLoading(true);
+    try {
+      // Filter for role eligibility (exclude archived)
+      const headCandidates = chefs.filter(
+        (c) => !c.archived && (c.roles_available === 'Head' || c.roles_available === 'Both'),
+      );
+      const scored = headCandidates.map(chef => {
+        const { score, reason, travelFee } = computeMatchScore(chef, criteria, events, eventChefs, clients);
+        return { chef, score, reason, travelFee };
+      }).filter(r => r.score >= 0).sort((a, b) => b.score - a.score);
 
-    // Filter for role eligibility
-    const headCandidates = chefs.filter(c => c.roles_available === 'Head' || c.roles_available === 'Both');
-    const scored = headCandidates.map(chef => {
-      const { score, reason, travelFee } = computeMatchScore(chef, criteria, events, eventChefs, clients);
-      return { chef, score, reason, travelFee };
-    }).filter(r => r.score >= 0).sort((a, b) => b.score - a.score);
+      // Pick top 3-5 with spread: top pick, value pick, wildcard
+      const topPick = scored[0];
+      const valuePick = scored.find(r => r !== topPick && r.travelFee === 0);
+      const wildcard = scored.find(r => r !== topPick && r !== valuePick && r.chef.quality_rating <= 4);
 
-    // Pick top 3-5 with spread: top pick, value pick, wildcard
-    const topPick = scored[0];
-    const valuePick = scored.find(r => r !== topPick && r.travelFee === 0);
-    const wildcard = scored.find(r => r !== topPick && r !== valuePick && r.chef.quality_rating <= 4);
+      let finalResults = [topPick, valuePick, wildcard].filter(Boolean);
+      // Fill to at least 3
+      for (const r of scored) {
+        if (finalResults.length >= 5) break;
+        if (!finalResults.includes(r)) finalResults.push(r);
+      }
+      finalResults = finalResults.slice(0, 5);
 
-    let finalResults = [topPick, valuePick, wildcard].filter(Boolean);
-    // Fill to at least 3
-    for (const r of scored) {
-      if (finalResults.length >= 5) break;
-      if (!finalResults.includes(r)) finalResults.push(r);
-    }
-    finalResults = finalResults.slice(0, 5);
-
-    // Assign labels
-    const labels = ['Top Pick', 'Value Pick', 'Wildcard'];
-    finalResults.forEach((r, i) => {
-      // Check repeat client
-      if (criteria.client_name) {
-        const client = clients.find(c => c.name.toLowerCase().includes(criteria.client_name.toLowerCase()));
-        if (client) {
-          const clientEventIds = events.filter(e => e.client_id === client.id).map(e => e.id);
-          const workedTogether = eventChefs.filter(ec => ec.chef_id === r.chef.id && clientEventIds.includes(ec.event_id));
-          if (workedTogether.length > 0) {
-            r.label = 'Repeat Favorite';
-            return;
+      // Assign labels
+      const labels = ['Top Pick', 'Value Pick', 'Wildcard'];
+      finalResults.forEach((r, i) => {
+        // Check repeat client
+        if (criteria.client_name) {
+          const client = clients.find(c => c.name.toLowerCase().includes(criteria.client_name.toLowerCase()));
+          if (client) {
+            const clientEventIds = events.filter(e => e.client_id === client.id).map(e => e.id);
+            const workedTogether = eventChefs.filter(ec => ec.chef_id === r.chef.id && clientEventIds.includes(ec.event_id));
+            if (workedTogether.length > 0) {
+              r.label = 'Repeat Favorite';
+              return;
+            }
           }
         }
-      }
-      r.label = labels[i] || null;
-    });
+        r.label = labels[i] || null;
+      });
 
-    // Generate AI reasons
-    for (const result of finalResults) {
-      const aiReason = await base44.integrations.Core.InvokeLLM({
-        prompt: `Write a one-sentence explanation (max 20 words) for why Chef ${result.chef.first_name} ${result.chef.last_name} is a good match for this event.
+      // Generate AI reasons in parallel; fall back to local reason on failure
+      await Promise.all(
+        finalResults.map(async (result) => {
+          const localReason = result.reason;
+          try {
+            const aiReason = await base44.integrations.Core.InvokeLLM({
+              prompt: `Write a one-sentence explanation (max 20 words) for why Chef ${result.chef.first_name} ${result.chef.last_name} is a good match for this event.
 Chef details: ${result.chef.quality_rating}★, cuisines: ${(result.chef.cuisines || []).join(', ')}, home areas: ${(result.chef.home_areas || []).join(', ')}, specialties: ${result.chef.signature_experiences || 'none'}
 Event criteria: area ${criteria.service_area || 'any'}, cuisines: ${(criteria.cuisines || []).join(', ')}, guests: ${criteria.guest_count || 'TBD'}, type: ${criteria.event_type || 'any'}
-Base reason: ${result.reason}
+Base reason: ${localReason}
 Travel fee: $${result.travelFee}`,
+            });
+            result.reason = typeof aiReason === 'string' && aiReason.trim() ? aiReason.trim() : localReason;
+          } catch {
+            result.reason = localReason;
+          }
+        }),
+      );
+
+      // Sous flag
+      const needsSous = (criteria.guest_count || 0) >= 15;
+      finalResults.forEach(r => { r.needsSous = needsSous; });
+
+      setResults(finalResults);
+      setStep('results');
+
+      // Save match run
+      await base44.entities.MatchRun.create({
+        client_name: criteria.client_name || '',
+        transcript_excerpt: transcript.slice(0, 200),
+        extracted_criteria: criteria,
+        suggested_chefs: finalResults.map(r => ({
+          chef_id: r.chef.id,
+          chef_name: `${r.chef.first_name} ${r.chef.last_name}`,
+          score: r.score,
+          label: r.label,
+        })),
       });
-      result.reason = aiReason;
+      queryClient.invalidateQueries({ queryKey: ['matchRuns'] });
+    } catch (err) {
+      toast({
+        title: 'Match failed',
+        description: err.message || 'Something went wrong while matching chefs.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
     }
-
-    // Sous flag
-    const needsSous = (criteria.guest_count || 0) >= 15;
-    finalResults.forEach(r => { r.needsSous = needsSous; });
-
-    setResults(finalResults);
-    setStep('results');
-    setLoading(false);
-
-    // Save match run
-    await base44.entities.MatchRun.create({
-      client_name: criteria.client_name || '',
-      transcript_excerpt: transcript.slice(0, 200),
-      extracted_criteria: criteria,
-      suggested_chefs: finalResults.map(r => ({
-        chef_id: r.chef.id,
-        chef_name: `${r.chef.first_name} ${r.chef.last_name}`,
-        score: r.score,
-        label: r.label,
-      })),
-    });
-    queryClient.invalidateQueries({ queryKey: ['matchRuns'] });
   };
 
   const removeCriteria = (key) => {

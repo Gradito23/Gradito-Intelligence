@@ -3,6 +3,8 @@
  * Existing pages keep calling `base44.entities.*` — this adapter delegates to repos.
  * @see src/infrastructure/repositories/
  */
+import { supabase } from '@/api/supabaseClient'
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import {
   ActivityLogRepository,
   ChefRepository,
@@ -19,6 +21,36 @@ import {
 const notImplemented = (method) => async (..._args) => {
   console.warn(`[base44] ${method} called — not yet migrated to Supabase`)
   return null
+}
+
+async function parseFunctionError(error) {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await error.context.json()
+      if (body?.error) return body.error
+    } catch {
+      // fall through
+    }
+  }
+  return error?.message || 'Request failed'
+}
+
+async function invokeLlm({ prompt, response_json_schema }) {
+  const { data, error } = await supabase.functions.invoke('integration-openai', {
+    method: 'POST',
+    body: { action: 'invoke_llm', prompt, response_json_schema },
+  })
+
+  if (error) {
+    throw new Error(await parseFunctionError(error))
+  }
+  if (data?.error) {
+    throw new Error(data.error)
+  }
+  if (data?.result === undefined) {
+    throw new Error('OpenAI returned no result')
+  }
+  return data.result
 }
 
 /** Map Base44 app field names used in filter criteria to DB columns. */
@@ -90,7 +122,7 @@ export const base44 = {
   },
   integrations: {
     Core: {
-      InvokeLLM: notImplemented('integrations.Core.InvokeLLM'),
+      InvokeLLM: invokeLlm,
       UploadFile: notImplemented('integrations.Core.UploadFile'),
     },
   },
