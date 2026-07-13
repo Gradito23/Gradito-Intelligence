@@ -160,7 +160,16 @@ const EMPTY_FORM = {
   commission_status: 'Pending',
 };
 
-export default function CreateEventModal({ open, onClose, chefs, clients, eventChefs, prefillChef }) {
+export default function CreateEventModal({
+  open,
+  onClose,
+  chefs,
+  clients,
+  eventChefs,
+  prefillChef,
+  prefillSous,
+  prefillCriteria,
+}) {
   const queryClient = useQueryClient();
   const { data: teamMembers } = useTeamMembers();
   const [form, setForm] = useState(EMPTY_FORM);
@@ -172,20 +181,61 @@ export default function CreateEventModal({ open, onClose, chefs, clients, eventC
 
   useEffect(() => {
     if (open) {
-      setForm(EMPTY_FORM);
-      setSousChef(null);
+      const nextForm = { ...EMPTY_FORM };
+      if (prefillCriteria && typeof prefillCriteria === 'object') {
+        if (prefillCriteria.client_name) nextForm.client_name = prefillCriteria.client_name;
+        if (prefillCriteria.service_area) nextForm.service_area = prefillCriteria.service_area;
+        if (prefillCriteria.guest_count != null && prefillCriteria.guest_count !== '') {
+          nextForm.guest_count = prefillCriteria.guest_count;
+        }
+        if (prefillCriteria.event_type) nextForm.event_type = prefillCriteria.event_type;
+        if (prefillCriteria.experience_type) nextForm.experience_type = prefillCriteria.experience_type;
+        if (Array.isArray(prefillCriteria.cuisines) && prefillCriteria.cuisines.length) {
+          nextForm.cuisines_served = prefillCriteria.cuisines;
+        }
+        // Only apply date when it looks like YYYY-MM-DD
+        if (typeof prefillCriteria.date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(prefillCriteria.date)) {
+          nextForm.date = prefillCriteria.date.slice(0, 10);
+        }
+      }
+      setForm(nextForm);
       setRevCostsOpen(false);
       setEditedFields(new Set());
-      if (prefillChef) {
-        const chef = chefs.find(c => c.id === prefillChef.id);
-        if (chef) {
-          setHeadChef({ chef_id: chef.id, chef_name: `${chef.first_name} ${chef.last_name}`, role: 'Head', fee: 0, travel_fee_applied: 0, _chefObj: chef });
+
+      const toAssignment = (chef, role) => {
+        if (!chef) return null;
+        const area = nextForm.service_area;
+        let travelFee = 0;
+        if (area && !(chef.home_areas || []).includes(area)) {
+          const override = (chef.travel_fees || []).find((t) => t.service_area === area);
+          if (override) travelFee = override.fee;
+          else if (chef.travel_policy === 'Anywhere') travelFee = chef.default_travel_fee || 0;
         }
+        return {
+          chef_id: chef.id,
+          chef_name: `${chef.first_name} ${chef.last_name}`,
+          role,
+          fee: 0,
+          travel_fee_applied: travelFee,
+          _chefObj: chef,
+        };
+      };
+
+      if (prefillChef) {
+        const chef = chefs.find((c) => c.id === prefillChef.id) || prefillChef;
+        setHeadChef(toAssignment(chef, 'Head'));
       } else {
         setHeadChef(null);
       }
+
+      if (prefillSous) {
+        const chef = chefs.find((c) => c.id === prefillSous.id) || prefillSous;
+        setSousChef(toAssignment(chef, 'Sous'));
+      } else {
+        setSousChef(null);
+      }
     }
-  }, [open, prefillChef]);
+  }, [open, prefillChef, prefillSous, prefillCriteria, chefs]);
 
   const f = (field, value) => setForm(prev => ({ ...prev, [field]: value }));
   const markEdited   = (field) => setEditedFields(prev => new Set([...prev, field]));

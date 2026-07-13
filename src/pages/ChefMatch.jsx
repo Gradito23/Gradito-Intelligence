@@ -8,15 +8,18 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import CriteriaChips from '@/components/match/CriteriaChips';
 import MatchResultCard from '@/components/match/MatchResultCard';
-import { Sparkles, Loader2, FileText, AlertCircle } from 'lucide-react';
+import ChefDetailPanel from '@/components/chefs/ChefDetailPanel';
+import CreateEventModal from '@/components/events/CreateEventModal';
+import { Sparkles, Loader2, FileText, AlertCircle, ChevronDown, ChevronUp, CalendarPlus } from 'lucide-react';
 import { SAMPLE_TRANSCRIPT } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
+
+const TRANSCRIPT_SAVE_LIMIT = 2000;
 
 function computeMatchScore(chef, criteria, events, eventChefs, clients) {
   let score = 0;
   const reasons = [];
 
-  // Area check — hard filter
   const area = criteria.service_area;
   if (area) {
     const isHome = (chef.home_areas || []).includes(area);
@@ -29,7 +32,6 @@ function computeMatchScore(chef, criteria, events, eventChefs, clients) {
     }
   }
 
-  // Compute travel fee
   let travelFee = 0;
   if (area && !(chef.home_areas || []).includes(area)) {
     const override = (chef.travel_fees || []).find(t => t.service_area === area);
@@ -40,7 +42,6 @@ function computeMatchScore(chef, criteria, events, eventChefs, clients) {
     }
   }
 
-  // Cuisine match
   const wantedCuisines = criteria.cuisines || [];
   const matchedCuisines = wantedCuisines.filter(c => (chef.cuisines || []).includes(c));
   if (wantedCuisines.length > 0 && matchedCuisines.length > 0) {
@@ -48,33 +49,25 @@ function computeMatchScore(chef, criteria, events, eventChefs, clients) {
     reasons.push(matchedCuisines.join(' + '));
   }
 
-  // Quality
   score += (chef.quality_rating || 3) * 5;
   reasons.push(`${chef.quality_rating}★`);
 
-  // Home area bonus
   if (area && (chef.home_areas || []).includes(area)) {
     score += 10;
     reasons.push(`based in ${area} (event area)`);
   }
 
-  // Experience type match
   if (criteria.experience_type && (chef.experience_types || []).includes(criteria.experience_type)) {
     score += 10;
     reasons.push(criteria.experience_type.toLowerCase());
   }
 
-  // Budget check
   if (criteria.budget) {
-    const estCost = 3500 + travelFee; // rough estimate
-    if (estCost <= criteria.budget) {
-      score += 5;
-    } else {
-      score -= 10;
-    }
+    const estCost = 3500 + travelFee;
+    if (estCost <= criteria.budget) score += 5;
+    else score -= 10;
   }
 
-  // Repeat client boost
   if (criteria.client_name) {
     const client = clients.find(c => c.name.toLowerCase().includes(criteria.client_name.toLowerCase()));
     if (client) {
@@ -87,24 +80,20 @@ function computeMatchScore(chef, criteria, events, eventChefs, clients) {
     }
   }
 
-  // Event count (experience)
   const kpis = getChefKPIs(chef, events, eventChefs);
   if (kpis.eventsCount > 0) {
     score += Math.min(kpis.eventsCount * 2, 10);
   }
 
-  // Dietary match
   if (criteria.dietary && (chef.dietary_specialties || []).some(d => d.toLowerCase().includes(criteria.dietary.toLowerCase()))) {
     score += 5;
     reasons.push('dietary match');
   }
 
-  // Bench balance — slight boost for under-utilized
   if (kpis.eventsCount < 3) {
     score += 3;
   }
 
-  // Cap at 100
   score = Math.min(Math.round(score), 100);
 
   return {
@@ -114,19 +103,72 @@ function computeMatchScore(chef, criteria, events, eventChefs, clients) {
   };
 }
 
+function computeSousCandidates(chefs, criteria, events, eventChefs, clients, limit = 3) {
+  return chefs
+    .filter((c) => !c.archived && (c.roles_available === 'Sous' || c.roles_available === 'Both'))
+    .map((chef) => {
+      const { score, reason, travelFee } = computeMatchScore(chef, criteria, events, eventChefs, clients);
+      return { chef, score, reason, travelFee, label: null, needsSous: false };
+    })
+    .filter((r) => r.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+function resultsFromSuggested(suggested, chefs, criteria) {
+  const needsSous = (criteria?.guest_count || 0) >= 15;
+  return (suggested || [])
+    .map((s, i) => {
+      const chef = chefs.find((c) => c.id === s.chef_id);
+      if (!chef) return null;
+      return {
+        chef,
+        score: s.score ?? 0,
+        reason: s.reason || `${s.label || 'Suggested'} · score ${s.score ?? '—'}`,
+        travelFee: s.travel_fee ?? 0,
+        label: s.label || (i === 0 ? 'Top Pick' : null),
+        needsSous,
+      };
+    })
+    .filter(Boolean);
+}
+
 export default function ChefMatch() {
-  const { data: chefs } = useChefs();
-  const { data: events } = useEvents();
-  const { data: eventChefs } = useEventChefs();
-  const { data: clients } = useClients();
-  const { data: matchRuns } = useMatchRuns();
+  const { data: chefs = [] } = useChefs();
+  const { data: events = [] } = useEvents();
+  const { data: eventChefs = [] } = useEventChefs();
+  const { data: clients = [] } = useClients();
+  const { data: matchRuns = [] } = useMatchRuns();
   const queryClient = useQueryClient();
 
   const [transcript, setTranscript] = useState(SAMPLE_TRANSCRIPT);
   const [criteria, setCriteria] = useState(null);
   const [results, setResults] = useState(null);
+  const [sousCandidates, setSousCandidates] = useState([]);
+  const [selectedSousId, setSelectedSousId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState('input'); // input | criteria | results
+  const [step, setStep] = useState('input');
+  const [expandedHistoryId, setExpandedHistoryId] = useState(null);
+
+  const [viewChef, setViewChef] = useState(null);
+  const [createEventOpen, setCreateEventOpen] = useState(false);
+  const [prefillChef, setPrefillChef] = useState(null);
+  const [prefillSous, setPrefillSous] = useState(null);
+  const [prefillCriteria, setPrefillCriteria] = useState(null);
+
+  const chefKPIs = useMemo(() => {
+    const map = {};
+    chefs.forEach((c) => { map[c.id] = getChefKPIs(c, events, eventChefs); });
+    return map;
+  }, [chefs, events, eventChefs]);
+
+  const openCreateEvent = (headResult) => {
+    setPrefillChef(headResult.chef);
+    setPrefillCriteria(criteria);
+    const sous = sousCandidates.find((s) => s.chef.id === selectedSousId);
+    setPrefillSous(sous?.chef || null);
+    setCreateEventOpen(true);
+  };
 
   const extractCriteria = async () => {
     setLoading(true);
@@ -178,37 +220,32 @@ ${transcript}`,
   const runMatch = async () => {
     setLoading(true);
     try {
-      // Filter for role eligibility (exclude archived)
       const headCandidates = chefs.filter(
         (c) => !c.archived && (c.roles_available === 'Head' || c.roles_available === 'Both'),
       );
-      const scored = headCandidates.map(chef => {
+      const scored = headCandidates.map((chef) => {
         const { score, reason, travelFee } = computeMatchScore(chef, criteria, events, eventChefs, clients);
         return { chef, score, reason, travelFee };
-      }).filter(r => r.score >= 0).sort((a, b) => b.score - a.score);
+      }).filter((r) => r.score >= 0).sort((a, b) => b.score - a.score);
 
-      // Pick top 3-5 with spread: top pick, value pick, wildcard
       const topPick = scored[0];
-      const valuePick = scored.find(r => r !== topPick && r.travelFee === 0);
-      const wildcard = scored.find(r => r !== topPick && r !== valuePick && r.chef.quality_rating <= 4);
+      const valuePick = scored.find((r) => r !== topPick && r.travelFee === 0);
+      const wildcard = scored.find((r) => r !== topPick && r !== valuePick && r.chef.quality_rating <= 4);
 
       let finalResults = [topPick, valuePick, wildcard].filter(Boolean);
-      // Fill to at least 3
       for (const r of scored) {
         if (finalResults.length >= 5) break;
         if (!finalResults.includes(r)) finalResults.push(r);
       }
       finalResults = finalResults.slice(0, 5);
 
-      // Assign labels
       const labels = ['Top Pick', 'Value Pick', 'Wildcard'];
       finalResults.forEach((r, i) => {
-        // Check repeat client
         if (criteria.client_name) {
-          const client = clients.find(c => c.name.toLowerCase().includes(criteria.client_name.toLowerCase()));
+          const client = clients.find((c) => c.name.toLowerCase().includes(criteria.client_name.toLowerCase()));
           if (client) {
-            const clientEventIds = events.filter(e => e.client_id === client.id).map(e => e.id);
-            const workedTogether = eventChefs.filter(ec => ec.chef_id === r.chef.id && clientEventIds.includes(ec.event_id));
+            const clientEventIds = events.filter((e) => e.client_id === client.id).map((e) => e.id);
+            const workedTogether = eventChefs.filter((ec) => ec.chef_id === r.chef.id && clientEventIds.includes(ec.event_id));
             if (workedTogether.length > 0) {
               r.label = 'Repeat Favorite';
               return;
@@ -218,7 +255,6 @@ ${transcript}`,
         r.label = labels[i] || null;
       });
 
-      // Generate AI reasons in parallel; fall back to local reason on failure
       await Promise.all(
         finalResults.map(async (result) => {
           const localReason = result.reason;
@@ -237,23 +273,29 @@ Travel fee: $${result.travelFee}`,
         }),
       );
 
-      // Sous flag
       const needsSous = (criteria.guest_count || 0) >= 15;
-      finalResults.forEach(r => { r.needsSous = needsSous; });
+      finalResults.forEach((r) => { r.needsSous = needsSous; });
+
+      const sousList = needsSous
+        ? computeSousCandidates(chefs, criteria, events, eventChefs, clients, 3)
+        : [];
+      setSousCandidates(sousList);
+      setSelectedSousId(sousList[0]?.chef.id || null);
 
       setResults(finalResults);
       setStep('results');
 
-      // Save match run
       await base44.entities.MatchRun.create({
         client_name: criteria.client_name || '',
-        transcript_excerpt: transcript.slice(0, 200),
+        transcript_excerpt: transcript.slice(0, TRANSCRIPT_SAVE_LIMIT),
         extracted_criteria: criteria,
-        suggested_chefs: finalResults.map(r => ({
+        suggested_chefs: finalResults.map((r) => ({
           chef_id: r.chef.id,
           chef_name: `${r.chef.first_name} ${r.chef.last_name}`,
           score: r.score,
           label: r.label,
+          reason: r.reason,
+          travel_fee: r.travelFee,
         })),
       });
       queryClient.invalidateQueries({ queryKey: ['matchRuns'] });
@@ -274,22 +316,45 @@ Travel fee: $${result.travelFee}`,
     setCriteria(updated);
   };
 
-  // Repeat client banner
+  const reopenHistoryRun = (run) => {
+    const crit = run.extracted_criteria || {};
+    setCriteria(crit);
+    setTranscript(run.transcript_excerpt || '');
+    const rebuilt = resultsFromSuggested(run.suggested_chefs, chefs, crit);
+    setResults(rebuilt);
+    const needsSous = (crit.guest_count || 0) >= 15;
+    const sousList = needsSous
+      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3)
+      : [];
+    setSousCandidates(sousList);
+    setSelectedSousId(sousList[0]?.chef.id || null);
+    setStep('results');
+    setExpandedHistoryId(null);
+  };
+
   const repeatBanner = useMemo(() => {
     if (!criteria?.client_name) return null;
-    const client = clients.find(c => c.name.toLowerCase().includes((criteria.client_name || '').toLowerCase()));
+    const client = clients.find((c) => c.name.toLowerCase().includes((criteria.client_name || '').toLowerCase()));
     if (!client) return null;
-    const clientEvents = events.filter(e => e.client_id === client.id);
+    const clientEvents = events.filter((e) => e.client_id === client.id);
     if (clientEvents.length < 2) return null;
-    const clientEventIds = clientEvents.map(e => e.id);
+    const clientEventIds = clientEvents.map((e) => e.id);
     const chefCounts = {};
-    eventChefs.filter(ec => clientEventIds.includes(ec.event_id)).forEach(ec => {
+    eventChefs.filter((ec) => clientEventIds.includes(ec.event_id)).forEach((ec) => {
       chefCounts[ec.chef_name] = (chefCounts[ec.chef_name] || 0) + 1;
     });
     const topChef = Object.entries(chefCounts).sort((a, b) => b[1] - a[1])[0];
     if (!topChef) return null;
     return `You've worked with ${client.name} ${clientEvents.length}× — ${topChef[1]}× with ${topChef[0]}`;
   }, [criteria, clients, events, eventChefs]);
+
+  const resetToInput = () => {
+    setStep('input');
+    setResults(null);
+    setCriteria(null);
+    setSousCandidates([]);
+    setSelectedSousId(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -305,13 +370,12 @@ Travel fee: $${result.travelFee}`,
         </div>
       )}
 
-      {/* Transcript input */}
       {step === 'input' && (
         <Card className="p-6">
           <Textarea
             placeholder="Paste your client call transcript here..."
             value={transcript}
-            onChange={e => setTranscript(e.target.value)}
+            onChange={(e) => setTranscript(e.target.value)}
             className="min-h-[160px] text-sm leading-relaxed resize-y"
           />
           <div className="flex justify-end mt-4">
@@ -327,7 +391,6 @@ Travel fee: $${result.travelFee}`,
         </Card>
       )}
 
-      {/* Criteria editing */}
       {step === 'criteria' && criteria && (
         <Card className="p-6 space-y-4">
           <div>
@@ -345,12 +408,11 @@ Travel fee: $${result.travelFee}`,
         </Card>
       )}
 
-      {/* Results */}
       {step === 'results' && results && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-heading font-semibold text-lg">Matched Chefs</h3>
-            <Button variant="outline" size="sm" onClick={() => { setStep('input'); setResults(null); setCriteria(null); }}>
+            <Button variant="outline" size="sm" onClick={resetToInput}>
               New Match
             </Button>
           </div>
@@ -363,33 +425,199 @@ Travel fee: $${result.travelFee}`,
           ) : (
             <div className="space-y-4">
               {results.map((result, i) => (
-                <MatchResultCard key={result.chef.id} result={result} rank={i + 1} />
+                <MatchResultCard
+                  key={result.chef.id}
+                  result={result}
+                  rank={i + 1}
+                  onViewChef={setViewChef}
+                  onCreateEvent={openCreateEvent}
+                />
               ))}
             </div>
+          )}
+
+          {sousCandidates.length > 0 && (
+            <Card className="p-5 space-y-3">
+              <div>
+                <h4 className="font-heading font-semibold">Sous candidates</h4>
+                <p className="text-xs text-muted-foreground">
+                  Guest count is 15+. Select a sous to attach when you create the event.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {sousCandidates.map((s) => {
+                  const selected = selectedSousId === s.chef.id;
+                  return (
+                    <button
+                      key={s.chef.id}
+                      type="button"
+                      onClick={() => setSelectedSousId(s.chef.id)}
+                      className={`w-full text-left flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-colors ${
+                        selected ? 'border-navy bg-navy/5' : 'border-border hover:bg-secondary/40'
+                      }`}
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{s.chef.first_name} {s.chef.last_name}</p>
+                        <p className="text-xs text-muted-foreground truncate max-w-md">{s.reason}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-heading font-bold text-gold">{s.score}</p>
+                        {s.travelFee > 0 && (
+                          <p className="text-xs text-amber-700">+{formatCurrency(s.travelFee)} travel</p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
           )}
         </div>
       )}
 
-      {/* Match History */}
       {matchRuns.length > 0 && step === 'input' && (
         <div>
           <h3 className="font-heading font-semibold text-lg mb-3">Match History</h3>
           <div className="space-y-2">
-            {matchRuns.slice(0, 5).map(run => (
-              <Card key={run.id} className="p-3 flex items-center justify-between hover:bg-secondary/30 transition-colors">
-                <div>
-                  <p className="font-medium text-sm">{run.client_name || 'Unknown Client'}</p>
-                  <p className="text-xs text-muted-foreground truncate max-w-md">{run.transcript_excerpt}</p>
-                </div>
-                <div className="text-right text-xs text-muted-foreground">
-                  <p>{new Date(run.created_date).toLocaleDateString()}</p>
-                  <p>{(run.suggested_chefs || []).length} chefs matched</p>
-                </div>
-              </Card>
-            ))}
+            {matchRuns.slice(0, 8).map((run) => {
+              const expanded = expandedHistoryId === run.id;
+              const suggested = run.suggested_chefs || [];
+              return (
+                <Card key={run.id} className="overflow-hidden">
+                  <button
+                    type="button"
+                    className="w-full p-3 flex items-center justify-between gap-3 text-left hover:bg-secondary/30 transition-colors"
+                    onClick={() => setExpandedHistoryId(expanded ? null : run.id)}
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium text-sm">{run.client_name || 'Unknown Client'}</p>
+                      <p className="text-xs text-muted-foreground truncate max-w-md">
+                        {run.transcript_excerpt || 'No transcript saved'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right text-xs text-muted-foreground">
+                        <p>{new Date(run.created_date || run.created_at).toLocaleDateString()}</p>
+                        <p>{suggested.length} chefs matched</p>
+                      </div>
+                      {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                    </div>
+                  </button>
+
+                  {expanded && (
+                    <div className="border-t px-4 py-3 space-y-4 bg-secondary/10">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Transcript</p>
+                        <p className="text-sm whitespace-pre-wrap leading-relaxed">
+                          {run.transcript_excerpt || '—'}
+                        </p>
+                        {(run.transcript_excerpt || '').length >= TRANSCRIPT_SAVE_LIMIT && (
+                          <p className="text-xs text-muted-foreground mt-1">Showing first {TRANSCRIPT_SAVE_LIMIT} characters.</p>
+                        )}
+                      </div>
+
+                      {run.extracted_criteria && (
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Criteria</p>
+                          <CriteriaChips criteria={run.extracted_criteria} onRemove={() => {}} />
+                        </div>
+                      )}
+
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">Suggested chefs</p>
+                        {suggested.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No chefs stored for this run.</p>
+                        ) : (
+                          <ul className="space-y-1.5">
+                            {suggested.map((s) => (
+                              <li key={s.chef_id} className="flex items-center justify-between text-sm gap-2">
+                                <span>
+                                  {s.chef_name}
+                                  {s.label && (
+                                    <Badge variant="secondary" className="ml-2 text-[10px]">{s.label}</Badge>
+                                  )}
+                                </span>
+                                <span className="text-gold font-heading font-semibold">{s.score}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => reopenHistoryRun(run)}>
+                          View results
+                        </Button>
+                        {suggested[0] && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="bg-navy hover:bg-navy/90 text-white"
+                            onClick={() => {
+                              const chef = chefs.find((c) => c.id === suggested[0].chef_id);
+                              if (!chef) {
+                                toast({ title: 'Chef no longer on roster', variant: 'destructive' });
+                                return;
+                              }
+                              const crit = run.extracted_criteria || {};
+                              const needsSous = (crit.guest_count || 0) >= 15;
+                              const topSous = needsSous
+                                ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 1)[0]
+                                : null;
+                              setCriteria(crit);
+                              setPrefillChef(chef);
+                              setPrefillCriteria(crit);
+                              setPrefillSous(topSous?.chef || null);
+                              setCreateEventOpen(true);
+                            }}
+                          >
+                            <CalendarPlus size={14} className="mr-1.5" />
+                            Create event (Top Pick)
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         </div>
       )}
+
+      <ChefDetailPanel
+        chef={viewChef}
+        kpis={viewChef ? chefKPIs[viewChef.id] : null}
+        events={events}
+        eventChefs={eventChefs}
+        clients={clients}
+        open={!!viewChef}
+        onClose={() => setViewChef(null)}
+        onCreateEvent={(chef) => {
+          setViewChef(null);
+          setPrefillChef(chef);
+          setPrefillCriteria(criteria);
+          const sous = sousCandidates.find((s) => s.chef.id === selectedSousId);
+          setPrefillSous(sous?.chef || null);
+          setCreateEventOpen(true);
+        }}
+      />
+
+      <CreateEventModal
+        open={createEventOpen}
+        onClose={() => {
+          setCreateEventOpen(false);
+          setPrefillChef(null);
+          setPrefillSous(null);
+          setPrefillCriteria(null);
+        }}
+        chefs={chefs}
+        clients={clients}
+        eventChefs={eventChefs}
+        prefillChef={prefillChef}
+        prefillSous={prefillSous}
+        prefillCriteria={prefillCriteria}
+      />
     </div>
   );
 }
