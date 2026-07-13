@@ -1,39 +1,96 @@
-**Welcome to your Base44 project** 
+# Gradito Intelligence
 
-**About**
+Ops platform for Gradito chef rostering, events, matching, profitability, and admin configuration.
 
-View and Edit  your app on [Base44.com](http://Base44.com) 
+**Stack:** React (Vite) · TypeScript-friendly JS · Supabase (Auth, Postgres, Storage, Edge Functions) · Tailwind CSS · TanStack Query
 
-This project contains everything you need to run your app locally.
+---
 
-**Edit the code in your local development environment**
+## Prerequisites
 
-Any change pushed to the repo will also be reflected in the Base44 Builder.
+- Node.js 20+
+- npm
+- A Supabase project (or local Supabase CLI)
 
-**Prerequisites:** 
+---
 
-1. Clone the repository using the project's Git URL 
-2. Navigate to the project directory
-3. Install dependencies: `npm install`
-4. Create an `.env.local` file and set the right environment variables
+## Setup
 
-```
-VITE_BASE44_APP_ID=your_app_id
-VITE_BASE44_APP_BASE_URL=your_backend_url
-
-e.g.
-VITE_BASE44_APP_ID=cbef744a8545c389ef439ea6
-VITE_BASE44_APP_BASE_URL=https://my-to-do-list-81bfaad7.base44.app
+```bash
+git clone <repo-url>
+cd Gradito-Intelligence
+npm install
+cp .env.example .env
 ```
 
-Run the app: `npm run dev`
+Fill `.env`:
 
-**Publish your changes**
+```env
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=your_anon_key
+VITE_APP_URL=http://localhost:5173
+```
 
-Open [Base44.com](http://Base44.com) and click on Publish.
+Apply database migrations (from the Supabase SQL editor, or):
 
-**Docs & Support**
+```bash
+npx supabase db push
+# or: supabase migration up
+```
 
-Documentation: [https://docs.base44.com/Integrations/Using-GitHub](https://docs.base44.com/Integrations/Using-GitHub)
+Deploy edge functions as needed (e.g. OpenAI integration, auth/email helpers):
 
-Support: [https://app.base44.com/support](https://app.base44.com/support)
+```bash
+npx supabase functions deploy integration-openai
+```
+
+---
+
+## Run
+
+```bash
+npm run dev
+```
+
+App: [http://localhost:5173](http://localhost:5173)
+
+```bash
+npm run build    # production build
+npm run preview  # preview build
+npm run lint
+```
+
+---
+
+## App areas
+
+| Area | Routes (examples) |
+|------|-------------------|
+| Ops | `/dashboard`, `/chefs`, `/intake-requests`, `/events`, `/match`, `/reports`, `/profitability` |
+| Public | `/intake` (chef self-onboarding), `/login` |
+| Admin | `/admin/*` — users, roles, permissions, reference data, integrations, bulk upload, commission team |
+
+---
+
+## Architecture notes
+
+- UI talks to Supabase via repositories under `src/infrastructure/` and the API client in `src/api/`.
+- Auth and role permissions live in Supabase (`profiles`, `app_roles`, `role_permissions`).
+- File uploads use the `uploads` / `avatars` storage buckets.
+- LLM features (Chef Match, invoice parse) use the `integration-openai` edge function; configure the API key under **Admin → Integrations → OpenAI**.
+
+---
+
+## Test fixtures
+
+Bulk upload samples: `fixtures/bulk-upload/` (see that folder’s README).
+
+```bash
+node scripts/generate-bulk-upload-fixtures.mjs
+```
+
+---
+
+## License
+
+Private — Gradito.
