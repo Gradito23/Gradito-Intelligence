@@ -17,10 +17,23 @@ export function toAppRows(rows) {
 }
 
 /**
- * Strips app-only aliases before writing to Postgres.
+ * Strips app-only aliases and immutable keys before writing to Postgres.
+ * Empty strings become null so optional uuid/date/numeric columns accept the row.
  */
 export function toDbRow(payload) {
   if (!payload) return payload
-  const { created_date, updated_date, ...rest } = payload
-  return rest
+  const {
+    id,
+    created_date,
+    updated_date,
+    created_at,
+    updated_at,
+    ...rest
+  } = payload
+
+  const cleaned = {}
+  for (const [key, value] of Object.entries(rest)) {
+    cleaned[key] = value === '' ? null : value
+  }
+  return cleaned
 }

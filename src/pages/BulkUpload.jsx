@@ -143,6 +143,11 @@ async function commitEvents(dryRunResult) {
       notes: draft.notes || undefined,
     });
 
+    if (!event?.id) {
+      flagged++;
+      continue;
+    }
+
     const resolveChef = (name) => name ? chefByName[normalizeName(name)] || null : null;
 
     if (draft.head_chef_name) {
@@ -255,6 +260,8 @@ async function commitInvoices(drafts, teamMembers = []) {
       invoice_grand_total:   draft.invoice_grand_total || undefined,
       notes:                 draft.notes || undefined,
     });
+
+    if (!event?.id) continue;
 
     if (draft.head_chef_id && draft.head_chef_name) {
       await base44.entities.EventChef.create({ event_id: event.id, chef_id: draft.head_chef_id, chef_name: draft.head_chef_name, role: 'Head', fee: draft.head_chef_fee || 0, travel_fee_applied: 0 });

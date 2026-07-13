@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 
 const QUICK_LINKS = [
-  { path: '/', label: 'Chefs', description: 'Roster and chef profiles', icon: ChefHat },
+  { path: '/chefs', label: 'Chefs', description: 'Roster and chef profiles', icon: ChefHat },
   { path: '/events', label: 'Events', description: 'Events and assignments', icon: Calendar },
   { path: '/reports', label: 'Reports', description: 'Analytics and insights', icon: BarChart3 },
 ];

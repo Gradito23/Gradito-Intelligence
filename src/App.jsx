@@ -116,13 +116,14 @@ function AuthenticatedApp() {
                 )}
               />
               <Route
-                path="/"
+                path="/chefs"
                 element={(
                   <PermissionRoute permission={{ resource: 'chefs', action: 'read' }}>
                     <Chefs />
                   </PermissionRoute>
                 )}
               />
+              <Route path="/" element={<Navigate to="/chefs" replace />} />
               <Route
                 path="/events"
                 element={(

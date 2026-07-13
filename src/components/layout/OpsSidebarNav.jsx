@@ -23,7 +23,7 @@ const NAV_SECTIONS = [
   {
     label: 'Operations',
     items: [
-      { path: '/', label: 'Chefs', icon: ChefHat, permission: { resource: 'chefs', action: 'read' } },
+      { path: '/chefs', label: 'Chefs', icon: ChefHat, permission: { resource: 'chefs', action: 'read' } },
       { path: '/events', label: 'Events', icon: Calendar, permission: { resource: 'events', action: 'read' } },
       { path: '/match', label: 'Chef Match', icon: Sparkles, permission: { resource: 'chefs', action: 'read' } },
     ],
@@ -42,9 +42,8 @@ export default function OpsSidebarNav({ onNavigate, collapsed = false }) {
   const { hasPermission } = useAuth();
 
   const isActive = (path) => {
-    if (path === '/') return location.pathname === '/';
     if (path === '/dashboard') return location.pathname === '/dashboard';
-    return location.pathname.startsWith(path);
+    return location.pathname === path || location.pathname.startsWith(`${path}/`);
   };
 
   const linkClass = (path) =>

@@ -97,7 +97,7 @@ export default function Users() {
 
   // Block non-admins
   if (currentUser && currentUser.role !== 'admin') {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/chefs" replace />;
   }
 
   const handleRoleChange = async (userId, newRole) => {

@@ -276,6 +276,12 @@ export default function CreateEventModal({ open, onClose, chefs, clients, eventC
       commission_status:     'Pending',
     });
 
+    if (!event?.id) {
+      toast({ title: 'Failed to create event', variant: 'destructive' });
+      setSaving(false);
+      return;
+    }
+
     if (headChef) {
       await base44.entities.EventChef.create({ event_id: event.id, chef_id: headChef.chef_id, chef_name: headChef.chef_name, role: 'Head', fee: headChef.fee, travel_fee_applied: headChef.travel_fee_applied });
     }

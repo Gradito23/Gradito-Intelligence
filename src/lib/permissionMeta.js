@@ -16,7 +16,7 @@ export const PERMISSION_RESOURCES = [
 /** null permission = any authenticated user */
 export const LANDING_ROUTE_CANDIDATES = [
   { path: '/dashboard', permission: null },
-  { path: '/', permission: { resource: 'chefs', action: 'read' } },
+  { path: '/chefs', permission: { resource: 'chefs', action: 'read' } },
   { path: '/events', permission: { resource: 'events', action: 'read' } },
   { path: '/match', permission: { resource: 'chefs', action: 'read' } },
   { path: '/reports', permission: { resource: 'reports', action: 'read' } },

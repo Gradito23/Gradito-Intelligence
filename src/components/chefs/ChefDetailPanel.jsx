@@ -158,6 +158,9 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
     if (chef) {
       setDraft({ ...chef });
       setDirty(false);
+    } else {
+      setDraft(null);
+      setDirty(false);
     }
   }, [chef?.id]);
 
@@ -216,7 +219,7 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
     toast({ title: 'Intake link copied!' });
   };
 
-  if (!draft) return null;
+  if (!chef || !draft) return null;
 
   const fullName = `${draft.first_name} ${draft.last_name}`;
   const chefAssignments = eventChefs.filter(ec => ec.chef_id === chef.id);
