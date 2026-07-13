@@ -3,6 +3,8 @@ import { useState, useEffect } from "react";
 
 const TOAST_LIMIT = 20;
 const TOAST_REMOVE_DELAY = 5000;
+/** How long a toast stays visible before auto-dismiss. */
+const TOAST_AUTO_DISMISS = 4000;
 
 const actionTypes = {
   ADD_TOAST: "ADD_TOAST",
@@ -19,6 +21,7 @@ function genId() {
 }
 
 const toastTimeouts = new Map();
+const autoDismissTimeouts = new Map();
 
 const addToRemoveQueue = (toastId) => {
   if (toastTimeouts.has(toastId)) {
@@ -36,13 +39,13 @@ const addToRemoveQueue = (toastId) => {
   toastTimeouts.set(toastId, timeout);
 };
 
-const _clearFromRemoveQueue = (toastId) => {
-  const timeout = toastTimeouts.get(toastId);
+function clearAutoDismiss(toastId) {
+  const timeout = autoDismissTimeouts.get(toastId);
   if (timeout) {
     clearTimeout(timeout);
-    toastTimeouts.delete(toastId);
+    autoDismissTimeouts.delete(toastId);
   }
-};
+}
 
 export const reducer = (state, action) => {
   switch (action.type) {
@@ -63,12 +66,12 @@ export const reducer = (state, action) => {
     case actionTypes.DISMISS_TOAST: {
       const { toastId } = action;
 
-      // ! Side effects ! - This could be extracted into a dismissToast() action,
-      // but I'll keep it here for simplicity
       if (toastId) {
+        clearAutoDismiss(toastId);
         addToRemoveQueue(toastId);
       } else {
         state.toasts.forEach((toast) => {
+          clearAutoDismiss(toast.id);
           addToRemoveQueue(toast.id);
         });
       }
@@ -110,13 +113,13 @@ function dispatch(action) {
   });
 }
 
-function toast({ ...props }) {
+function toast({ duration = TOAST_AUTO_DISMISS, ...props }) {
   const id = genId();
 
-  const update = (props) =>
+  const update = (next) =>
     dispatch({
       type: actionTypes.UPDATE_TOAST,
-      toast: { ...props, id },
+      toast: { ...next, id },
     });
 
   const dismiss = () =>
@@ -133,6 +136,17 @@ function toast({ ...props }) {
       },
     },
   });
+
+  const shouldAutoDismiss =
+    duration !== Infinity && duration !== 0 && Number.isFinite(duration) && duration > 0;
+
+  if (shouldAutoDismiss) {
+    const timeout = setTimeout(() => {
+      autoDismissTimeouts.delete(id);
+      dismiss();
+    }, duration);
+    autoDismissTimeouts.set(id, timeout);
+  }
 
   return {
     id,
@@ -161,4 +175,4 @@ function useToast() {
   };
 }
 
-export { useToast, toast }; 
+export { useToast, toast };
