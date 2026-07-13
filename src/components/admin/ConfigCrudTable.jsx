@@ -28,6 +28,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
+import PricingFormulaEditor, { formatPricingFormulaSummary } from '@/components/admin/PricingFormulaEditor';
 
 const HOLIDAY_REF_YEAR = 2024;
 
@@ -36,6 +37,7 @@ function getDefaultValues(columns) {
   for (const col of columns) {
     if (col.type === 'boolean') values[col.key] = col.default ?? true;
     else if (col.type === 'number') values[col.key] = col.default ?? '';
+    else if (col.type === 'pricing_formula') values[col.key] = { base: 0, per_guest_after: 0, rate: 0 };
     else values[col.key] = col.default ?? '';
   }
   return values;
@@ -44,6 +46,7 @@ function getDefaultValues(columns) {
 function formatCellValue(value, type) {
   if (value === null || value === undefined) return '—';
   if (type === 'boolean') return value ? 'Yes' : 'No';
+  if (type === 'pricing_formula') return formatPricingFormulaSummary(value);
   if (type === 'json') return typeof value === 'object' ? JSON.stringify(value) : String(value);
   return String(value);
 }
@@ -53,6 +56,11 @@ function parseFieldValue(value, type) {
   if (type === 'number') {
     if (value === '' || value === null || value === undefined) return null;
     return Number(value);
+  }
+  if (type === 'pricing_formula') {
+    if (!value || value === '') return null;
+    if (typeof value === 'object') return value;
+    return JSON.parse(value);
   }
   if (type === 'json') {
     if (!value || value === '') return null;
@@ -157,6 +165,17 @@ function ConfigFormFields({ columns, values, onChange, onMonthDayChange, showHol
             </div>
           );
         }
+        if (col.type === 'pricing_formula') {
+          return (
+            <div key={col.key} className="space-y-2">
+              <Label>{col.label}</Label>
+              <PricingFormulaEditor
+                value={values[col.key]}
+                onChange={(next) => onChange(col.key, next)}
+              />
+            </div>
+          );
+        }
         if (col.type === 'json') {
           const jsonVal = typeof values[col.key] === 'object'
             ? JSON.stringify(values[col.key], null, 2)
@@ -215,7 +234,11 @@ export default function ConfigCrudTable({ configType, label, columns }) {
     setEditing(row);
     const vals = {};
     for (const col of columns) {
-      if (col.type === 'json' && row[col.key]) {
+      if (col.type === 'pricing_formula') {
+        vals[col.key] = row[col.key] && typeof row[col.key] === 'object'
+          ? row[col.key]
+          : { base: 0, per_guest_after: 0, rate: 0 };
+      } else if (col.type === 'json' && row[col.key]) {
         vals[col.key] = typeof row[col.key] === 'object'
           ? JSON.stringify(row[col.key], null, 2)
           : row[col.key];
@@ -371,7 +394,10 @@ export default function ConfigCrudTable({ configType, label, columns }) {
               rows.map((row) => (
                 <TableRow key={row.id} className={!row.active ? 'opacity-60' : ''}>
                   {displayColumns.map((col) => (
-                    <TableCell key={col.key} className="max-w-[200px] truncate">
+                    <TableCell
+                      key={col.key}
+                      className={col.type === 'pricing_formula' ? 'max-w-[280px] truncate' : 'max-w-[200px] truncate'}
+                    >
                       {formatCellValue(row[col.key], col.type)}
                     </TableCell>
                   ))}

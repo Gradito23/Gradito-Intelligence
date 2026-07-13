@@ -65,7 +65,7 @@ export const CONFIG_TYPES = {
     slug: 'package-types',
     columns: [
       { key: 'name', label: 'Name', required: true },
-      { key: 'pricing_formula', label: 'Pricing Formula (JSON)', type: 'json' },
+      { key: 'pricing_formula', label: 'Pricing Formula', type: 'pricing_formula' },
       { key: 'active', label: 'Active', type: 'boolean', default: true },
     ],
   },
