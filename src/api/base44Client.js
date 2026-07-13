@@ -53,6 +53,59 @@ async function invokeLlm({ prompt, response_json_schema }) {
   return data.result
 }
 
+function safeFileName(name) {
+  return String(name || 'file')
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .slice(0, 120)
+}
+
+/** Base44-compatible file upload → Supabase Storage `uploads` bucket. */
+async function uploadFile({ file }) {
+  if (!file) {
+    throw new Error('No file provided')
+  }
+
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError) throw new Error(authError.message)
+  if (!user) {
+    throw new Error('You must be signed in to upload files')
+  }
+
+  const path = `${user.id}/${Date.now()}-${safeFileName(file.name)}`
+  const { error: uploadError } = await supabase.storage
+    .from('uploads')
+    .upload(path, file, {
+      upsert: false,
+      contentType: file.type || undefined,
+    })
+
+  if (uploadError) {
+    throw new Error(uploadError.message || 'File upload failed')
+  }
+
+  const { data } = supabase.storage.from('uploads').getPublicUrl(path)
+  if (!data?.publicUrl) {
+    throw new Error('Upload succeeded but no public URL was returned')
+  }
+
+  return { file_url: data.publicUrl }
+}
+
+async function invokeFunction(name, body = {}) {
+  const { data, error } = await supabase.functions.invoke(name, {
+    method: 'POST',
+    body,
+  })
+
+  if (error) {
+    throw new Error(await parseFunctionError(error))
+  }
+  if (data?.error) {
+    throw new Error(typeof data.error === 'string' ? data.error : 'Function failed')
+  }
+  return { data }
+}
+
 /** Map Base44 app field names used in filter criteria to DB columns. */
 const CRITERIA_FIELD_MAP = {
   created_date: 'created_at',
@@ -123,10 +176,10 @@ export const base44 = {
   integrations: {
     Core: {
       InvokeLLM: invokeLlm,
-      UploadFile: notImplemented('integrations.Core.UploadFile'),
+      UploadFile: uploadFile,
     },
   },
   functions: {
-    invoke: notImplemented('functions.invoke'),
+    invoke: invokeFunction,
   },
 }

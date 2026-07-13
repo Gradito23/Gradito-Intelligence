@@ -8,11 +8,13 @@ import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CUISINES, EXPERIENCE_TYPES, SERVICE_AREAS, DIETARY_SPECIALTIES } from '@/lib/constants';
+import { toast } from '@/components/ui/use-toast';
 import { CheckCircle, ChefHat, Loader2, Plus, Upload, X, Calendar } from 'lucide-react';
 
 export default function ChefIntake() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [photoUploading, setPhotoUploading] = useState(false);
   const [extraLinks, setExtraLinks] = useState([]);
   const [customHomeArea, setCustomHomeArea] = useState('');
@@ -54,9 +56,19 @@ export default function ChefIntake() {
     const file = e.target.files[0];
     if (!file) return;
     setPhotoUploading(true);
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    setForm(prev => ({ ...prev, photo_url: file_url }));
-    setPhotoUploading(false);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      setForm(prev => ({ ...prev, photo_url: file_url }));
+    } catch (err) {
+      toast({
+        title: 'Photo upload failed',
+        description: err.message || 'Could not upload photo.',
+        variant: 'destructive',
+      });
+    } finally {
+      setPhotoUploading(false);
+      e.target.value = '';
+    }
   };
 
   const addExtraLink = () => setExtraLinks(prev => [...prev, '']);
@@ -66,27 +78,38 @@ export default function ChefIntake() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setSubmitError('');
+    const { bio_details, ...chefFields } = form;
     const allLinks = [form.bio_url, ...extraLinks].filter(Boolean).join('\n');
-    await base44.entities.Chef.create({
-      ...form,
-      bio_url: allLinks || form.bio_url,
-      notes: form.bio_details || undefined,
-      quality_rating: 3,
-      profile_status: 'Complete',
-      travel_fees: [],
-      blackout_holidays: form.blackout_holidays,
-      blackout_dates: form.blackout_dates,
-      availability_notes: form.availability_notes,
-    });
-    await base44.entities.ActivityLog.create({
-      actor: 'Intake Form',
-      action: 'Created',
-      entity_type: 'Intake',
-      entity_label: `${form.first_name} ${form.last_name}`,
-      summary: `Chef ${form.first_name} ${form.last_name} completed intake form`,
-    });
-    setSubmitted(true);
-    setLoading(false);
+    try {
+      await base44.entities.Chef.create({
+        ...chefFields,
+        bio_url: allLinks || undefined,
+        notes: bio_details || undefined,
+        quality_rating: 3,
+        // Anon RLS allows insert only when profile_status = 'In Progress'
+        profile_status: 'In Progress',
+        travel_fees: [],
+      });
+      try {
+        await base44.entities.ActivityLog.create({
+          actor: 'Intake Form',
+          action: 'Created',
+          entity_type: 'Intake',
+          entity_label: `${form.first_name} ${form.last_name}`,
+          summary: `Chef ${form.first_name} ${form.last_name} completed intake form`,
+        });
+      } catch {
+        // Activity log requires auth; do not fail the chef's thank-you flow
+      }
+      setSubmitted(true);
+    } catch (err) {
+      const message = err.message || 'Something went wrong. Please try again.';
+      setSubmitError(message);
+      toast({ title: 'Submission failed', description: message, variant: 'destructive' });
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (submitted) {
@@ -374,6 +397,10 @@ export default function ChefIntake() {
           </div>
           <div><Label>Equipment Notes</Label><Textarea value={form.equipment_notes} onChange={e => setForm({ ...form, equipment_notes: e.target.value })} placeholder="Any equipment you bring..." /></div>
         </Card>
+
+        {submitError && (
+          <p className="text-sm text-destructive text-center" role="alert">{submitError}</p>
+        )}
 
         <Button type="submit" disabled={loading} className="w-full bg-gold hover:bg-gold/90 text-white py-6 text-lg font-heading">
           {loading ? <Loader2 className="animate-spin mr-2" /> : <ChefHat className="mr-2" />}

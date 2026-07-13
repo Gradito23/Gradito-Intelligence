@@ -1,19 +1,99 @@
 import React, { useRef, useState } from 'react';
+import * as pdfjs from 'pdfjs-dist';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { FileText, X, Loader2, AlertCircle, Info } from 'lucide-react';
 import { base44 } from '@/api/base44Client';
 
+pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+const MIN_TEXT_LENGTH = 40;
+
+const INVOICE_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    invoice_number: { type: ['string', 'null'] },
+    date: { type: ['string', 'null'] },
+    service_area: { type: ['string', 'null'] },
+    guest_count: { type: ['number', 'null'] },
+    client_company: { type: ['string', 'null'] },
+    client_contact: { type: ['string', 'null'] },
+    event_title: { type: ['string', 'null'] },
+    experience_label: { type: ['string', 'null'] },
+    coordinated_by: { type: ['string', 'null'] },
+    line_items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string' },
+          total: { type: 'number' },
+          name: { type: ['string', 'null'] },
+          fee: { type: ['number', 'null'] },
+        },
+        required: ['label', 'total'],
+      },
+    },
+    chefs: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          role: { type: 'string' },
+          name: { type: 'string' },
+          fee: { type: ['number', 'null'] },
+        },
+        required: ['role', 'name'],
+      },
+    },
+    discount: { type: ['number', 'null'] },
+    admin_fee_amount: { type: ['number', 'null'] },
+    gratuity: { type: ['number', 'null'] },
+    cc_fee: { type: ['number', 'null'] },
+    sales_tax: { type: ['number', 'null'] },
+    grand_total: { type: ['number', 'null'] },
+  },
+};
+
 async function extractPdfText(file) {
-  // Upload the PDF so we can pass its URL to the LLM vision model
-  const { file_url } = await base44.integrations.Core.UploadFile({ file });
-  const text = await base44.integrations.Core.InvokeLLM({
-    prompt: `Extract ALL text from this PerfectVenue invoice PDF exactly as it appears. Preserve every label, number, line item, fee, name, date, and section header. Output plain text only — no commentary, no formatting changes.`,
-    file_urls: [file_url],
-    model: 'gemini_3_flash',
+  const data = new Uint8Array(await file.arrayBuffer());
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const pages = [];
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const line = content.items
+      .map((item) => ('str' in item ? item.str : ''))
+      .filter(Boolean)
+      .join(' ');
+    if (line.trim()) pages.push(line.trim());
+  }
+  return pages.join('\n');
+}
+
+async function parseInvoiceFromText(pdfText, fileName) {
+  const trimmed = (pdfText || '').trim();
+  if (trimmed.length < MIN_TEXT_LENGTH) {
+    throw new Error(
+      'Could not extract text from PDF (scanned images need OCR — use a text PDF).',
+    );
+  }
+
+  return base44.integrations.Core.InvokeLLM({
+    prompt: `Parse this PerfectVenue invoice text into structured JSON for event import.
+Use null for unknown fields. Dates as YYYY-MM-DD when possible.
+Put every charge line into line_items with label + total (negative for discounts).
+Put Head/Sous chefs into chefs with role "Head" or "Sous", name, and fee.
+admin_fee_amount is the dollar admin/service fee (not a percent).
+grand_total is the invoice grand total including tax/fees when present.
+File name: ${fileName}
+
+Invoice text:
+${trimmed}`,
+    response_json_schema: INVOICE_JSON_SCHEMA,
   });
-  return { text: typeof text === 'string' ? text : JSON.stringify(text) };
 }
 
 export default function InvoiceUploadStep({ onParsed }) {
@@ -40,10 +120,10 @@ export default function InvoiceUploadStep({ onParsed }) {
       updated[i].status = 'parsing';
       setFiles([...updated]);
       try {
-        const { text } = await extractPdfText(updated[i].file);
-        const response = await base44.functions.invoke('parseInvoicePdf', { pdf_text: text, file_name: updated[i].file.name });
+        const text = await extractPdfText(updated[i].file);
+        const parsed = await parseInvoiceFromText(text, updated[i].file.name);
         updated[i].status = 'done';
-        updated[i].result = response.data?.parsed || response.data;
+        updated[i].result = parsed;
         updated[i].file_name = updated[i].file.name;
       } catch (err) {
         updated[i].status = 'error';
