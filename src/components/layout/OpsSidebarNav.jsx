@@ -7,6 +7,7 @@ import {
   BarChart3,
   DollarSign,
   LayoutDashboard,
+  ClipboardList,
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { checkPermission } from '@/lib/permissionMeta';
@@ -24,6 +25,7 @@ const NAV_SECTIONS = [
     label: 'Operations',
     items: [
       { path: '/chefs', label: 'Chefs', icon: ChefHat, permission: { resource: 'chefs', action: 'read' } },
+      { path: '/intake-requests', label: 'Intake Requests', icon: ClipboardList, permission: { resource: 'intake', action: 'read' } },
       { path: '/events', label: 'Events', icon: Calendar, permission: { resource: 'events', action: 'read' } },
       { path: '/match', label: 'Chef Match', icon: Sparkles, permission: { resource: 'chefs', action: 'read' } },
     ],

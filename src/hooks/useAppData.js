@@ -57,6 +57,14 @@ export function useMatchRuns() {
   });
 }
 
+export function useChefIntakeRequests() {
+  return useQuery({
+    queryKey: ['chefIntakeRequests'],
+    queryFn: () => base44.entities.ChefIntakeRequest.list('-created_date', 200),
+    initialData: [],
+  });
+}
+
 export function useTeamMembers() {
   return useQuery({
     queryKey: ['teamMembers'],

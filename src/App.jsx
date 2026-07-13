@@ -19,6 +19,7 @@ const ChefIntake = lazy(() => import('@/pages/ChefIntake'));
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Chefs = lazy(() => import('@/pages/Chefs'));
+const IntakeRequests = lazy(() => import('@/pages/IntakeRequests'));
 const Events = lazy(() => import('@/pages/Events'));
 const ChefMatch = lazy(() => import('@/pages/ChefMatch'));
 const Reports = lazy(() => import('@/pages/Reports'));
@@ -120,6 +121,14 @@ function AuthenticatedApp() {
                 element={(
                   <PermissionRoute permission={{ resource: 'chefs', action: 'read' }}>
                     <Chefs />
+                  </PermissionRoute>
+                )}
+              />
+              <Route
+                path="/intake-requests"
+                element={(
+                  <PermissionRoute permission={{ resource: 'intake', action: 'read' }}>
+                    <IntakeRequests />
                   </PermissionRoute>
                 )}
               />

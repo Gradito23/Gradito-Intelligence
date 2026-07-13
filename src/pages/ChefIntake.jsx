@@ -82,14 +82,18 @@ export default function ChefIntake() {
     const { bio_details, ...chefFields } = form;
     const allLinks = [form.bio_url, ...extraLinks].filter(Boolean).join('\n');
     try {
-      await base44.entities.Chef.create({
-        ...chefFields,
-        bio_url: allLinks || undefined,
-        notes: bio_details || undefined,
-        quality_rating: 3,
-        // Anon RLS allows insert only when profile_status = 'In Progress'
-        profile_status: 'In Progress',
-        travel_fees: [],
+      await base44.entities.ChefIntakeRequest.create({
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email || null,
+        mobile: form.mobile || null,
+        photo_url: form.photo_url || null,
+        status: 'pending',
+        payload: {
+          ...chefFields,
+          bio_url: allLinks || undefined,
+          notes: bio_details || undefined,
+        },
       });
       try {
         await base44.entities.ActivityLog.create({
@@ -97,7 +101,7 @@ export default function ChefIntake() {
           action: 'Created',
           entity_type: 'Intake',
           entity_label: `${form.first_name} ${form.last_name}`,
-          summary: `Chef ${form.first_name} ${form.last_name} completed intake form`,
+          summary: `Chef ${form.first_name} ${form.last_name} submitted intake form (pending review)`,
         });
       } catch {
         // Activity log requires auth; do not fail the chef's thank-you flow
@@ -118,7 +122,7 @@ export default function ChefIntake() {
         <Card className="max-w-md w-full p-8 text-center">
           <CheckCircle size={48} className="mx-auto text-gold mb-4" />
           <h2 className="font-heading text-2xl font-bold mb-2">Thank You!</h2>
-          <p className="text-muted-foreground">Your profile has been submitted to the Gradito team. We'll be in touch soon.</p>
+          <p className="text-muted-foreground">Your profile has been submitted to the Gradito team for review. We'll be in touch soon.</p>
         </Card>
       </div>
     );

@@ -6,6 +6,7 @@ export const PERMISSION_RESOURCES = [
   { key: 'config', label: 'Reference Data', actions: ['read', 'write'] },
   { key: 'users', label: 'Users', actions: ['read', 'write'] },
   { key: 'chefs', label: 'Chefs', actions: ['read', 'write'] },
+  { key: 'intake', label: 'Intake Requests', actions: ['read', 'write'] },
   { key: 'events', label: 'Events', actions: ['read', 'write'] },
   { key: 'team', label: 'Commission Team', actions: ['read', 'write'] },
   { key: 'reports', label: 'Reports', actions: ['read'] },
@@ -17,6 +18,7 @@ export const PERMISSION_RESOURCES = [
 export const LANDING_ROUTE_CANDIDATES = [
   { path: '/dashboard', permission: null },
   { path: '/chefs', permission: { resource: 'chefs', action: 'read' } },
+  { path: '/intake-requests', permission: { resource: 'intake', action: 'read' } },
   { path: '/events', permission: { resource: 'events', action: 'read' } },
   { path: '/match', permission: { resource: 'chefs', action: 'read' } },
   { path: '/reports', permission: { resource: 'reports', action: 'read' } },

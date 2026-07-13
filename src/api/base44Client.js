@@ -8,6 +8,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js'
 import {
   ActivityLogRepository,
   ChefRepository,
+  ChefIntakeRequestRepository,
   ClientRepository,
   CommissionLineRepository,
   EventChefRepository,
@@ -139,6 +140,7 @@ function entityFromRepo(repo) {
 export const base44 = {
   entities: {
     Chef: entityFromRepo(ChefRepository),
+    ChefIntakeRequest: entityFromRepo(ChefIntakeRequestRepository),
     Event: entityFromRepo(EventRepository),
     Client: entityFromRepo(ClientRepository),
     EventChef: entityFromRepo(EventChefRepository),
