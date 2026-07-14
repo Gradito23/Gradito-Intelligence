@@ -196,8 +196,12 @@ export default function ChefMatch() {
   }, [selectedHeadChef, selectedSousChef, needsSousSection]);
 
   const openCreateEventFromTeam = (overrides = {}) => {
-    const headId = overrides.headId ?? selectedHeadId;
-    const sousId = overrides.sousId ?? selectedSousId;
+    const headId = Object.prototype.hasOwnProperty.call(overrides, 'headId')
+      ? overrides.headId
+      : selectedHeadId;
+    const sousId = Object.prototype.hasOwnProperty.call(overrides, 'sousId')
+      ? overrides.sousId
+      : selectedSousId;
     const crit = overrides.criteria ?? criteria;
     const head =
       (results || []).find((r) => r.chef.id === headId)?.chef ||
@@ -209,8 +213,10 @@ export default function ChefMatch() {
     }
     const guests = crit?.guest_count || 0;
     const sous =
-      guests >= 15
-        ? (sousCandidates || []).find((r) => r.chef.id === sousId)?.chef || null
+      guests >= 15 && sousId
+        ? (sousCandidates || []).find((r) => r.chef.id === sousId)?.chef ||
+          chefs.find((c) => c.id === sousId) ||
+          null
         : null;
     setPrefillCriteria(crit);
     setPrefillChef(head);
@@ -226,6 +232,15 @@ export default function ChefMatch() {
   const selectHead = (chefId) => {
     setSelectedHeadId(chefId);
     if (selectedSousId === chefId) setSelectedSousId(null);
+  };
+
+  const selectSous = (chefId) => {
+    if (selectedSousId === chefId) {
+      setSelectedSousId(null);
+      return;
+    }
+    setSelectedSousId(chefId);
+    if (selectedHeadId === chefId) setSelectedHeadId(null);
   };
 
   const extractCriteria = async () => {
@@ -334,13 +349,11 @@ Travel fee: $${result.travelFee}`,
       const needsSous = (criteria.guest_count || 0) >= 15;
       finalResults.forEach((r) => { r.needsSous = needsSous; });
 
-      const headIds = finalResults.map((r) => r.chef.id);
       const sousList = needsSous
-        ? computeSousCandidates(chefs, criteria, events, eventChefs, clients, 3, headIds)
+        ? computeSousCandidates(chefs, criteria, events, eventChefs, clients, 3)
         : [];
       setSousCandidates(sousList);
-      const firstSousOnly = sousList.find((s) => s.chef.roles_available === 'Sous') || sousList[0];
-      setSelectedSousId(firstSousOnly?.chef.id || null);
+      setSelectedSousId(null);
       setSelectedHeadId(finalResults[0]?.chef.id || null);
 
       setResults(finalResults);
@@ -384,13 +397,11 @@ Travel fee: $${result.travelFee}`,
     const rebuilt = resultsFromSuggested(run.suggested_chefs, chefs, crit);
     setResults(rebuilt);
     const needsSous = (crit.guest_count || 0) >= 15;
-    const headIds = rebuilt.map((r) => r.chef.id);
     const sousList = needsSous
-      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3, headIds)
+      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3)
       : [];
     setSousCandidates(sousList);
-    const firstSousOnly = sousList.find((s) => s.chef.roles_available === 'Sous') || sousList[0];
-    setSelectedSousId(firstSousOnly?.chef.id || null);
+    setSelectedSousId(null);
     setSelectedHeadId(rebuilt[0]?.chef.id || null);
     setStep('results');
     setExpandedHistoryId(null);
@@ -518,7 +529,7 @@ Travel fee: $${result.travelFee}`,
                   <div>
                     <h4 className="font-heading font-semibold">Sous chef</h4>
                     <p className="text-xs text-muted-foreground">
-                      Support chef · recommended for 15+ guests. Select one to pair with the head.
+                      Optional · recommended for 15+ guests. Tap again to clear. A Both chef cannot be Head and Sous on the same event.
                     </p>
                   </div>
                   <div className="space-y-4">
@@ -529,7 +540,7 @@ Travel fee: $${result.travelFee}`,
                         rank={i + 1}
                         selected={selectedSousId === result.chef.id}
                         selectedLabel="Selected as Sous"
-                        onSelect={() => setSelectedSousId(result.chef.id)}
+                        onSelect={() => selectSous(result.chef.id)}
                         onViewChef={(chef) => openViewChef(chef, 'sous')}
                       />
                     ))}
@@ -675,11 +686,18 @@ Travel fee: $${result.travelFee}`,
         onCreateEvent={(chef) => {
           setViewChef(null);
           if (viewChefRole === 'sous') {
+            const headId =
+              selectedHeadId === chef.id
+                ? (results || []).find((r) => r.chef.id !== chef.id)?.chef.id || null
+                : selectedHeadId;
             setSelectedSousId(chef.id);
-            openCreateEventFromTeam({ sousId: chef.id });
+            if (selectedHeadId === chef.id) setSelectedHeadId(headId);
+            openCreateEventFromTeam({ sousId: chef.id, headId });
           } else {
-            selectHead(chef.id);
-            openCreateEventFromTeam({ headId: chef.id });
+            setSelectedHeadId(chef.id);
+            const sousId = selectedSousId === chef.id ? null : selectedSousId;
+            if (selectedSousId === chef.id) setSelectedSousId(null);
+            openCreateEventFromTeam({ headId: chef.id, sousId });
           }
         }}
       />
