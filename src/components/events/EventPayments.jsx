@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import ChefAvatar from '@/components/ui/ChefAvatar';
+import GoldStars from '@/components/ui/GoldStars';
 import { formatCurrency } from '@/hooks/useAppData';
 import { CheckCircle2, Circle, Plus, X } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
@@ -14,6 +16,15 @@ const VENDOR_TYPES = [
   'Staffing Agency', 'Server', 'Bartender', 'Sommelier',
   'Rental Company', 'Florist', 'Delivery Provider', 'Other',
 ];
+
+function computeTravelFee(chef, area) {
+  if (!area || !chef) return 0;
+  if ((chef.home_areas || []).includes(area)) return 0;
+  const override = (chef.travel_fees || []).find(t => t.service_area === area);
+  if (override) return override.fee;
+  if (chef.travel_policy === 'Anywhere') return chef.default_travel_fee || 0;
+  return 0;
+}
 
 function PaymentRow({ label, sublabel, amount, paymentStatus, paidDate, onToggle, onDateChange, loading }) {
   const isPaid = paymentStatus === 'Paid';
@@ -54,7 +65,7 @@ function PaymentRow({ label, sublabel, amount, paymentStatus, paidDate, onToggle
   );
 }
 
-export default function EventPayments({ event, assignments, commissionLines }) {
+export default function EventPayments({ event, chefs = [], assignments, commissionLines }) {
   const queryClient = useQueryClient();
   const [vendors, setVendors] = useState([]);
   const [loadingVendors, setLoadingVendors] = useState(true);
@@ -62,8 +73,38 @@ export default function EventPayments({ event, assignments, commissionLines }) {
   const [showAddVendor, setShowAddVendor] = useState(false);
   const [newVendor, setNewVendor] = useState({ vendor_name: '', vendor_type: 'Other', amount_owed: '' });
   const [savingVendor, setSavingVendor] = useState(false);
+  const [showAddChef, setShowAddChef] = useState(false);
+  const [chefSearch, setChefSearch] = useState('');
+  const [newChefRole, setNewChefRole] = useState('Head');
+  const [newChefFee, setNewChefFee] = useState('');
+  const [selectedChefId, setSelectedChefId] = useState(null);
+  const [savingChef, setSavingChef] = useState(false);
+  const [removingChef, setRemovingChef] = useState({});
 
   const eventId = event?.id;
+  const eventAssignments = assignments || [];
+  const assignedChefIds = useMemo(
+    () => new Set(eventAssignments.map(ec => ec.chef_id)),
+    [eventAssignments]
+  );
+
+  const defaultRole = eventAssignments.some(ec => ec.role === 'Head') ? 'Sous' : 'Head';
+
+  const eligibleChefs = useMemo(() => {
+    const q = chefSearch.trim().toLowerCase();
+    return (chefs || []).filter(c => {
+      if (c.archived) return false;
+      if (assignedChefIds.has(c.id)) return false;
+      if (!q) return true;
+      return `${c.first_name} ${c.last_name}`.toLowerCase().includes(q);
+    });
+  }, [chefs, assignedChefIds, chefSearch]);
+
+  const selectedChef = useMemo(
+    () => (chefs || []).find(c => c.id === selectedChefId) || null,
+    [chefs, selectedChefId]
+  );
+  const selectedTravel = computeTravelFee(selectedChef, event?.service_area);
 
   useEffect(() => {
     if (!eventId) return;
@@ -72,6 +113,10 @@ export default function EventPayments({ event, assignments, commissionLines }) {
       .then(setVendors)
       .finally(() => setLoadingVendors(false));
   }, [eventId]);
+
+  useEffect(() => {
+    if (showAddChef) setNewChefRole(defaultRole);
+  }, [showAddChef, defaultRole]);
 
   // ── Chef payment toggles ──────────────────────────────────────────────────
   const toggleChefPayment = async (ec) => {
@@ -94,6 +139,67 @@ export default function EventPayments({ event, assignments, commissionLines }) {
   const updateChefPaidDate = async (ec, date) => {
     await base44.entities.EventChef.update(ec.id, { paid_date: date });
     queryClient.invalidateQueries({ queryKey: ['eventChefs'] });
+  };
+
+  const resetAddChefForm = () => {
+    setShowAddChef(false);
+    setChefSearch('');
+    setSelectedChefId(null);
+    setNewChefFee('');
+    setNewChefRole(defaultRole);
+  };
+
+  const addChef = async () => {
+    if (!selectedChef) return;
+    setSavingChef(true);
+    const chefName = `${selectedChef.first_name} ${selectedChef.last_name}`;
+    try {
+      await base44.entities.EventChef.create({
+        event_id: eventId,
+        chef_id: selectedChef.id,
+        chef_name: chefName,
+        role: newChefRole,
+        fee: Number(newChefFee) || 0,
+        travel_fee_applied: selectedTravel,
+        payment_status: 'Unpaid',
+      });
+      await base44.entities.ActivityLog.create({
+        actor: 'Team', action: 'Updated', entity_type: 'Event',
+        entity_label: event.client_name,
+        summary: `Assigned ${chefName} as ${newChefRole} chef`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['eventChefs'] });
+      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      resetAddChefForm();
+      toast({ title: `${chefName} added as ${newChefRole}` });
+    } catch (err) {
+      toast({ title: 'Failed to add chef', description: err.message, variant: 'destructive' });
+    } finally {
+      setSavingChef(false);
+    }
+  };
+
+  const deleteChef = async (ec) => {
+    if (eventAssignments.length <= 1) {
+      toast({ title: 'At least one chef must remain assigned.' });
+      return;
+    }
+    setRemovingChef(p => ({ ...p, [ec.id]: true }));
+    try {
+      await base44.entities.EventChef.delete(ec.id);
+      await base44.entities.ActivityLog.create({
+        actor: 'Team', action: 'Updated', entity_type: 'Event',
+        entity_label: event.client_name,
+        summary: `Removed ${ec.chef_name} (${ec.role}) from event`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['eventChefs'] });
+      queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
+      toast({ title: `${ec.chef_name} removed` });
+    } catch (err) {
+      toast({ title: 'Failed to remove chef', description: err.message, variant: 'destructive' });
+    } finally {
+      setRemovingChef(p => ({ ...p, [ec.id]: false }));
+    }
   };
 
   // ── Commission payment toggles ────────────────────────────────────────────
@@ -165,7 +271,6 @@ export default function EventPayments({ event, assignments, commissionLines }) {
   };
 
   // ── Payment summary ───────────────────────────────────────────────────────
-  const eventAssignments = assignments || [];
   const eventCommLines = (commissionLines || []).filter(cl => cl.event_id === eventId);
 
   const summary = useMemo(() => {
@@ -195,6 +300,7 @@ export default function EventPayments({ event, assignments, commissionLines }) {
 
   const closerLines = eventCommLines.filter(cl => cl.role === 'Closer');
   const facLines    = eventCommLines.filter(cl => cl.role === 'Facilitator');
+  const canRemoveChef = eventAssignments.length > 1;
 
   return (
     <Card className="p-4 space-y-4">
@@ -227,24 +333,136 @@ export default function EventPayments({ event, assignments, commissionLines }) {
       </div>
 
       {/* Chef Payments */}
-      {eventAssignments.length > 0 && (
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1.5">Chef Payments</p>
-          {eventAssignments.map(ec => (
-            <PaymentRow
-              key={ec.id}
-              label={ec.chef_name}
-              sublabel={ec.role + (ec.travel_fee_applied > 0 ? ` · +${formatCurrency(ec.travel_fee_applied)} travel` : '')}
-              amount={(ec.fee || 0) + (ec.travel_fee_applied || 0)}
-              paymentStatus={ec.payment_status || 'Unpaid'}
-              paidDate={ec.paid_date}
-              onToggle={() => toggleChefPayment(ec)}
-              onDateChange={date => updateChefPaidDate(ec, date)}
-              loading={toggling[`chef-${ec.id}`]}
-            />
-          ))}
-        </div>
-      )}
+      <div>
+        <p className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-semibold mb-1.5">Chef Payments</p>
+        {eventAssignments.map(ec => (
+          <div key={ec.id} className="flex items-center gap-1">
+            <div className="flex-1">
+              <PaymentRow
+                label={ec.chef_name}
+                sublabel={ec.role + (ec.travel_fee_applied > 0 ? ` · +${formatCurrency(ec.travel_fee_applied)} travel` : '')}
+                amount={(ec.fee || 0) + (ec.travel_fee_applied || 0)}
+                paymentStatus={ec.payment_status || 'Unpaid'}
+                paidDate={ec.paid_date}
+                onToggle={() => toggleChefPayment(ec)}
+                onDateChange={date => updateChefPaidDate(ec, date)}
+                loading={toggling[`chef-${ec.id}`]}
+              />
+            </div>
+            {canRemoveChef && (
+              <button
+                onClick={() => deleteChef(ec)}
+                disabled={removingChef[ec.id]}
+                className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 disabled:opacity-50"
+                title="Remove chef"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        ))}
+
+        {showAddChef ? (
+          <div className="border border-border rounded-lg p-3 space-y-2.5 bg-secondary/20 mt-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted-foreground">Add Chef</p>
+              <button onClick={resetAddChefForm}><X size={13} /></button>
+            </div>
+            {!selectedChef ? (
+              <>
+                <Input
+                  placeholder="Search chefs…"
+                  value={chefSearch}
+                  onChange={e => setChefSearch(e.target.value)}
+                  className="h-8 text-sm"
+                  autoFocus
+                />
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {eligibleChefs.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">
+                      {(chefs || []).length === 0 ? 'No chefs in the system yet.' : 'No chefs match your search.'}
+                    </p>
+                  )}
+                  {eligibleChefs.map(c => {
+                    const tf = computeTravelFee(c, event?.service_area);
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => setSelectedChefId(c.id)}
+                        className="w-full flex items-center gap-3 p-2 rounded hover:bg-secondary transition-colors text-left"
+                      >
+                        <ChefAvatar photoUrl={c.photo_url} name={`${c.first_name} ${c.last_name}`} size="sm" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{c.first_name} {c.last_name}</p>
+                          <div className="flex items-center gap-2">
+                            <GoldStars rating={c.quality_rating} size={10} />
+                            {tf > 0 && <span className="text-xs text-amber-600">+{formatCurrency(tf)} travel</span>}
+                            {tf === 0 && event?.service_area && <span className="text-xs text-emerald-600">Home area</span>}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 p-2 rounded bg-secondary/40">
+                  <ChefAvatar photoUrl={selectedChef.photo_url} name={`${selectedChef.first_name} ${selectedChef.last_name}`} size="sm" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{selectedChef.first_name} {selectedChef.last_name}</p>
+                    {selectedTravel > 0 && (
+                      <p className="text-xs text-amber-600">+{formatCurrency(selectedTravel)} travel</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedChefId(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Change
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={newChefRole} onValueChange={setNewChefRole}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Head">Head</SelectItem>
+                      <SelectItem value="Sous">Sous</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    placeholder="Fee $"
+                    value={newChefFee}
+                    onChange={e => setNewChefFee(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    onClick={addChef}
+                    disabled={savingChef || !selectedChef}
+                    className="h-7 text-xs bg-gold hover:bg-gold/80 text-white"
+                  >
+                    {savingChef ? 'Adding…' : 'Add'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={resetAddChefForm} className="h-7 text-xs">Cancel</Button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <button
+            onClick={() => setShowAddChef(true)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mt-1.5"
+          >
+            <Plus size={13} /> Add Chef
+          </button>
+        )}
+      </div>
 
       {/* Sales Specialist Commissions */}
       {closerLines.length > 0 && (
@@ -359,7 +577,7 @@ export default function EventPayments({ event, assignments, commissionLines }) {
         </button>
       )}
 
-      {eventAssignments.length === 0 && eventCommLines.length === 0 && vendors.length === 0 && !loadingVendors && (
+      {eventAssignments.length === 0 && eventCommLines.length === 0 && vendors.length === 0 && !loadingVendors && !showAddChef && (
         <p className="text-xs text-muted-foreground/60 italic text-center py-2">No payment obligations yet — assign chefs and set commissions first.</p>
       )}
     </Card>

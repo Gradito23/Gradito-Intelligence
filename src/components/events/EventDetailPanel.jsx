@@ -373,6 +373,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
             {/* Payments */}
             <EventPayments
               event={event}
+              chefs={chefs}
               assignments={assignments}
               commissionLines={commissionLinesData}
             />
