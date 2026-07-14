@@ -26,17 +26,13 @@ export default function MatchResultCard({
     'Repeat Favorite': 'bg-blue-600 text-white',
   };
 
-  const cardClass = selectable
-    ? `p-5 cursor-pointer transition-colors ${
-        selected
-          ? 'border-navy bg-navy/5 ring-1 ring-navy/30'
-          : 'hover:bg-secondary/40'
-      }`
-    : 'p-5 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5';
+  const showNeedsSous = needsSous && chef.roles_available !== 'Sous';
 
   return (
     <Card
-      className={cardClass}
+      className={`p-5 hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5 ${
+        selected ? 'border-navy ring-1 ring-navy/30 bg-navy/5' : ''
+      } ${selectable ? 'cursor-pointer' : ''}`}
       role={selectable ? 'button' : undefined}
       tabIndex={selectable ? 0 : undefined}
       aria-pressed={selectable ? selected : undefined}
@@ -53,7 +49,6 @@ export default function MatchResultCard({
       }
     >
       <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-        {/* Left: identity + details */}
         <div className="flex items-start gap-4 flex-1 min-w-0">
           <div className="relative shrink-0">
             <ChefAvatar photoUrl={chef.photo_url} name={fullName} size="lg" />
@@ -81,16 +76,16 @@ export default function MatchResultCard({
               </p>
             )}
 
-            {(travelFee > 0 || needsSous) && (
+            {(travelFee > 0 || showNeedsSous) && (
               <div className="mt-3 flex flex-wrap gap-2">
                 {travelFee > 0 && (
                   <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">
                     <MapPin size={10} className="mr-1" /> +{formatCurrency(travelFee)} travel
                   </Badge>
                 )}
-                {needsSous && (
+                {showNeedsSous && (
                   <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">
-                    <Users size={10} className="mr-1" /> Needs a sous — see candidates below
+                    <Users size={10} className="mr-1" /> Needs a sous chef
                   </Badge>
                 )}
               </div>
@@ -124,7 +119,6 @@ export default function MatchResultCard({
           </div>
         </div>
 
-        {/* Right: label + score as siblings with clear gap */}
         <div className="flex items-start gap-3 sm:gap-4 shrink-0 sm:ml-auto self-start">
           {label && (
             <Badge className={`${labelColors[label] || 'bg-secondary'} text-xs border-0 whitespace-nowrap`}>

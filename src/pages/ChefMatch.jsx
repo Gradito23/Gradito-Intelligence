@@ -103,9 +103,14 @@ function computeMatchScore(chef, criteria, events, eventChefs, clients) {
   };
 }
 
-function computeSousCandidates(chefs, criteria, events, eventChefs, clients, limit = 3) {
+function computeSousCandidates(chefs, criteria, events, eventChefs, clients, limit = 3, excludeIds = []) {
+  const excluded = new Set(excludeIds);
   return chefs
-    .filter((c) => !c.archived && (c.roles_available === 'Sous' || c.roles_available === 'Both'))
+    .filter((c) =>
+      !c.archived &&
+      !excluded.has(c.id) &&
+      (c.roles_available === 'Sous' || c.roles_available === 'Both')
+    )
     .map((chef) => {
       const { score, reason, travelFee } = computeMatchScore(chef, criteria, events, eventChefs, clients);
       return { chef, score, reason, travelFee, label: null, needsSous: false };
@@ -133,6 +138,12 @@ function resultsFromSuggested(suggested, chefs, criteria) {
     .filter(Boolean);
 }
 
+const ROLE_ORDER = { Both: 0, Head: 1, Sous: 2 };
+
+function createRoleFor(result) {
+  return result.chef.roles_available === 'Sous' ? 'sous' : 'head';
+}
+
 export default function ChefMatch() {
   const { data: chefs = [] } = useChefs();
   const { data: events = [] } = useEvents();
@@ -151,6 +162,7 @@ export default function ChefMatch() {
   const [expandedHistoryId, setExpandedHistoryId] = useState(null);
 
   const [viewChef, setViewChef] = useState(null);
+  const [viewChefRole, setViewChefRole] = useState('head');
   const [createEventOpen, setCreateEventOpen] = useState(false);
   const [prefillChef, setPrefillChef] = useState(null);
   const [prefillSous, setPrefillSous] = useState(null);
@@ -162,12 +174,56 @@ export default function ChefMatch() {
     return map;
   }, [chefs, events, eventChefs]);
 
-  const openCreateEvent = (headResult) => {
-    setPrefillChef(headResult.chef);
+  const displayResults = useMemo(() => {
+    const byId = new Map();
+    for (const r of results || []) {
+      byId.set(r.chef.id, {
+        ...r,
+        needsSous: r.needsSous && r.chef.roles_available !== 'Sous',
+      });
+    }
+    for (const r of sousCandidates || []) {
+      if (byId.has(r.chef.id)) continue;
+      byId.set(r.chef.id, {
+        ...r,
+        needsSous: false,
+      });
+    }
+    return [...byId.values()].sort((a, b) => {
+      const ra = ROLE_ORDER[a.chef.roles_available] ?? 9;
+      const rb = ROLE_ORDER[b.chef.roles_available] ?? 9;
+      if (ra !== rb) return ra - rb;
+      return (b.score || 0) - (a.score || 0);
+    });
+  }, [results, sousCandidates]);
+
+  const sousOnlyCandidates = useMemo(
+    () => (sousCandidates || []).filter((s) => s.chef.roles_available === 'Sous'),
+    [sousCandidates],
+  );
+
+  const openCreateEvent = (result, role = 'head') => {
     setPrefillCriteria(criteria);
-    const sous = sousCandidates.find((s) => s.chef.id === selectedSousId);
-    setPrefillSous(sous?.chef || null);
+    if (role === 'sous') {
+      const headRow =
+        (results || []).find((r) => r.chef.roles_available === 'Head' || r.chef.roles_available === 'Both') ||
+        results?.[0];
+      setPrefillChef(headRow?.chef || null);
+      setPrefillSous(result.chef);
+    } else {
+      setPrefillChef(result.chef);
+      const sous =
+        sousOnlyCandidates.find((s) => s.chef.id === selectedSousId) ||
+        sousOnlyCandidates[0] ||
+        null;
+      setPrefillSous(sous?.chef || null);
+    }
     setCreateEventOpen(true);
+  };
+
+  const openViewChef = (chef, role = 'head') => {
+    setViewChefRole(role);
+    setViewChef(chef);
   };
 
   const extractCriteria = async () => {
@@ -276,11 +332,13 @@ Travel fee: $${result.travelFee}`,
       const needsSous = (criteria.guest_count || 0) >= 15;
       finalResults.forEach((r) => { r.needsSous = needsSous; });
 
+      const headIds = finalResults.map((r) => r.chef.id);
       const sousList = needsSous
-        ? computeSousCandidates(chefs, criteria, events, eventChefs, clients, 3)
+        ? computeSousCandidates(chefs, criteria, events, eventChefs, clients, 3, headIds)
         : [];
       setSousCandidates(sousList);
-      setSelectedSousId(sousList[0]?.chef.id || null);
+      const firstSousOnly = sousList.find((s) => s.chef.roles_available === 'Sous') || sousList[0];
+      setSelectedSousId(firstSousOnly?.chef.id || null);
 
       setResults(finalResults);
       setStep('results');
@@ -323,11 +381,13 @@ Travel fee: $${result.travelFee}`,
     const rebuilt = resultsFromSuggested(run.suggested_chefs, chefs, crit);
     setResults(rebuilt);
     const needsSous = (crit.guest_count || 0) >= 15;
+    const headIds = rebuilt.map((r) => r.chef.id);
     const sousList = needsSous
-      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3)
+      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3, headIds)
       : [];
     setSousCandidates(sousList);
-    setSelectedSousId(sousList[0]?.chef.id || null);
+    const firstSousOnly = sousList.find((s) => s.chef.roles_available === 'Sous') || sousList[0];
+    setSelectedSousId(firstSousOnly?.chef.id || null);
     setStep('results');
     setExpandedHistoryId(null);
   };
@@ -417,45 +477,28 @@ Travel fee: $${result.travelFee}`,
             </Button>
           </div>
           {criteria && <CriteriaChips criteria={criteria} onRemove={() => {}} />}
-          {results.length === 0 ? (
+          {displayResults.length === 0 ? (
             <Card className="p-8 text-center">
               <AlertCircle size={40} className="mx-auto mb-3 text-muted-foreground opacity-40" />
               <p className="text-muted-foreground">No chefs match these criteria. Try broadening the area or cuisine requirements.</p>
             </Card>
           ) : (
             <div className="space-y-4">
-              {results.map((result, i) => (
-                <MatchResultCard
-                  key={result.chef.id}
-                  result={result}
-                  rank={i + 1}
-                  onViewChef={setViewChef}
-                  onCreateEvent={openCreateEvent}
-                />
-              ))}
-            </div>
-          )}
-
-          {sousCandidates.length > 0 && (
-            <div className="space-y-3">
-              <div>
-                <h4 className="font-heading font-semibold">Sous candidates</h4>
-                <p className="text-xs text-muted-foreground">
-                  Guest count is 15+. Select a sous to attach when you create the event.
-                </p>
-              </div>
-              <div className="space-y-4">
-                {sousCandidates.map((s, i) => (
+              {displayResults.map((result, i) => {
+                const role = createRoleFor(result);
+                const isSous = result.chef.roles_available === 'Sous';
+                return (
                   <MatchResultCard
-                    key={s.chef.id}
-                    result={s}
+                    key={result.chef.id}
+                    result={result}
                     rank={i + 1}
-                    selected={selectedSousId === s.chef.id}
-                    onSelect={() => setSelectedSousId(s.chef.id)}
-                    onViewChef={setViewChef}
+                    selected={isSous && selectedSousId === result.chef.id}
+                    onSelect={isSous ? () => setSelectedSousId(result.chef.id) : undefined}
+                    onViewChef={(chef) => openViewChef(chef, role)}
+                    onCreateEvent={(r) => openCreateEvent(r, role)}
                   />
-                ))}
-              </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -547,8 +590,9 @@ Travel fee: $${result.travelFee}`,
                               }
                               const crit = run.extracted_criteria || {};
                               const needsSous = (crit.guest_count || 0) >= 15;
+                              const headIds = [chef.id];
                               const topSous = needsSous
-                                ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 1)[0]
+                                ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 1, headIds)[0]
                                 : null;
                               setCriteria(crit);
                               setPrefillChef(chef);
@@ -581,11 +625,7 @@ Travel fee: $${result.travelFee}`,
         onClose={() => setViewChef(null)}
         onCreateEvent={(chef) => {
           setViewChef(null);
-          setPrefillChef(chef);
-          setPrefillCriteria(criteria);
-          const sous = sousCandidates.find((s) => s.chef.id === selectedSousId);
-          setPrefillSous(sous?.chef || null);
-          setCreateEventOpen(true);
+          openCreateEvent({ chef }, viewChefRole);
         }}
       />
 
