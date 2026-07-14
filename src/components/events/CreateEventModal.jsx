@@ -15,6 +15,7 @@ import { formatCurrency } from '@/hooks/useAppData';
 import { CUISINES, EXPERIENCE_TYPES, SERVICE_AREAS } from '@/lib/constants';
 import { AlertTriangle, Plus, X, TrendingUp, TrendingDown, Users, ChevronDown, ChevronRight } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
 import {
   PACKAGE_TYPES, MENU_TIERS,
   calcExperienceFee, calcFoodRevenue,
@@ -179,6 +180,7 @@ export default function CreateEventModal({
   const [saving, setSaving] = useState(false);
   const [revCostsOpen, setRevCostsOpen] = useState(false);
   const [editedFields, setEditedFields] = useState(new Set());
+  const [sousConfirmOpen, setSousConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -292,8 +294,13 @@ export default function CreateEventModal({
       return;
     }
     if (needsSous && !sousChef) {
-      if (!window.confirm('Guest count ≥ 15 usually requires a sous chef. Save without one?')) return;
+      setSousConfirmOpen(true);
+      return;
     }
+    await proceedSave();
+  };
+
+  const proceedSave = async () => {
     setSaving(true);
     try {
     const client = await resolveClientByName(form.client_name, {

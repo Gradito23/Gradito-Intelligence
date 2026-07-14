@@ -18,6 +18,8 @@ export default function ConfirmDialog({
   description,
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
+  secondaryLabel,
+  onSecondary,
   variant = 'default',
   onConfirm,
   loading = false,
@@ -26,6 +28,11 @@ export default function ConfirmDialog({
 }) {
   const handleConfirm = async () => {
     await onConfirm?.();
+    onOpenChange?.(false);
+  };
+
+  const handleSecondary = async () => {
+    await onSecondary?.();
     onOpenChange?.(false);
   };
 
@@ -42,6 +49,15 @@ export default function ConfirmDialog({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
+          {secondaryLabel && (
+            <Button
+              variant="outline"
+              disabled={loading}
+              onClick={handleSecondary}
+            >
+              {secondaryLabel}
+            </Button>
+          )}
           {!hideConfirm && (
             variant === 'destructive' ? (
               <Button

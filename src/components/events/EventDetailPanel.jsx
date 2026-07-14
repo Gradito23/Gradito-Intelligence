@@ -14,6 +14,7 @@ import GoldStars from '@/components/ui/GoldStars';
 import { formatCurrency, useTeamMembers, useCommissionLines } from '@/hooks/useAppData';
 import { CUISINES, SERVICE_AREAS, EXPERIENCE_TYPES } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
 import { computePnL } from '@/lib/pnlUtils';
 import { computeCommission, normalizeFacilitators } from '@/lib/commissionUtils';
 import { resolveClientByName } from '@/lib/resolveClient';
@@ -52,6 +53,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editedFields, setEditedFields] = useState(new Set());
   const [showTeamModal, setShowTeamModal] = useState(false);
+  const [unsavedOpen, setUnsavedOpen] = useState(false);
 
   useEffect(() => {
     if (event) {
@@ -233,17 +235,13 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
     toast({ title: 'Commissions reopened' });
   };
 
-  const handleClose = () => {
+  const handleClose = (nextOpen) => {
+    if (nextOpen === true) return;
     if (dirty) {
-      if (window.confirm('Save changes before closing?')) {
-        save().then(onClose);
-      } else {
-        setDirty(false);
-        onClose();
-      }
-    } else {
-      onClose();
+      setUnsavedOpen(true);
+      return;
     }
+    onClose();
   };
 
   const handleDelete = async () => {
@@ -263,7 +261,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
   return (
     <>
       <Sheet open={open} onOpenChange={handleClose}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 flex flex-col" onEscapeKeyDown={handleClose}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 flex flex-col" onEscapeKeyDown={(e) => { e.preventDefault(); handleClose(false); }}>
           {/* Header */}
           <div className="bg-navy px-5 pt-5 pb-4 text-white shrink-0">
             <SheetHeader className="p-0 mb-1">
@@ -460,6 +458,19 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
       </Sheet>
 
       <ManageTeamModal open={showTeamModal} onClose={() => setShowTeamModal(false)} />
+
+      <ConfirmDialog
+        open={unsavedOpen}
+        onOpenChange={setUnsavedOpen}
+        title="Unsaved changes"
+        description="Save before closing, discard them, or keep editing."
+        cancelLabel="Keep editing"
+        secondaryLabel="Discard"
+        onSecondary={() => { setDirty(false); onClose(); }}
+        confirmLabel="Save & close"
+        loading={saving}
+        onConfirm={async () => { await save(); onClose(); }}
+      />
     </>
   );
 }

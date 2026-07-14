@@ -16,6 +16,7 @@ import { formatCurrency } from '@/hooks/useAppData';
 import { Phone, Mail, ExternalLink, MapPin, Globe, Users, X, Plus, Save, Trash2, AlertTriangle, Link, Copy } from 'lucide-react';
 import { CUISINES, SERVICE_AREAS, EXPERIENCE_TYPES, DIETARY_SPECIALTIES } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
+import ConfirmDialog from '@/components/ui/confirm-dialog';
 
 function EditableField({ label, value, onChange, type = 'text', placeholder }) {
   return (
@@ -153,6 +154,7 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [unsavedOpen, setUnsavedOpen] = useState(false);
 
   useEffect(() => {
     if (chef) {
@@ -187,17 +189,13 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
     setDirty(false);
   };
 
-  const handleClose = () => {
+  const handleClose = (nextOpen) => {
+    if (nextOpen === true) return;
     if (dirty) {
-      if (window.confirm('You have unsaved changes. Save before closing?')) {
-        save().then(onClose);
-      } else {
-        setDirty(false);
-        onClose();
-      }
-    } else {
-      onClose();
+      setUnsavedOpen(true);
+      return;
     }
+    onClose();
   };
 
   const handleDelete = async () => {
@@ -227,8 +225,9 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
   const chefEvents = events.filter(e => chefEventIds.includes(e.id)).sort((a, b) => new Date(b.date) - new Date(a.date));
 
   return (
+    <>
     <Sheet open={open} onOpenChange={handleClose}>
-      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 flex flex-col" onEscapeKeyDown={handleClose}>
+      <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 flex flex-col" onEscapeKeyDown={(e) => { e.preventDefault(); handleClose(false); }}>
         {/* Header */}
         <TooltipProvider>
           <div className="bg-navy p-5 text-white shrink-0">
@@ -530,5 +529,19 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
         )}
       </SheetContent>
     </Sheet>
+
+    <ConfirmDialog
+      open={unsavedOpen}
+      onOpenChange={setUnsavedOpen}
+      title="Unsaved changes"
+      description="Save before closing, discard them, or keep editing."
+      cancelLabel="Keep editing"
+      secondaryLabel="Discard"
+      onSecondary={() => { setDirty(false); onClose(); }}
+      confirmLabel="Save & close"
+      loading={saving}
+      onConfirm={async () => { await save(); onClose(); }}
+    />
+    </>
   );
 }
