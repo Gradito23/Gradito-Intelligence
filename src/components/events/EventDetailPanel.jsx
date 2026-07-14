@@ -466,7 +466,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
         description="Save before closing, discard them, or keep editing."
         cancelLabel="Keep editing"
         secondaryLabel="Discard"
-        onSecondary={() => { setDirty(false); onClose(); }}
+        onSecondary={() => { setDirty(false); setEditedFields(new Set()); onClose(); }}
         confirmLabel="Save & close"
         loading={saving}
         onConfirm={async () => { await save(); onClose(); }}

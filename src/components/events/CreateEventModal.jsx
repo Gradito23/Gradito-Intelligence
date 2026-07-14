@@ -375,6 +375,7 @@ export default function CreateEventModal({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -646,5 +647,16 @@ export default function CreateEventModal({
         </div>
       </DialogContent>
     </Dialog>
+
+    <ConfirmDialog
+      open={sousConfirmOpen}
+      onOpenChange={setSousConfirmOpen}
+      title="No sous chef assigned"
+      description="Guest count ≥ 15 usually requires a sous chef. Save without one?"
+      confirmLabel="Save anyway"
+      loading={saving}
+      onConfirm={proceedSave}
+    />
+    </>
   );
 }
