@@ -16,9 +16,20 @@ import { toast } from '@/components/ui/use-toast';
 
 const TRANSCRIPT_SAVE_LIMIT = 2000;
 
+const LOADING_PHASE_LABELS = {
+  breaking: 'Breaking transcript…',
+  sending: 'Sending AI…',
+  extracting: 'Extracting by AI…',
+  matching: 'Matching chefs…',
+};
+
 function chefLabel(chef) {
   if (!chef) return '';
   return `${chef.first_name || ''} ${chef.last_name || ''}`.trim();
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function computeMatchScore(chef, criteria, events, eventChefs, clients) {
@@ -157,7 +168,7 @@ export default function ChefMatch() {
   const [sousCandidates, setSousCandidates] = useState([]);
   const [selectedHeadId, setSelectedHeadId] = useState(null);
   const [selectedSousId, setSelectedSousId] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingPhase, setLoadingPhase] = useState(null);
   const [step, setStep] = useState('input');
   const [expandedHistoryId, setExpandedHistoryId] = useState(null);
 
@@ -243,11 +254,9 @@ export default function ChefMatch() {
     if (selectedHeadId === chefId) setSelectedHeadId(null);
   };
 
-  const extractCriteria = async () => {
-    setLoading(true);
-    try {
-      const resp = await base44.integrations.Core.InvokeLLM({
-        prompt: `Extract structured event criteria from this client call transcript. Return ONLY the JSON object with these fields (use null for anything not mentioned):
+  const extractCriteriaFromTranscript = async () => {
+    return base44.integrations.Core.InvokeLLM({
+      prompt: `Extract structured event criteria from this client call transcript. Return ONLY the JSON object with these fields (use null for anything not mentioned):
 - client_name: string or null
 - service_area: one of [Manhattan, Brooklyn, Westchester, The Hamptons, Miami, Los Angeles, Philadelphia, Washington DC, San Francisco] or null
 - date: string or null
@@ -261,133 +270,142 @@ export default function ChefMatch() {
 
 Transcript:
 ${transcript}`,
-        response_json_schema: {
-          type: 'object',
-          properties: {
-            client_name: { type: ['string', 'null'] },
-            service_area: { type: ['string', 'null'] },
-            date: { type: ['string', 'null'] },
-            cuisines: { type: 'array', items: { type: 'string' } },
-            guest_count: { type: ['number', 'null'] },
-            budget: { type: ['number', 'null'] },
-            event_type: { type: ['string', 'null'] },
-            experience_type: { type: ['string', 'null'] },
-            dietary: { type: ['string', 'null'] },
-            vibe: { type: ['string', 'null'] },
-          },
+      response_json_schema: {
+        type: 'object',
+        properties: {
+          client_name: { type: ['string', 'null'] },
+          service_area: { type: ['string', 'null'] },
+          date: { type: ['string', 'null'] },
+          cuisines: { type: 'array', items: { type: 'string' } },
+          guest_count: { type: ['number', 'null'] },
+          budget: { type: ['number', 'null'] },
+          event_type: { type: ['string', 'null'] },
+          experience_type: { type: ['string', 'null'] },
+          dietary: { type: ['string', 'null'] },
+          vibe: { type: ['string', 'null'] },
         },
-      });
-      setCriteria(resp);
-      setStep('criteria');
-    } catch (err) {
-      toast({
-        title: 'Could not extract criteria',
-        description: err.message || 'Check OpenAI under Admin → Integrations → OpenAI.',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
+      },
+    });
   };
 
-  const runMatch = async () => {
-    setLoading(true);
-    try {
-      const headCandidates = chefs.filter(
-        (c) => !c.archived && (c.roles_available === 'Head' || c.roles_available === 'Both'),
-      );
-      const scored = headCandidates.map((chef) => {
-        const { score, reason, travelFee } = computeMatchScore(chef, criteria, events, eventChefs, clients);
-        return { chef, score, reason, travelFee };
-      }).filter((r) => r.score >= 0).sort((a, b) => b.score - a.score);
+  const runMatchWithCriteria = async (matchCriteria) => {
+    const crit = matchCriteria;
+    if (!crit) return;
 
-      const topPick = scored[0];
-      const valuePick = scored.find((r) => r !== topPick && r.travelFee === 0);
-      const wildcard = scored.find((r) => r !== topPick && r !== valuePick && r.chef.quality_rating <= 4);
+    const headCandidates = chefs.filter(
+      (c) => !c.archived && (c.roles_available === 'Head' || c.roles_available === 'Both'),
+    );
+    const scored = headCandidates.map((chef) => {
+      const { score, reason, travelFee } = computeMatchScore(chef, crit, events, eventChefs, clients);
+      return { chef, score, reason, travelFee };
+    }).filter((r) => r.score >= 0).sort((a, b) => b.score - a.score);
 
-      let finalResults = [topPick, valuePick, wildcard].filter(Boolean);
-      for (const r of scored) {
-        if (finalResults.length >= 5) break;
-        if (!finalResults.includes(r)) finalResults.push(r);
-      }
-      finalResults = finalResults.slice(0, 5);
+    const topPick = scored[0];
+    const valuePick = scored.find((r) => r !== topPick && r.travelFee === 0);
+    const wildcard = scored.find((r) => r !== topPick && r !== valuePick && r.chef.quality_rating <= 4);
 
-      const labels = ['Top Pick', 'Value Pick', 'Wildcard'];
-      finalResults.forEach((r, i) => {
-        if (criteria.client_name) {
-          const client = clients.find((c) => c.name.toLowerCase().includes(criteria.client_name.toLowerCase()));
-          if (client) {
-            const clientEventIds = events.filter((e) => e.client_id === client.id).map((e) => e.id);
-            const workedTogether = eventChefs.filter((ec) => ec.chef_id === r.chef.id && clientEventIds.includes(ec.event_id));
-            if (workedTogether.length > 0) {
-              r.label = 'Repeat Favorite';
-              return;
-            }
+    let finalResults = [topPick, valuePick, wildcard].filter(Boolean);
+    for (const r of scored) {
+      if (finalResults.length >= 5) break;
+      if (!finalResults.includes(r)) finalResults.push(r);
+    }
+    finalResults = finalResults.slice(0, 5);
+
+    const labels = ['Top Pick', 'Value Pick', 'Wildcard'];
+    finalResults.forEach((r, i) => {
+      if (crit.client_name) {
+        const client = clients.find((c) => c.name.toLowerCase().includes(crit.client_name.toLowerCase()));
+        if (client) {
+          const clientEventIds = events.filter((e) => e.client_id === client.id).map((e) => e.id);
+          const workedTogether = eventChefs.filter((ec) => ec.chef_id === r.chef.id && clientEventIds.includes(ec.event_id));
+          if (workedTogether.length > 0) {
+            r.label = 'Repeat Favorite';
+            return;
           }
         }
-        r.label = labels[i] || null;
-      });
+      }
+      r.label = labels[i] || null;
+    });
 
-      await Promise.all(
-        finalResults.map(async (result) => {
-          const localReason = result.reason;
-          try {
-            const aiReason = await base44.integrations.Core.InvokeLLM({
-              prompt: `Write a one-sentence explanation (max 20 words) for why Chef ${result.chef.first_name} ${result.chef.last_name} is a good match for this event.
+    await Promise.all(
+      finalResults.map(async (result) => {
+        const localReason = result.reason;
+        try {
+          const aiReason = await base44.integrations.Core.InvokeLLM({
+            prompt: `Write a one-sentence explanation (max 20 words) for why Chef ${result.chef.first_name} ${result.chef.last_name} is a good match for this event.
 Chef details: ${result.chef.quality_rating}★, cuisines: ${(result.chef.cuisines || []).join(', ')}, home areas: ${(result.chef.home_areas || []).join(', ')}, specialties: ${result.chef.signature_experiences || 'none'}
-Event criteria: area ${criteria.service_area || 'any'}, cuisines: ${(criteria.cuisines || []).join(', ')}, guests: ${criteria.guest_count || 'TBD'}, type: ${criteria.event_type || 'any'}
+Event criteria: area ${crit.service_area || 'any'}, cuisines: ${(crit.cuisines || []).join(', ')}, guests: ${crit.guest_count || 'TBD'}, type: ${crit.event_type || 'any'}
 Base reason: ${localReason}
 Travel fee: $${result.travelFee}`,
-            });
-            result.reason = typeof aiReason === 'string' && aiReason.trim() ? aiReason.trim() : localReason;
-          } catch {
-            result.reason = localReason;
-          }
-        }),
-      );
+          });
+          result.reason = typeof aiReason === 'string' && aiReason.trim() ? aiReason.trim() : localReason;
+        } catch {
+          result.reason = localReason;
+        }
+      }),
+    );
 
-      const needsSous = (criteria.guest_count || 0) >= 15;
-      finalResults.forEach((r) => { r.needsSous = needsSous; });
+    const needsSous = (crit.guest_count || 0) >= 15;
+    finalResults.forEach((r) => { r.needsSous = needsSous; });
 
-      const sousList = needsSous
-        ? computeSousCandidates(chefs, criteria, events, eventChefs, clients, 3)
-        : [];
-      setSousCandidates(sousList);
-      setSelectedSousId(null);
-      setSelectedHeadId(finalResults[0]?.chef.id || null);
+    const sousList = needsSous
+      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3)
+      : [];
+    setSousCandidates(sousList);
+    setSelectedSousId(null);
+    setSelectedHeadId(finalResults[0]?.chef.id || null);
+    setResults(finalResults);
 
-      setResults(finalResults);
-      setStep('results');
-
-      await base44.entities.MatchRun.create({
-        client_name: criteria.client_name || '',
-        transcript_excerpt: transcript.slice(0, TRANSCRIPT_SAVE_LIMIT),
-        extracted_criteria: criteria,
-        suggested_chefs: finalResults.map((r) => ({
-          chef_id: r.chef.id,
-          chef_name: `${r.chef.first_name} ${r.chef.last_name}`,
-          score: r.score,
-          label: r.label,
-          reason: r.reason,
-          travel_fee: r.travelFee,
-        })),
-      });
-      queryClient.invalidateQueries({ queryKey: ['matchRuns'] });
-    } catch (err) {
-      toast({
-        title: 'Match failed',
-        description: err.message || 'Something went wrong while matching chefs.',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
+    await base44.entities.MatchRun.create({
+      client_name: crit.client_name || '',
+      transcript_excerpt: transcript.slice(0, TRANSCRIPT_SAVE_LIMIT),
+      extracted_criteria: crit,
+      suggested_chefs: finalResults.map((r) => ({
+        chef_id: r.chef.id,
+        chef_name: `${r.chef.first_name} ${r.chef.last_name}`,
+        score: r.score,
+        label: r.label,
+        reason: r.reason,
+        travel_fee: r.travelFee,
+      })),
+    });
+    queryClient.invalidateQueries({ queryKey: ['matchRuns'] });
   };
 
-  const removeCriteria = (key) => {
-    const updated = { ...criteria };
-    delete updated[key];
-    setCriteria(updated);
+  const runFindChefsPipeline = async () => {
+    setResults(null);
+    setSousCandidates([]);
+    setSelectedHeadId(null);
+    setSelectedSousId(null);
+    setCriteria(null);
+    let phase = 'breaking';
+    setLoadingPhase('breaking');
+    try {
+      await delay(500);
+      phase = 'sending';
+      setLoadingPhase('sending');
+      await delay(500);
+      phase = 'extracting';
+      setLoadingPhase('extracting');
+      const resp = await extractCriteriaFromTranscript();
+      setCriteria(resp);
+      setStep('results');
+      phase = 'matching';
+      setLoadingPhase('matching');
+      await runMatchWithCriteria(resp);
+    } catch (err) {
+      const extractFailed = phase === 'breaking' || phase === 'sending' || phase === 'extracting';
+      toast({
+        title: extractFailed ? 'Could not extract criteria' : 'Match failed',
+        description: err.message || (extractFailed
+          ? 'Check OpenAI under Admin → Integrations → OpenAI.'
+          : 'Something went wrong while matching chefs.'),
+        variant: 'destructive',
+      });
+      if (extractFailed) setStep('input');
+    } finally {
+      setLoadingPhase(null);
+    }
   };
 
   const reopenHistoryRun = (run) => {
@@ -430,6 +448,7 @@ Travel fee: $${result.travelFee}`,
     setSousCandidates([]);
     setSelectedHeadId(null);
     setSelectedSousId(null);
+    setLoadingPhase(null);
   };
 
   return (
@@ -453,47 +472,51 @@ Travel fee: $${result.travelFee}`,
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
             className="min-h-[160px] text-sm leading-relaxed resize-y"
+            disabled={Boolean(loadingPhase)}
           />
           <div className="flex justify-end mt-4">
             <Button
-              onClick={extractCriteria}
-              disabled={!transcript.trim() || loading}
+              onClick={runFindChefsPipeline}
+              disabled={!transcript.trim() || Boolean(loadingPhase)}
               className="bg-navy hover:bg-navy/90 text-white"
             >
-              {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : <Sparkles size={16} className="mr-2" />}
-              {loading ? 'Reading transcript...' : 'Find Chefs'}
+              {loadingPhase ? <Loader2 size={16} className="animate-spin mr-2" /> : <Sparkles size={16} className="mr-2" />}
+              {loadingPhase ? (LOADING_PHASE_LABELS[loadingPhase] || 'Working…') : 'Find Chefs'}
             </Button>
           </div>
         </Card>
       )}
 
-      {step === 'criteria' && criteria && (
-        <Card className="p-6 space-y-4">
-          <div>
-            <h3 className="font-heading font-semibold text-lg mb-1">Extracted Criteria</h3>
-            <p className="text-xs text-muted-foreground">Review and edit the criteria before matching</p>
-          </div>
-          <CriteriaChips criteria={criteria} onRemove={removeCriteria} />
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={() => setStep('input')}>Back</Button>
-            <Button onClick={runMatch} disabled={loading} className="bg-gold hover:bg-gold/90 text-white">
-              {loading ? <Loader2 size={16} className="animate-spin mr-2" /> : <Sparkles size={16} className="mr-2" />}
-              {loading ? 'Matching chefs...' : 'Match'}
-            </Button>
-          </div>
-        </Card>
-      )}
-
-      {step === 'results' && results && (
+      {step === 'results' && criteria && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-heading font-semibold text-lg">Matched Chefs</h3>
-            <Button variant="outline" size="sm" onClick={resetToInput}>
+            <h3 className="font-heading font-semibold text-lg">
+              {loadingPhase === 'matching' || !results ? 'Extracted Criteria' : 'Matched Chefs'}
+            </h3>
+            <Button variant="outline" size="sm" onClick={resetToInput} disabled={Boolean(loadingPhase)}>
               New Match
             </Button>
           </div>
-          {criteria && <CriteriaChips criteria={criteria} onRemove={() => {}} />}
-          {results.length === 0 && sousCandidates.length === 0 ? (
+
+          <Card className="p-5 space-y-3">
+            <div>
+              <h4 className="font-heading font-semibold text-base">Extracted Criteria</h4>
+              <p className="text-xs text-muted-foreground">
+                {loadingPhase === 'matching'
+                  ? 'Criteria ready — matching chefs…'
+                  : 'Criteria used for this match'}
+              </p>
+            </div>
+            <CriteriaChips criteria={criteria} onRemove={() => {}} />
+            {loadingPhase === 'matching' && (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground pt-1">
+                <Loader2 size={16} className="animate-spin shrink-0" />
+                Matching chefs…
+              </div>
+            )}
+          </Card>
+
+          {loadingPhase === 'matching' || !results ? null : results.length === 0 && sousCandidates.length === 0 ? (
             <Card className="p-8 text-center">
               <AlertCircle size={40} className="mx-auto mb-3 text-muted-foreground opacity-40" />
               <p className="text-muted-foreground">No chefs match these criteria. Try broadening the area or cuisine requirements.</p>
