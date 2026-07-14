@@ -203,7 +203,15 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
   };
 
   const handleFinalize = async () => {
-    if (!comm || comm.incomplete) return;
+    if (!comm || comm.incomplete || comm.splitInvalid) {
+      toast({
+        title: comm?.splitInvalid
+          ? 'Facilitator split %s must total 100% before finalizing'
+          : 'Set lead type and specialists before finalizing',
+        variant: 'destructive',
+      });
+      return;
+    }
     const label = `${draft.client_name} – ${draft.date}`;
     await persistCommissionLines(event.id, comm.lines, 'Finalized', label);
     await base44.entities.Event.update(event.id, { commission_status: 'Finalized' });

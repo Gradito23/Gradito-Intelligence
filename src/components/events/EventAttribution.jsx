@@ -9,6 +9,8 @@ import { useEvents } from '@/hooks/useAppData';
 import { Lock, Unlock, TrendingUp, TrendingDown, Users2, Info, Plus, X, AlertTriangle } from 'lucide-react';
 import { computeCommission, COMMISSION_RATES, LEAD_TYPES, normalizeFacilitators, runWorkedExamples } from '@/lib/commissionUtils';
 
+const NONE = '__none__';
+
 function Toggle({ on, onChange, disabled }) {
   return (
     <button
@@ -37,21 +39,37 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
   const updateFacilitators = (newFacs) => update('facilitators', newFacs);
 
   const addFacilitator = () => {
-    updateFacilitators([...facilitators, { team_member_id: '', split_pct: 0 }]);
+    if (facilitators.length === 0) {
+      updateFacilitators([{ team_member_id: '', split_pct: 100 }]);
+      return;
+    }
+    const sum = facilitators.reduce((s, f) => s + (Number(f.split_pct) || 0), 0);
+    const remaining = Math.max(0, roundPct(100 - sum));
+    updateFacilitators([...facilitators, { team_member_id: '', split_pct: remaining }]);
   };
 
   const removeFacilitator = (idx) => {
-    const next = facilitators.filter((_, i) => i !== idx);
+    let next = facilitators.filter((_, i) => i !== idx);
+    if (next.length === 1) {
+      next = [{ ...next[0], split_pct: 100 }];
+    }
     updateFacilitators(next);
   };
 
   const updateFacRow = (idx, field, val) => {
-    const next = facilitators.map((f, i) => i === idx ? { ...f, [field]: val } : f);
+    let next = facilitators.map((f, i) => i === idx ? { ...f, [field]: val } : f);
+    if (field === 'split_pct' && next.length === 1) {
+      next = [{ ...next[0], split_pct: 100 }];
+    }
     updateFacilitators(next);
   };
 
   const splitSum = facilitators.reduce((s, f) => s + (Number(f.split_pct) || 0), 0);
   const splitWarning = facilitators.length > 1 && Math.abs(splitSum - 100) > 0.01;
+
+  function roundPct(n) {
+    return Math.round(n * 100) / 100;
+  }
 
   const hasSplitSource = !!(draft.source_rep_id && draft.source_rep_id !== draft.closer_id);
   const isFinalized    = draft.commission_status === 'Finalized';
@@ -96,9 +114,10 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
         {/* Lead Type */}
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Lead Type</label>
-          <Select value={draft.lead_type || ''} onValueChange={handleLeadTypeChange} disabled={isFinalized}>
+          <Select value={draft.lead_type || NONE} onValueChange={v => handleLeadTypeChange(v === NONE ? '' : v)} disabled={isFinalized}>
             <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value={NONE}>Select…</SelectItem>
               {LEAD_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -114,9 +133,14 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
           <label className="text-xs text-muted-foreground block mb-1">
             Sales Specialist <span className="text-muted-foreground/50">(Closer)</span>
           </label>
-          <Select value={draft.closer_id || ''} onValueChange={v => update('closer_id', v)} disabled={isFinalized}>
+          <Select
+            value={draft.closer_id || NONE}
+            onValueChange={v => update('closer_id', v === NONE ? '' : v)}
+            disabled={isFinalized}
+          >
             <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
             <SelectContent>
+              <SelectItem value={NONE}>Select…</SelectItem>
               {closers.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -143,29 +167,26 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
             {facilitators.map((f, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <Select
-                  value={f.team_member_id || ''}
-                  onValueChange={v => updateFacRow(idx, 'team_member_id', v)}
+                  value={f.team_member_id || NONE}
+                  onValueChange={v => updateFacRow(idx, 'team_member_id', v === NONE ? '' : v)}
                   disabled={isFinalized}
                 >
                   <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select…" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={NONE}>Select…</SelectItem>
                     {facMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                {facilitators.length > 1 && (
-                  <>
-                    <Input
-                      type="number"
-                      value={f.split_pct ?? ''}
-                      onChange={e => updateFacRow(idx, 'split_pct', Number(e.target.value) || 0)}
-                      disabled={isFinalized}
-                      className="w-16 h-8 text-sm"
-                      placeholder="50"
-                    />
-                    <span className="text-xs text-muted-foreground shrink-0">%</span>
-                  </>
-                )}
-                {!isFinalized && facilitators.length > 1 && (
+                <Input
+                  type="number"
+                  value={facilitators.length === 1 ? 100 : (f.split_pct ?? '')}
+                  onChange={e => updateFacRow(idx, 'split_pct', Number(e.target.value) || 0)}
+                  disabled={isFinalized || facilitators.length === 1}
+                  className="w-16 h-8 text-sm"
+                  placeholder="100"
+                />
+                <span className="text-xs text-muted-foreground shrink-0">%</span>
+                {!isFinalized && (
                   <button
                     type="button"
                     onClick={() => removeFacilitator(idx)}
@@ -201,10 +222,10 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
             Referral Source <span className="font-normal text-muted-foreground/50">(optional — if different from sales specialist)</span>
           </label>
           <div className="flex gap-2">
-            <Select value={draft.source_rep_id || '__none__'} onValueChange={v => update('source_rep_id', v === '__none__' ? null : v)} disabled={isFinalized}>
+            <Select value={draft.source_rep_id || NONE} onValueChange={v => update('source_rep_id', v === NONE ? null : v)} disabled={isFinalized}>
               <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="None" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="__none__">None</SelectItem>
+                <SelectItem value={NONE}>None</SelectItem>
                 {allActive.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -263,7 +284,7 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
               <Badge className="text-[10px] bg-amber-100 text-amber-700 border-amber-300 px-1.5 py-0">Locked</Badge>
             )}
           </div>
-          {!comm.incomplete && (
+          {!comm.incomplete && !comm.splitInvalid && (
             isFinalized ? (
               <Button size="sm" variant="ghost" className="h-6 text-xs text-muted-foreground hover:text-foreground" onClick={onReopen}>
                 <Unlock size={11} className="mr-1" /> Reopen
@@ -282,6 +303,11 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
           </p>
         ) : (
           <>
+            {comm.splitInvalid && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                <AlertTriangle size={11} /> Fix facilitator split %s (must total 100%) before finalizing
+              </div>
+            )}
             {/* Commissionable Profit */}
             <div className="flex justify-between text-xs text-muted-foreground pb-1.5 border-b border-border/40">
               <span>Commissionable Profit</span>

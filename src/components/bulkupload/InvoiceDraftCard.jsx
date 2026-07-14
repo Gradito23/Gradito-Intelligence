@@ -6,7 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Info, CheckCircle, Plus, X, TrendingUp, TrendingDown, Lock } from 'lucide-react';
 import { formatCurrency } from '@/hooks/useAppData';
 import { computePnL } from '@/lib/pnlUtils';
-import { computeCommission, LEAD_TYPES, COMMISSION_RATES } from '@/lib/commissionUtils';
+import { computeCommission, LEAD_TYPES, COMMISSION_RATES, normalizeFacilitators } from '@/lib/commissionUtils';
+
+const NONE = '__none__';
 
 function NumField({ label, value, onChange, highlight, hint }) {
   return (
@@ -256,14 +258,31 @@ function CommissionSection({ draft, update, teamMembers, pnl }) {
   const facMembers = teamMembers.filter(m => m.active !== false && (m.roles || []).includes('Facilitator'));
   const allActive  = teamMembers.filter(m => m.active !== false);
 
-  const facilitators = Array.isArray(draft.facilitators) && draft.facilitators.length > 0
-    ? draft.facilitators
-    : (draft.facilitator_id ? [{ team_member_id: draft.facilitator_id, split_pct: 100 }] : []);
+  const facilitators = useMemo(() => normalizeFacilitators(draft), [draft.facilitators, draft.facilitator_id]);
 
   const updateFacilitators = (facs) => update('facilitators', facs);
-  const addFacilitator = () => updateFacilitators([...facilitators, { team_member_id: '', split_pct: 0 }]);
-  const removeFacilitator = (idx) => updateFacilitators(facilitators.filter((_, i) => i !== idx));
-  const updateFacRow = (idx, field, val) => updateFacilitators(facilitators.map((f, i) => i === idx ? { ...f, [field]: val } : f));
+
+  const addFacilitator = () => {
+    if (facilitators.length === 0) {
+      updateFacilitators([{ team_member_id: '', split_pct: 100 }]);
+      return;
+    }
+    const sum = facilitators.reduce((s, f) => s + (Number(f.split_pct) || 0), 0);
+    const remaining = Math.max(0, Math.round((100 - sum) * 100) / 100);
+    updateFacilitators([...facilitators, { team_member_id: '', split_pct: remaining }]);
+  };
+
+  const removeFacilitator = (idx) => {
+    let next = facilitators.filter((_, i) => i !== idx);
+    if (next.length === 1) next = [{ ...next[0], split_pct: 100 }];
+    updateFacilitators(next);
+  };
+
+  const updateFacRow = (idx, field, val) => {
+    let next = facilitators.map((f, i) => i === idx ? { ...f, [field]: val } : f);
+    if (field === 'split_pct' && next.length === 1) next = [{ ...next[0], split_pct: 100 }];
+    updateFacilitators(next);
+  };
 
   const splitSum = facilitators.reduce((s, f) => s + (Number(f.split_pct) || 0), 0);
   const splitWarning = facilitators.length > 1 && Math.abs(splitSum - 100) > 0.01;
@@ -286,17 +305,23 @@ function CommissionSection({ draft, update, teamMembers, pnl }) {
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Lead Type</label>
-          <Select value={draft.lead_type || ''} onValueChange={v => update('lead_type', v)}>
+          <Select value={draft.lead_type || NONE} onValueChange={v => update('lead_type', v === NONE ? '' : v)}>
             <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
-            <SelectContent>{LEAD_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              <SelectItem value={NONE}>Select…</SelectItem>
+              {LEAD_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+            </SelectContent>
           </Select>
           {currentRates && <p className="text-xs text-muted-foreground/70 mt-0.5">Sales {currentRates.closerPct}% · Execution {currentRates.facPct}%</p>}
         </div>
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Sales Specialist</label>
-          <Select value={draft.closer_id || ''} onValueChange={v => update('closer_id', v)}>
+          <Select value={draft.closer_id || NONE} onValueChange={v => update('closer_id', v === NONE ? '' : v)}>
             <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select…" /></SelectTrigger>
-            <SelectContent>{closers.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}</SelectContent>
+            <SelectContent>
+              <SelectItem value={NONE}>Select…</SelectItem>
+              {closers.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}
+            </SelectContent>
           </Select>
         </div>
       </div>
@@ -312,19 +337,26 @@ function CommissionSection({ draft, update, teamMembers, pnl }) {
         <div className="space-y-2">
           {facilitators.map((f, idx) => (
             <div key={idx} className="flex items-center gap-2">
-              <Select value={f.team_member_id || ''} onValueChange={v => updateFacRow(idx, 'team_member_id', v)}>
+              <Select
+                value={f.team_member_id || NONE}
+                onValueChange={v => updateFacRow(idx, 'team_member_id', v === NONE ? '' : v)}
+              >
                 <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="Select…" /></SelectTrigger>
-                <SelectContent>{facMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}</SelectContent>
+                <SelectContent>
+                  <SelectItem value={NONE}>Select…</SelectItem>
+                  {facMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}
+                </SelectContent>
               </Select>
-              {facilitators.length > 1 && (
-                <>
-                  <Input type="number" value={f.split_pct ?? ''} onChange={e => updateFacRow(idx, 'split_pct', Number(e.target.value) || 0)} className="w-16 h-8 text-sm" placeholder="50" />
-                  <span className="text-xs text-muted-foreground shrink-0">%</span>
-                </>
-              )}
-              {facilitators.length > 0 && (
-                <button type="button" onClick={() => removeFacilitator(idx)} className="text-muted-foreground hover:text-destructive shrink-0"><X size={13} /></button>
-              )}
+              <Input
+                type="number"
+                value={facilitators.length === 1 ? 100 : (f.split_pct ?? '')}
+                onChange={e => updateFacRow(idx, 'split_pct', Number(e.target.value) || 0)}
+                disabled={facilitators.length === 1}
+                className="w-16 h-8 text-sm"
+                placeholder="100"
+              />
+              <span className="text-xs text-muted-foreground shrink-0">%</span>
+              <button type="button" onClick={() => removeFacilitator(idx)} className="text-muted-foreground hover:text-destructive shrink-0"><X size={13} /></button>
             </div>
           ))}
           {facilitators.length === 0 && (
@@ -344,10 +376,10 @@ function CommissionSection({ draft, update, teamMembers, pnl }) {
       <div>
         <label className="text-xs text-muted-foreground block mb-1">Referral Source <span className="text-muted-foreground/50">(optional)</span></label>
         <div className="flex gap-2">
-          <Select value={draft.source_rep_id || '__none__'} onValueChange={v => update('source_rep_id', v === '__none__' ? null : v)}>
+          <Select value={draft.source_rep_id || NONE} onValueChange={v => update('source_rep_id', v === NONE ? null : v)}>
             <SelectTrigger className="h-8 text-sm flex-1"><SelectValue placeholder="None" /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="__none__">None</SelectItem>
+              <SelectItem value={NONE}>None</SelectItem>
               {allActive.map(m => <SelectItem key={m.id} value={m.id}>{m.first_name} {m.last_name || ''}</SelectItem>)}
             </SelectContent>
           </Select>
@@ -366,6 +398,11 @@ function CommissionSection({ draft, update, teamMembers, pnl }) {
           <p className="text-xs text-muted-foreground italic text-center py-1">Set lead type and specialists to calculate commission</p>
         ) : (
           <>
+            {comm.splitInvalid && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                <AlertTriangle size={11} /> Facilitator split %s must total 100%
+              </div>
+            )}
             <div className="flex justify-between text-xs text-muted-foreground border-b border-border/40 pb-1.5">
               <span>Commissionable Profit</span>
               <span className="font-medium text-foreground">{formatCurrency(pnl.commissionableProfit)}</span>
