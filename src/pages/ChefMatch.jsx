@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useChefs, useEvents, useEventChefs, useClients, useMatchRuns, getChefKPIs, formatCurrency } from '@/hooks/useAppData';
+import { useChefs, useEvents, useEventChefs, useClients, useMatchRuns, getChefKPIs } from '@/hooks/useAppData';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -437,40 +437,26 @@ Travel fee: $${result.travelFee}`,
           )}
 
           {sousCandidates.length > 0 && (
-            <Card className="p-5 space-y-3">
+            <div className="space-y-3">
               <div>
                 <h4 className="font-heading font-semibold">Sous candidates</h4>
                 <p className="text-xs text-muted-foreground">
                   Guest count is 15+. Select a sous to attach when you create the event.
                 </p>
               </div>
-              <div className="space-y-2">
-                {sousCandidates.map((s) => {
-                  const selected = selectedSousId === s.chef.id;
-                  return (
-                    <button
-                      key={s.chef.id}
-                      type="button"
-                      onClick={() => setSelectedSousId(s.chef.id)}
-                      className={`w-full text-left flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-colors ${
-                        selected ? 'border-navy bg-navy/5' : 'border-border hover:bg-secondary/40'
-                      }`}
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{s.chef.first_name} {s.chef.last_name}</p>
-                        <p className="text-xs text-muted-foreground truncate max-w-md">{s.reason}</p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <p className="text-sm font-heading font-bold text-gold">{s.score}</p>
-                        {s.travelFee > 0 && (
-                          <p className="text-xs text-amber-700">+{formatCurrency(s.travelFee)} travel</p>
-                        )}
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="space-y-4">
+                {sousCandidates.map((s, i) => (
+                  <MatchResultCard
+                    key={s.chef.id}
+                    result={s}
+                    rank={i + 1}
+                    selected={selectedSousId === s.chef.id}
+                    onSelect={() => setSelectedSousId(s.chef.id)}
+                    onViewChef={setViewChef}
+                  />
+                ))}
               </div>
-            </Card>
+            </div>
           )}
         </div>
       )}
