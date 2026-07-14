@@ -6,7 +6,7 @@ export const ROLE_PERMISSIONS_QUERY_KEY = ['role-permissions'];
 
 async function fetchRolePermissions() {
   const [rolesResult, permsResult] = await Promise.all([
-    supabase.from('app_roles').select('id, name, is_system').order('name'),
+    supabase.from('app_roles').select('id, name, is_system').order('is_system', { ascending: false }).order('name'),
     supabase.from('role_permissions').select('id, role_id, resource, action'),
   ]);
 

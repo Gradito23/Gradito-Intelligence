@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/table';
 import { toast } from '@/components/ui/use-toast';
 
+const SYSTEM_ROLE_ORDER = { admin: 0, user: 1 };
+
 function buildInitialMatrix(roles, serverMatrix) {
   const draft = {};
   for (const role of roles) {
@@ -36,6 +38,18 @@ export default function PermissionsMatrix() {
 
   const roles = data?.roles ?? [];
   const serverMatrix = data?.matrix ?? {};
+
+  const orderedRoles = useMemo(() => {
+    return [...roles].sort((a, b) => {
+      if (a.is_system !== b.is_system) return a.is_system ? -1 : 1;
+      if (a.is_system && b.is_system) {
+        const ao = SYSTEM_ROLE_ORDER[a.name] ?? 50;
+        const bo = SYSTEM_ROLE_ORDER[b.name] ?? 50;
+        if (ao !== bo) return ao - bo;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [roles]);
 
   useEffect(() => {
     if (data && !dirty) {
@@ -128,7 +142,7 @@ export default function PermissionsMatrix() {
             <TableRow>
               <TableHead className="min-w-[180px]">Resource</TableHead>
               <TableHead className="w-20">Action</TableHead>
-              {roles.map((role) => (
+              {orderedRoles.map((role) => (
                 <TableHead key={role.id} className="text-center min-w-[100px]">
                   <div className="flex flex-col items-center gap-1">
                     <span className="capitalize">{role.name.replace(/_/g, ' ')}</span>
@@ -143,7 +157,7 @@ export default function PermissionsMatrix() {
               <TableRow key={key}>
                 <TableCell className="font-medium text-sm">{resource.label}</TableCell>
                 <TableCell className="text-sm capitalize text-muted-foreground">{action}</TableCell>
-                {roles.map((role) => {
+                {orderedRoles.map((role) => {
                   const adminLocked = isAdminRole(role.id);
                   const checked = draft[role.id]?.has(key) ?? false;
                   return (
