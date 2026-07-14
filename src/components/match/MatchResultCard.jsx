@@ -5,17 +5,17 @@ import { Button } from '@/components/ui/button';
 import ChefAvatar from '@/components/ui/ChefAvatar';
 import GoldStars from '@/components/ui/GoldStars';
 import { formatCurrency } from '@/hooks/useAppData';
-import { MapPin, Users, User, CalendarPlus } from 'lucide-react';
+import { MapPin, User } from 'lucide-react';
 
 export default function MatchResultCard({
   result,
   rank,
   onViewChef,
-  onCreateEvent,
   selected = false,
+  selectedLabel,
   onSelect,
 }) {
-  const { chef, score, reason, travelFee, needsSous, label } = result;
+  const { chef, score, reason, travelFee, label } = result;
   const fullName = `${chef.first_name} ${chef.last_name}`;
   const selectable = typeof onSelect === 'function';
 
@@ -25,8 +25,6 @@ export default function MatchResultCard({
     'Wildcard': 'bg-purple-600 text-white',
     'Repeat Favorite': 'bg-blue-600 text-white',
   };
-
-  const showNeedsSous = needsSous && chef.roles_available !== 'Sous';
 
   return (
     <Card
@@ -76,44 +74,28 @@ export default function MatchResultCard({
               </p>
             )}
 
-            {(travelFee > 0 || showNeedsSous) && (
+            {travelFee > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
-                {travelFee > 0 && (
-                  <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">
-                    <MapPin size={10} className="mr-1" /> +{formatCurrency(travelFee)} travel
-                  </Badge>
-                )}
-                {showNeedsSous && (
-                  <Badge className="bg-blue-100 text-blue-800 border-blue-200 text-xs">
-                    <Users size={10} className="mr-1" /> Needs a sous chef
-                  </Badge>
-                )}
+                <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-xs">
+                  <MapPin size={10} className="mr-1" /> +{formatCurrency(travelFee)} travel
+                </Badge>
               </div>
             )}
 
-            {(onViewChef || onCreateEvent) && (
+            {selected && selectedLabel && (
+              <p className="mt-2 text-xs font-medium text-navy">{selectedLabel}</p>
+            )}
+
+            {onViewChef && (
               <div
                 className="mt-4 flex flex-wrap gap-2"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >
-                {onViewChef && (
-                  <Button type="button" variant="outline" size="sm" onClick={() => onViewChef(chef)}>
-                    <User size={14} className="mr-1.5" />
-                    View chef
-                  </Button>
-                )}
-                {onCreateEvent && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="bg-navy hover:bg-navy/90 text-white"
-                    onClick={() => onCreateEvent(result)}
-                  >
-                    <CalendarPlus size={14} className="mr-1.5" />
-                    Create event
-                  </Button>
-                )}
+                <Button type="button" variant="outline" size="sm" onClick={() => onViewChef(chef)}>
+                  <User size={14} className="mr-1.5" />
+                  View chef
+                </Button>
               </div>
             )}
           </div>

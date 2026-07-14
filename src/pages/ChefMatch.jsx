@@ -16,6 +16,11 @@ import { toast } from '@/components/ui/use-toast';
 
 const TRANSCRIPT_SAVE_LIMIT = 2000;
 
+function chefLabel(chef) {
+  if (!chef) return '';
+  return `${chef.first_name || ''} ${chef.last_name || ''}`.trim();
+}
+
 function computeMatchScore(chef, criteria, events, eventChefs, clients) {
   let score = 0;
   const reasons = [];
@@ -138,12 +143,6 @@ function resultsFromSuggested(suggested, chefs, criteria) {
     .filter(Boolean);
 }
 
-const ROLE_ORDER = { Both: 0, Head: 1, Sous: 2 };
-
-function createRoleFor(result) {
-  return result.chef.roles_available === 'Sous' ? 'sous' : 'head';
-}
-
 export default function ChefMatch() {
   const { data: chefs = [] } = useChefs();
   const { data: events = [] } = useEvents();
@@ -156,6 +155,7 @@ export default function ChefMatch() {
   const [criteria, setCriteria] = useState(null);
   const [results, setResults] = useState(null);
   const [sousCandidates, setSousCandidates] = useState([]);
+  const [selectedHeadId, setSelectedHeadId] = useState(null);
   const [selectedSousId, setSelectedSousId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState('input');
@@ -174,56 +174,58 @@ export default function ChefMatch() {
     return map;
   }, [chefs, events, eventChefs]);
 
-  const displayResults = useMemo(() => {
-    const byId = new Map();
-    for (const r of results || []) {
-      byId.set(r.chef.id, {
-        ...r,
-        needsSous: r.needsSous && r.chef.roles_available !== 'Sous',
-      });
-    }
-    for (const r of sousCandidates || []) {
-      if (byId.has(r.chef.id)) continue;
-      byId.set(r.chef.id, {
-        ...r,
-        needsSous: false,
-      });
-    }
-    return [...byId.values()].sort((a, b) => {
-      const ra = ROLE_ORDER[a.chef.roles_available] ?? 9;
-      const rb = ROLE_ORDER[b.chef.roles_available] ?? 9;
-      if (ra !== rb) return ra - rb;
-      return (b.score || 0) - (a.score || 0);
-    });
-  }, [results, sousCandidates]);
+  const needsSousSection = (criteria?.guest_count || 0) >= 15 && sousCandidates.length > 0;
 
-  const sousOnlyCandidates = useMemo(
-    () => (sousCandidates || []).filter((s) => s.chef.roles_available === 'Sous'),
-    [sousCandidates],
-  );
+  const selectedHeadChef = useMemo(() => {
+    const fromResults = (results || []).find((r) => r.chef.id === selectedHeadId);
+    return fromResults?.chef || chefs.find((c) => c.id === selectedHeadId) || null;
+  }, [results, selectedHeadId, chefs]);
 
-  const openCreateEvent = (result, role = 'head') => {
-    setPrefillCriteria(criteria);
-    if (role === 'sous') {
-      const headRow =
-        (results || []).find((r) => r.chef.roles_available === 'Head' || r.chef.roles_available === 'Both') ||
-        results?.[0];
-      setPrefillChef(headRow?.chef || null);
-      setPrefillSous(result.chef);
-    } else {
-      setPrefillChef(result.chef);
-      const sous =
-        sousOnlyCandidates.find((s) => s.chef.id === selectedSousId) ||
-        sousOnlyCandidates[0] ||
-        null;
-      setPrefillSous(sous?.chef || null);
+  const selectedSousChef = useMemo(() => {
+    const fromSous = (sousCandidates || []).find((r) => r.chef.id === selectedSousId);
+    return fromSous?.chef || null;
+  }, [sousCandidates, selectedSousId]);
+
+  const teamCreateLabel = useMemo(() => {
+    if (!selectedHeadChef) return 'Create event';
+    const head = chefLabel(selectedHeadChef);
+    if (needsSousSection && selectedSousChef) {
+      return `Create event with ${head} + ${chefLabel(selectedSousChef)}`;
     }
+    return `Create event with ${head}`;
+  }, [selectedHeadChef, selectedSousChef, needsSousSection]);
+
+  const openCreateEventFromTeam = (overrides = {}) => {
+    const headId = overrides.headId ?? selectedHeadId;
+    const sousId = overrides.sousId ?? selectedSousId;
+    const crit = overrides.criteria ?? criteria;
+    const head =
+      (results || []).find((r) => r.chef.id === headId)?.chef ||
+      chefs.find((c) => c.id === headId) ||
+      null;
+    if (!head) {
+      toast({ title: 'Select a head chef first', variant: 'destructive' });
+      return;
+    }
+    const guests = crit?.guest_count || 0;
+    const sous =
+      guests >= 15
+        ? (sousCandidates || []).find((r) => r.chef.id === sousId)?.chef || null
+        : null;
+    setPrefillCriteria(crit);
+    setPrefillChef(head);
+    setPrefillSous(sous);
     setCreateEventOpen(true);
   };
 
   const openViewChef = (chef, role = 'head') => {
     setViewChefRole(role);
     setViewChef(chef);
+  };
+
+  const selectHead = (chefId) => {
+    setSelectedHeadId(chefId);
+    if (selectedSousId === chefId) setSelectedSousId(null);
   };
 
   const extractCriteria = async () => {
@@ -339,6 +341,7 @@ Travel fee: $${result.travelFee}`,
       setSousCandidates(sousList);
       const firstSousOnly = sousList.find((s) => s.chef.roles_available === 'Sous') || sousList[0];
       setSelectedSousId(firstSousOnly?.chef.id || null);
+      setSelectedHeadId(finalResults[0]?.chef.id || null);
 
       setResults(finalResults);
       setStep('results');
@@ -388,6 +391,7 @@ Travel fee: $${result.travelFee}`,
     setSousCandidates(sousList);
     const firstSousOnly = sousList.find((s) => s.chef.roles_available === 'Sous') || sousList[0];
     setSelectedSousId(firstSousOnly?.chef.id || null);
+    setSelectedHeadId(rebuilt[0]?.chef.id || null);
     setStep('results');
     setExpandedHistoryId(null);
   };
@@ -413,6 +417,7 @@ Travel fee: $${result.travelFee}`,
     setResults(null);
     setCriteria(null);
     setSousCandidates([]);
+    setSelectedHeadId(null);
     setSelectedSousId(null);
   };
 
@@ -477,28 +482,72 @@ Travel fee: $${result.travelFee}`,
             </Button>
           </div>
           {criteria && <CriteriaChips criteria={criteria} onRemove={() => {}} />}
-          {displayResults.length === 0 ? (
+          {results.length === 0 && sousCandidates.length === 0 ? (
             <Card className="p-8 text-center">
               <AlertCircle size={40} className="mx-auto mb-3 text-muted-foreground opacity-40" />
               <p className="text-muted-foreground">No chefs match these criteria. Try broadening the area or cuisine requirements.</p>
             </Card>
           ) : (
-            <div className="space-y-4">
-              {displayResults.map((result, i) => {
-                const role = createRoleFor(result);
-                const isSous = result.chef.roles_available === 'Sous';
-                return (
-                  <MatchResultCard
-                    key={result.chef.id}
-                    result={result}
-                    rank={i + 1}
-                    selected={isSous && selectedSousId === result.chef.id}
-                    onSelect={isSous ? () => setSelectedSousId(result.chef.id) : undefined}
-                    onViewChef={(chef) => openViewChef(chef, role)}
-                    onCreateEvent={(r) => openCreateEvent(r, role)}
-                  />
-                );
-              })}
+            <div className="space-y-6">
+              <section className="space-y-3">
+                <div>
+                  <h4 className="font-heading font-semibold">Head chef</h4>
+                  <p className="text-xs text-muted-foreground">Pick the lead chef for this event.</p>
+                </div>
+                {results.length === 0 ? (
+                  <Card className="p-4 text-sm text-muted-foreground">No head chefs matched.</Card>
+                ) : (
+                  <div className="space-y-4">
+                    {results.map((result, i) => (
+                      <MatchResultCard
+                        key={result.chef.id}
+                        result={{ ...result, needsSous: false }}
+                        rank={i + 1}
+                        selected={selectedHeadId === result.chef.id}
+                        selectedLabel="Selected as Head"
+                        onSelect={() => selectHead(result.chef.id)}
+                        onViewChef={(chef) => openViewChef(chef, 'head')}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {needsSousSection && (
+                <section className="space-y-3">
+                  <div>
+                    <h4 className="font-heading font-semibold">Sous chef</h4>
+                    <p className="text-xs text-muted-foreground">
+                      Support chef · recommended for 15+ guests. Select one to pair with the head.
+                    </p>
+                  </div>
+                  <div className="space-y-4">
+                    {sousCandidates.map((result, i) => (
+                      <MatchResultCard
+                        key={result.chef.id}
+                        result={{ ...result, needsSous: false }}
+                        rank={i + 1}
+                        selected={selectedSousId === result.chef.id}
+                        selectedLabel="Selected as Sous"
+                        onSelect={() => setSelectedSousId(result.chef.id)}
+                        onViewChef={(chef) => openViewChef(chef, 'sous')}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <div className="flex justify-end pt-1">
+                <Button
+                  type="button"
+                  className="bg-navy hover:bg-navy/90 text-white"
+                  disabled={!selectedHeadChef}
+                  onClick={() => openCreateEventFromTeam()}
+                >
+                  <CalendarPlus size={14} className="mr-1.5" />
+                  {teamCreateLabel}
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -625,7 +674,13 @@ Travel fee: $${result.travelFee}`,
         onClose={() => setViewChef(null)}
         onCreateEvent={(chef) => {
           setViewChef(null);
-          openCreateEvent({ chef }, viewChefRole);
+          if (viewChefRole === 'sous') {
+            setSelectedSousId(chef.id);
+            openCreateEventFromTeam({ sousId: chef.id });
+          } else {
+            selectHead(chef.id);
+            openCreateEventFromTeam({ headId: chef.id });
+          }
         }}
       />
 
