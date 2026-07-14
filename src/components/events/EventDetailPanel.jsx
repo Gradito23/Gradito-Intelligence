@@ -16,6 +16,7 @@ import { CUISINES, SERVICE_AREAS, EXPERIENCE_TYPES } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
 import { computePnL } from '@/lib/pnlUtils';
 import { computeCommission, normalizeFacilitators } from '@/lib/commissionUtils';
+import { resolveClientByName } from '@/lib/resolveClient';
 import EventPnL from './EventPnL';
 import EventAttribution from './EventAttribution';
 import EventSummary from './EventSummary';
@@ -125,10 +126,20 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
       return;
     }
     setSaving(true);
+    try {
     const computed_client_revenue = pnl ? pnl.clientTotal : (Number(draft.client_revenue) || 0);
+
+    let clientId = draft.client_id || null;
+    const nameChanged = String(draft.client_name || '').trim() !== String(event.client_name || '').trim();
+    if (!clientId || nameChanged) {
+      const client = await resolveClientByName(draft.client_name, { eventType: draft.event_type });
+      clientId = client?.id || null;
+    }
 
     await base44.entities.Event.update(event.id, {
       ...draft,
+      client_id:             clientId || undefined,
+      client_name:           String(draft.client_name || '').trim(),
       guest_count:           Number(draft.guest_count) || 0,
       experience_fee:        Number(draft.experience_fee) || 0,
       food_revenue:          Number(draft.food_revenue) || 0,
@@ -175,11 +186,20 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
       summary: `Updated event for ${draft.client_name} on ${draft.date}`,
     });
     queryClient.invalidateQueries({ queryKey: ['events'] });
+    queryClient.invalidateQueries({ queryKey: ['clients'] });
     queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
     queryClient.invalidateQueries({ queryKey: ['commissionLines'] });
     toast({ title: `Event for ${draft.client_name} updated` });
-    setSaving(false);
     setDirty(false);
+    } catch (err) {
+      toast({
+        title: 'Failed to update event',
+        description: err.message || 'Something went wrong.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleFinalize = async () => {

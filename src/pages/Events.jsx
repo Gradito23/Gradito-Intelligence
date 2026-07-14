@@ -47,7 +47,12 @@ export default function Events() {
   const margin = totalRevenue - totalPayouts;
 
   const clientCounts = {};
-  events.forEach(e => { if (e.client_id) clientCounts[e.client_id] = (clientCounts[e.client_id] || 0) + 1; });
+  events.forEach((e) => {
+    const key = e.client_id
+      || (e.client_name ? `name:${String(e.client_name).trim().toLowerCase().replace(/\s+/g, ' ')}` : null);
+    if (!key) return;
+    clientCounts[key] = (clientCounts[key] || 0) + 1;
+  });
   const repeatRate = Object.keys(clientCounts).length > 0
     ? Math.round((Object.values(clientCounts).filter(c => c > 1).length / Object.keys(clientCounts).length) * 100)
     : 0;

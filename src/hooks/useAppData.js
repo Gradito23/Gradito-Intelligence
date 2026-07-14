@@ -94,9 +94,14 @@ export function getChefKPIs(chef, events, eventChefs) {
   chefEvents.forEach(e => (e.cuisines_served || []).forEach(c => { cuisineCounts[c] = (cuisineCounts[c] || 0) + 1; }));
   const mostBookedCuisine = Object.entries(cuisineCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
 
-  const clientIds = [...new Set(chefEvents.map(e => e.client_id).filter(Boolean))];
   const clientEventCounts = {};
-  chefEvents.forEach(e => { if (e.client_id) clientEventCounts[e.client_id] = (clientEventCounts[e.client_id] || 0) + 1; });
+  chefEvents.forEach((e) => {
+    const key = e.client_id
+      || (e.client_name ? `name:${String(e.client_name).trim().toLowerCase().replace(/\s+/g, ' ')}` : null);
+    if (!key) return;
+    clientEventCounts[key] = (clientEventCounts[key] || 0) + 1;
+  });
+  const clientKeys = Object.keys(clientEventCounts);
   const repeatClients = Object.values(clientEventCounts).filter(c => c > 1).length;
 
   return {
@@ -105,7 +110,7 @@ export function getChefKPIs(chef, events, eventChefs) {
     headEarnings: headFees,
     sousEarnings: sousFees,
     mostBookedCuisine,
-    clientsWorkedWith: clientIds.length,
+    clientsWorkedWith: clientKeys.length,
     repeatClients,
   };
 }

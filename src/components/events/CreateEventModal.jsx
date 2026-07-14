@@ -22,6 +22,7 @@ import {
 } from '@/lib/pnlUtils';
 import { useTeamMembers } from '@/hooks/useAppData';
 import { computeCommission, LEAD_TYPES, COMMISSION_RATES } from '@/lib/commissionUtils';
+import { resolveClientByName } from '@/lib/resolveClient';
 
 function ChipPicker({ label, selected, options, onChange }) {
   return (
@@ -294,8 +295,15 @@ export default function CreateEventModal({
       if (!window.confirm('Guest count ≥ 15 usually requires a sous chef. Save without one?')) return;
     }
     setSaving(true);
+    try {
+    const client = await resolveClientByName(form.client_name, {
+      eventType: form.event_type,
+      clients,
+    });
     const event = await base44.entities.Event.create({
       ...form,
+      client_id:             client?.id || undefined,
+      client_name:           client?.name || form.client_name,
       guest_count:           Number(form.guest_count) || 0,
       experience_fee:        Number(form.experience_fee) || 0,
       food_revenue:          Number(form.food_revenue) || 0,
@@ -344,10 +352,19 @@ export default function CreateEventModal({
     });
     queryClient.invalidateQueries({ queryKey: ['events'] });
     queryClient.invalidateQueries({ queryKey: ['eventChefs'] });
+    queryClient.invalidateQueries({ queryKey: ['clients'] });
     queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
     toast({ title: `Event for ${form.client_name} created` });
-    setSaving(false);
     onClose();
+    } catch (err) {
+      toast({
+        title: 'Failed to create event',
+        description: err.message || 'Something went wrong.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
