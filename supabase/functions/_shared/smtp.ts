@@ -13,6 +13,9 @@ export type CustomSmtpConfig = {
   last_tested_at: string | null;
   last_test_status: string | null;
   last_test_error: string | null;
+  encrypted_password?: string | null;
+  password_iv?: string | null;
+  dek_version?: number | null;
 };
 
 const SMTP_TIMEOUT_MS = 15_000;

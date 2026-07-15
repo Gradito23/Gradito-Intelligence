@@ -1,9 +1,14 @@
-import { corsHeaders, isValidEmail, jsonResponse, requireAdmin } from '../_shared/auth.ts';
+import { corsHeaders, isValidEmail, jsonResponse, requireAdmin, SECRET_MASK } from '../_shared/auth.ts';
 import {
   loadResendSettings,
+  packResendApiKey,
   sendResendEmail,
   toSafeResendSettings,
 } from '../_shared/resend.ts';
+
+function keepExistingSecret(input: string): boolean {
+  return !input || input === SECRET_MASK;
+}
 
 /** @deprecated Use integration-email instead. Kept for backward compatibility. */
 Deno.serve(async (req) => {
@@ -42,16 +47,17 @@ Deno.serve(async (req) => {
       }
 
       const existing = await loadResendSettings(adminClient);
-      const apiKey = apiKeyInput || existing?.api_key?.trim() || '';
+      const apiKey = keepExistingSecret(apiKeyInput) ? (existing?.api_key?.trim() || '') : apiKeyInput;
       if (!apiKey) {
         return jsonResponse({ error: 'API key is required' }, 400);
       }
 
+      const secretFields = await packResendApiKey(adminClient, apiKey);
       const { data, error } = await adminClient
         .from('integration_resend_settings')
         .upsert({
           id: 1,
-          api_key: apiKey,
+          ...secretFields,
           from_email: fromEmail,
           from_name: fromName || null,
           enabled: Boolean(apiKey && fromEmail),
@@ -61,7 +67,7 @@ Deno.serve(async (req) => {
         .single();
 
       if (error) throw error;
-      return jsonResponse(toSafeResendSettings(data));
+      return jsonResponse(toSafeResendSettings({ ...data, api_key: apiKey }));
     }
 
     if (body.action === 'test' || body.test_to) {

@@ -1,4 +1,5 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { backfillIntegrationSecrets, resolveSecret } from './crypto.ts';
 import { loadResendSettings, sendResendEmail } from './resend.ts';
 import { CustomSmtpConfig, sendCustomSmtpEmail } from './smtp.ts';
 
@@ -27,6 +28,8 @@ export async function getActiveProvider(
 export async function loadActiveCustomSmtpConfig(
   adminClient: SupabaseClient,
 ): Promise<CustomSmtpConfig | null> {
+  await backfillIntegrationSecrets(adminClient);
+
   const { data, error } = await adminClient
     .from('custom_smtp_configs')
     .select('*')
@@ -34,7 +37,18 @@ export async function loadActiveCustomSmtpConfig(
     .maybeSingle();
 
   if (error) throw error;
-  return data as CustomSmtpConfig | null;
+  if (!data) return null;
+
+  const password = await resolveSecret(adminClient, {
+    encrypted: data.encrypted_password,
+    iv: data.password_iv,
+    legacyPlaintext: data.password,
+  });
+
+  return {
+    ...(data as CustomSmtpConfig),
+    password,
+  };
 }
 
 export async function logEmail(

@@ -6,10 +6,17 @@ import {
   requireAdmin,
   SECRET_MASK,
 } from '../_shared/auth.ts';
+import {
+  backfillIntegrationSecrets,
+  hasStoredSecret,
+  packSecret,
+  resolveSecret,
+} from '../_shared/crypto.ts';
 import { buildEmailAnalytics, logEmail, sendEmail } from '../_shared/email.ts';
 import { renderTestEmail } from '../_shared/emailTemplates.ts';
 import {
   loadResendSettings,
+  packResendApiKey,
   sendResendEmail,
   toSafeResendSettings,
 } from '../_shared/resend.ts';
@@ -19,15 +26,56 @@ type SafeCustomSmtpConfig = Omit<CustomSmtpConfig, 'password'> & {
   password_masked: string;
 };
 
+function keepExistingSecret(input: string): boolean {
+  return !input || input === SECRET_MASK;
+}
+
 function maskCustomConfig(row: CustomSmtpConfig): SafeCustomSmtpConfig {
-  const { password, ...rest } = row;
+  const {
+    password,
+    encrypted_password,
+    password_iv: _passwordIv,
+    dek_version: _dekVersion,
+    ...rest
+  } = row;
+  const hasPassword = hasStoredSecret({
+    encrypted: encrypted_password,
+    legacyPlaintext: password,
+  });
   return {
     ...rest,
-    password_masked: password?.trim() ? SECRET_MASK : '',
+    password_masked: hasPassword ? SECRET_MASK : '',
+  };
+}
+
+async function hydrateSmtpConfig(
+  adminClient: ReturnType<typeof createServiceClient>,
+  row: CustomSmtpConfig,
+): Promise<CustomSmtpConfig> {
+  const password = await resolveSecret(adminClient, {
+    encrypted: row.encrypted_password,
+    iv: row.password_iv,
+    legacyPlaintext: row.password,
+  });
+  return { ...row, password };
+}
+
+async function packSmtpPassword(
+  adminClient: ReturnType<typeof createServiceClient>,
+  password: string,
+) {
+  const packed = await packSecret(adminClient, password);
+  return {
+    password: '',
+    encrypted_password: packed.encrypted,
+    password_iv: packed.iv,
+    dek_version: packed.dekVersion,
   };
 }
 
 async function loadCustomConfigs(adminClient: ReturnType<typeof createServiceClient>) {
+  await backfillIntegrationSecrets(adminClient);
+
   const { data, error } = await adminClient
     .from('custom_smtp_configs')
     .select('*')
@@ -131,18 +179,19 @@ async function handleSaveResend(
   }
 
   const existing = await loadResendSettings(adminClient);
-  const apiKey = apiKeyInput || existing?.api_key?.trim() || '';
+  const apiKey = keepExistingSecret(apiKeyInput) ? (existing?.api_key?.trim() || '') : apiKeyInput;
   if (!apiKey) {
     return jsonResponse({ error: 'API key is required' }, 400);
   }
 
   const enabled = Boolean(apiKey && fromEmail);
+  const secretFields = await packResendApiKey(adminClient, apiKey);
 
   const { data, error } = await adminClient
     .from('integration_resend_settings')
     .upsert({
       id: 1,
-      api_key: apiKey,
+      ...secretFields,
       from_email: fromEmail,
       from_name: fromName || null,
       enabled,
@@ -152,7 +201,12 @@ async function handleSaveResend(
     .single();
 
   if (error) throw error;
-  return jsonResponse({ resend: toSafeResendSettings(data) });
+  return jsonResponse({
+    resend: toSafeResendSettings({
+      ...data,
+      api_key: apiKey,
+    }),
+  });
 }
 
 async function handleTestResend(
@@ -218,7 +272,7 @@ async function resolveCustomConfigForSave(
     return { error: jsonResponse({ error: 'A valid from email is required' }, 400) };
   }
 
-  let password = passwordInput;
+  let password = keepExistingSecret(passwordInput) ? '' : passwordInput;
   if (id) {
     const { data: existing, error } = await adminClient
       .from('custom_smtp_configs')
@@ -228,7 +282,13 @@ async function resolveCustomConfigForSave(
 
     if (error) throw error;
     if (!existing) return { error: jsonResponse({ error: 'Configuration not found' }, 404) };
-    if (!password) password = existing.password;
+    if (!password) {
+      password = await resolveSecret(adminClient, {
+        encrypted: existing.encrypted_password,
+        iv: existing.password_iv,
+        legacyPlaintext: existing.password,
+      });
+    }
   } else if (!password) {
     return { error: jsonResponse({ error: 'Password is required for new configurations' }, 400) };
   }
@@ -256,6 +316,8 @@ async function handleSaveCustomSmtp(
   if (resolved.error) return resolved.error;
   const cfg = resolved.config!;
 
+  const secretFields = await packSmtpPassword(adminClient, cfg.password!);
+
   if (cfg.id) {
     const { data, error } = await adminClient
       .from('custom_smtp_configs')
@@ -264,7 +326,7 @@ async function handleSaveCustomSmtp(
         smtp_port: cfg.smtp_port,
         encryption: cfg.encryption,
         username: cfg.username,
-        password: cfg.password,
+        ...secretFields,
         from_name: cfg.from_name,
         from_email: cfg.from_email,
         updated_by: user.id,
@@ -274,7 +336,9 @@ async function handleSaveCustomSmtp(
       .single();
 
     if (error) throw error;
-    return jsonResponse({ config: maskCustomConfig(data as CustomSmtpConfig) });
+    return jsonResponse({
+      config: maskCustomConfig({ ...(data as CustomSmtpConfig), password: cfg.password! }),
+    });
   }
 
   const { count } = await adminClient
@@ -290,7 +354,7 @@ async function handleSaveCustomSmtp(
       smtp_port: cfg.smtp_port,
       encryption: cfg.encryption,
       username: cfg.username,
-      password: cfg.password,
+      ...secretFields,
       from_name: cfg.from_name,
       from_email: cfg.from_email,
       is_active: isFirst,
@@ -300,7 +364,9 @@ async function handleSaveCustomSmtp(
     .single();
 
   if (error) throw error;
-  return jsonResponse({ config: maskCustomConfig(data as CustomSmtpConfig) });
+  return jsonResponse({
+    config: maskCustomConfig({ ...(data as CustomSmtpConfig), password: cfg.password! }),
+  });
 }
 
 async function pickNextActiveConfig(
@@ -428,8 +494,9 @@ async function resolveConfigForTest(
     const resolved = await resolveCustomConfigForSave({ ...body, id, password: body.password }, adminClient);
     if (resolved.error) return { error: resolved.error };
 
+    const hydrated = await hydrateSmtpConfig(adminClient, data as CustomSmtpConfig);
     return {
-      config: { ...(data as CustomSmtpConfig), ...resolved.config, password: resolved.config!.password! },
+      config: { ...hydrated, ...resolved.config, password: resolved.config!.password! },
       configId: id,
     };
   }
@@ -563,6 +630,16 @@ Deno.serve(async (req) => {
         return handleListLogs(body, adminClient);
       case 'send':
         return handleSend(body, adminClient);
+      case 'backfill_secrets': {
+        if (!Deno.env.get('PLATFORM_KEK')?.trim()) {
+          return jsonResponse({
+            error:
+              'PLATFORM_KEK is not set. Generate with: openssl rand -base64 32 && npx supabase secrets set PLATFORM_KEK=<value>',
+          }, 400);
+        }
+        const result = await backfillIntegrationSecrets(adminClient);
+        return jsonResponse({ ok: true, ...result });
+      }
       default:
         return jsonResponse({ error: 'Unknown action' }, 400);
     }

@@ -78,6 +78,13 @@ npm run lint
 - Auth and role permissions live in Supabase (`profiles`, `app_roles`, `role_permissions`).
 - File uploads use the `uploads` / `avatars` storage buckets.
 - LLM features (Chef Match, invoice parse) use the `integration-openai` edge function; configure the API key under **Admin → Integrations → OpenAI**.
+- Integration secrets (OpenAI, Resend, SMTP) are encrypted at rest with a platform DEK wrapped by `PLATFORM_KEK` (Edge Function secret). Set once after deploy:
+
+```bash
+npx supabase secrets set PLATFORM_KEK="$(openssl rand -base64 32)"
+```
+
+Then apply the encryption migration (`supabase db push`), redeploy edge functions, and open **Admin → Integrations** (or invoke `backfill_secrets` on `integration-openai` / `integration-email`) so existing plaintext keys are encrypted. Keep a secure backup of `PLATFORM_KEK` — losing it makes ciphertext unrecoverable.
 
 ---
 

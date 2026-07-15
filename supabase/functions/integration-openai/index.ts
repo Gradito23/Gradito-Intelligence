@@ -6,6 +6,12 @@ import {
   requireAuth,
   SECRET_MASK,
 } from '../_shared/auth.ts';
+import {
+  backfillIntegrationSecrets,
+  hasStoredSecret,
+  packSecret,
+  resolveSecret,
+} from '../_shared/crypto.ts';
 
 type OpenAIModel = {
   id: string;
@@ -22,11 +28,33 @@ type OpenAISettings = {
   last_synced_at: string | null;
   last_sync_error: string | null;
   updated_at: string;
+  encrypted_api_key?: string | null;
+  api_key_iv?: string | null;
+  dek_version?: number | null;
 };
 
 const CHAT_MODEL_PATTERN = /^(gpt-|o[0-9]|chatgpt-)/i;
 
+function keepExistingSecret(input: string): boolean {
+  return !input || input === SECRET_MASK;
+}
+
+async function packOpenAIApiKey(
+  adminClient: ReturnType<typeof createServiceClient>,
+  apiKey: string,
+) {
+  const packed = await packSecret(adminClient, apiKey);
+  return {
+    api_key: '',
+    encrypted_api_key: packed.encrypted,
+    api_key_iv: packed.iv,
+    dek_version: packed.dekVersion,
+  };
+}
+
 async function loadSettings(adminClient: ReturnType<typeof createServiceClient>): Promise<OpenAISettings | null> {
+  await backfillIntegrationSecrets(adminClient);
+
   const { data, error } = await adminClient
     .from('integration_openai_settings')
     .select('*')
@@ -36,8 +64,15 @@ async function loadSettings(adminClient: ReturnType<typeof createServiceClient>)
   if (error) throw error;
   if (!data) return null;
 
+  const apiKey = await resolveSecret(adminClient, {
+    encrypted: data.encrypted_api_key,
+    iv: data.api_key_iv,
+    legacyPlaintext: data.api_key,
+  });
+
   return {
     ...data,
+    api_key: apiKey,
     synced_models: Array.isArray(data.synced_models) ? data.synced_models as OpenAIModel[] : [],
   };
 }
@@ -56,10 +91,15 @@ function toSafeSettings(settings: OpenAISettings | null) {
     };
   }
 
+  const configured = hasStoredSecret({
+    encrypted: settings.encrypted_api_key,
+    legacyPlaintext: settings.api_key,
+  }) || Boolean(settings.api_key?.trim());
+
   return {
-    configured: Boolean(settings.api_key?.trim()),
+    configured,
     enabled: settings.enabled,
-    api_key_masked: settings.api_key?.trim() ? SECRET_MASK : '',
+    api_key_masked: configured ? SECRET_MASK : '',
     default_model_id: settings.default_model_id,
     synced_models: settings.synced_models ?? [],
     last_synced_at: settings.last_synced_at,
@@ -109,18 +149,19 @@ async function handleSaveSettings(
   const enabledInput = typeof body.enabled === 'boolean' ? body.enabled : undefined;
 
   const existing = await loadSettings(adminClient);
-  const apiKey = apiKeyInput || existing?.api_key?.trim() || '';
+  const apiKey = keepExistingSecret(apiKeyInput) ? (existing?.api_key?.trim() || '') : apiKeyInput;
   if (!apiKey) {
     return jsonResponse({ error: 'API key is required' }, 400);
   }
 
   const enabled = enabledInput ?? Boolean(apiKey);
+  const secretFields = await packOpenAIApiKey(adminClient, apiKey);
 
   const { data, error } = await adminClient
     .from('integration_openai_settings')
     .upsert({
       id: 1,
-      api_key: apiKey,
+      ...secretFields,
       enabled,
       updated_by: user.id,
     })
@@ -130,6 +171,7 @@ async function handleSaveSettings(
   if (error) throw error;
   return jsonResponse(toSafeSettings({
     ...data,
+    api_key: apiKey,
     synced_models: Array.isArray(data.synced_models) ? data.synced_models : [],
   }));
 }
@@ -169,9 +211,7 @@ async function handleSyncModels(
 
     const { data, error } = await adminClient
       .from('integration_openai_settings')
-      .upsert({
-        id: 1,
-        api_key: apiKey,
+      .update({
         enabled: settings?.enabled ?? true,
         synced_models: models,
         default_model_id: defaultModelId,
@@ -179,6 +219,7 @@ async function handleSyncModels(
         last_sync_error: null,
         updated_by: user.id,
       })
+      .eq('id', 1)
       .select('*')
       .single();
 
@@ -187,6 +228,7 @@ async function handleSyncModels(
     return jsonResponse({
       ...toSafeSettings({
         ...data,
+        api_key: apiKey,
         synced_models: models,
       }),
       synced_count: models.length,
@@ -195,12 +237,11 @@ async function handleSyncModels(
     const message = err instanceof Error ? err.message : 'Sync failed';
     await adminClient
       .from('integration_openai_settings')
-      .upsert({
-        id: 1,
-        api_key: apiKey,
+      .update({
         last_sync_error: message,
         updated_by: user.id,
-      });
+      })
+      .eq('id', 1);
     return jsonResponse({ error: message }, 400);
   }
 }
@@ -223,12 +264,11 @@ async function handleSetDefaultModel(
 
   const { data, error } = await adminClient
     .from('integration_openai_settings')
-    .upsert({
-      id: 1,
-      api_key: settings?.api_key ?? '',
+    .update({
       default_model_id: modelId,
       updated_by: user.id,
     })
+    .eq('id', 1)
     .select('*')
     .single();
 
@@ -236,8 +276,19 @@ async function handleSetDefaultModel(
 
   return jsonResponse(toSafeSettings({
     ...data,
+    api_key: settings?.api_key ?? '',
     synced_models: Array.isArray(data.synced_models) ? data.synced_models : [],
   }));
+}
+
+async function handleBackfill(adminClient: ReturnType<typeof createServiceClient>) {
+  if (!Deno.env.get('PLATFORM_KEK')?.trim()) {
+    return jsonResponse({
+      error: 'PLATFORM_KEK is not set. Generate with: openssl rand -base64 32 && npx supabase secrets set PLATFORM_KEK=<value>',
+    }, 400);
+  }
+  const result = await backfillIntegrationSecrets(adminClient);
+  return jsonResponse({ ok: true, ...result });
 }
 
 async function handleInvokeLlm(
@@ -371,6 +422,8 @@ Deno.serve(async (req) => {
         return handleSyncModels(user, adminClient);
       case 'set_default_model':
         return handleSetDefaultModel(body, user, adminClient);
+      case 'backfill_secrets':
+        return handleBackfill(adminClient);
       default:
         return jsonResponse({ error: 'Unknown action' }, 400);
     }

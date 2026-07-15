@@ -1,5 +1,11 @@
 import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { SECRET_MASK } from './auth.ts';
+import {
+  backfillIntegrationSecrets,
+  hasStoredSecret,
+  packSecret,
+  resolveSecret,
+} from './crypto.ts';
 
 export type ResendSettings = {
   id: number;
@@ -9,6 +15,9 @@ export type ResendSettings = {
   enabled: boolean;
   updated_at: string;
   updated_by: string | null;
+  encrypted_api_key?: string | null;
+  api_key_iv?: string | null;
+  dek_version?: number | null;
 };
 
 export type SafeResendSettings = {
@@ -23,6 +32,8 @@ export type SafeResendSettings = {
 export async function loadResendSettings(
   adminClient: SupabaseClient,
 ): Promise<ResendSettings | null> {
+  await backfillIntegrationSecrets(adminClient);
+
   const { data, error } = await adminClient
     .from('integration_resend_settings')
     .select('*')
@@ -30,11 +41,25 @@ export async function loadResendSettings(
     .maybeSingle();
 
   if (error) throw error;
-  return data as ResendSettings | null;
+  if (!data) return null;
+
+  const apiKey = await resolveSecret(adminClient, {
+    encrypted: data.encrypted_api_key,
+    iv: data.api_key_iv,
+    legacyPlaintext: data.api_key,
+  });
+
+  return {
+    ...(data as ResendSettings),
+    api_key: apiKey,
+  };
 }
 
 export function toSafeResendSettings(row: ResendSettings | null): SafeResendSettings {
-  const hasKey = Boolean(row?.api_key?.trim());
+  const hasKey = hasStoredSecret({
+    encrypted: row?.encrypted_api_key,
+    legacyPlaintext: row?.api_key,
+  }) || Boolean(row?.api_key?.trim());
   return {
     from_email: row?.from_email ?? null,
     from_name: row?.from_name ?? null,
@@ -42,6 +67,24 @@ export function toSafeResendSettings(row: ResendSettings | null): SafeResendSett
     configured: hasKey && Boolean(row?.from_email?.trim()),
     api_key_masked: hasKey ? SECRET_MASK : '',
     updated_at: row?.updated_at ?? null,
+  };
+}
+
+export async function packResendApiKey(
+  adminClient: SupabaseClient,
+  apiKey: string,
+): Promise<{
+  api_key: string;
+  encrypted_api_key: string;
+  api_key_iv: string;
+  dek_version: number;
+}> {
+  const packed = await packSecret(adminClient, apiKey);
+  return {
+    api_key: '',
+    encrypted_api_key: packed.encrypted,
+    api_key_iv: packed.iv,
+    dek_version: packed.dekVersion,
   };
 }
 
