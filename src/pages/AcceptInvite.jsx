@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/api/supabaseClient';
+import { useAuth } from '@/lib/AuthContext';
+import { getDefaultLandingPath } from '@/lib/permissionMeta';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,10 +10,12 @@ import { Lock, Loader2 } from 'lucide-react';
 import AuthLayout from '@/components/AuthLayout';
 
 export default function AcceptInvite() {
+  const { refreshUser, hasPermission } = useAuth();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [entering, setEntering] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [checking, setChecking] = useState(true);
 
@@ -39,7 +43,7 @@ export default function AcceptInvite() {
 
     const timeout = setTimeout(() => {
       if (mounted) setChecking(false);
-    }, 3000);
+    }, 4000);
 
     return () => {
       mounted = false;
@@ -66,24 +70,26 @@ export default function AcceptInvite() {
       if (updateError) throw updateError;
 
       if (user?.id) {
-        await supabase
+        const { error: profileError } = await supabase
           .from('profiles')
           .update({ status: 'active', password_setup_required: false })
           .eq('id', user.id);
+        if (profileError) throw profileError;
       }
 
-      await supabase.auth.signOut();
-      window.location.href = '/login?activated=1';
+      setEntering(true);
+      await refreshUser({ touchLogin: true });
+      window.location.href = getDefaultLandingPath(hasPermission);
     } catch (err) {
+      setEntering(false);
       setError(err.message || 'Failed to set password');
-    } finally {
       setLoading(false);
     }
   };
 
   if (checking) {
     return (
-      <AuthLayout title="Loading..." subtitle="Preparing your invitation">
+      <AuthLayout title="Loading..." subtitle="Confirming your invitation…">
         <div className="flex justify-center py-8">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
@@ -105,6 +111,16 @@ export default function AcceptInvite() {
         <p className="text-sm text-foreground text-center">
           The link you used appears to be incomplete or expired. Ask your admin to resend the invitation.
         </p>
+      </AuthLayout>
+    );
+  }
+
+  if (entering) {
+    return (
+      <AuthLayout title="Signing you in…" subtitle="Your account is ready">
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
       </AuthLayout>
     );
   }
@@ -134,6 +150,7 @@ export default function AcceptInvite() {
               onChange={(e) => setNewPassword(e.target.value)}
               className="pl-10 h-12"
               required
+              disabled={loading}
             />
           </div>
         </div>
@@ -150,6 +167,7 @@ export default function AcceptInvite() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="pl-10 h-12"
               required
+              disabled={loading}
             />
           </div>
         </div>

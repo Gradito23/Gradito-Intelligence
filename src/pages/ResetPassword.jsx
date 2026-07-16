@@ -1,17 +1,21 @@
-import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { supabase } from "@/api/supabaseClient";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Lock, Loader2 } from "lucide-react";
-import AuthLayout from "@/components/AuthLayout";
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { supabase } from '@/api/supabaseClient';
+import { useAuth } from '@/lib/AuthContext';
+import { getDefaultLandingPath } from '@/lib/permissionMeta';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Lock, Loader2 } from 'lucide-react';
+import AuthLayout from '@/components/AuthLayout';
 
 export default function ResetPassword() {
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [error, setError] = useState("");
+  const { refreshUser, hasPermission } = useAuth();
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [entering, setEntering] = useState(false);
   const [sessionReady, setSessionReady] = useState(false);
   const [checking, setChecking] = useState(true);
 
@@ -29,15 +33,17 @@ export default function ResetPassword() {
     init();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
-        setSessionReady(true);
-        setChecking(false);
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        if (session) {
+          setSessionReady(true);
+          setChecking(false);
+        }
       }
     });
 
     const timeout = setTimeout(() => {
       if (mounted) setChecking(false);
-    }, 2000);
+    }, 4000);
 
     return () => {
       mounted = false;
@@ -48,26 +54,33 @@ export default function ResetPassword() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
+    setError('');
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match");
+      setError('Passwords do not match');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters');
       return;
     }
     setLoading(true);
     try {
       const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
       if (updateError) throw updateError;
-      window.location.href = "/login";
+
+      setEntering(true);
+      await refreshUser({ touchLogin: true });
+      window.location.href = getDefaultLandingPath(hasPermission);
     } catch (err) {
-      setError(err.message || "Failed to reset password");
-    } finally {
+      setEntering(false);
+      setError(err.message || 'Failed to reset password');
       setLoading(false);
     }
   };
 
   if (checking) {
     return (
-      <AuthLayout title="Loading..." subtitle="Preparing password reset">
+      <AuthLayout title="Loading..." subtitle="Confirming your reset link…">
         <div className="flex justify-center py-8">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
         </div>
@@ -89,6 +102,16 @@ export default function ResetPassword() {
         <p className="text-sm text-foreground text-center">
           The link you used appears to be incomplete or expired. Please request a new password reset email.
         </p>
+      </AuthLayout>
+    );
+  }
+
+  if (entering) {
+    return (
+      <AuthLayout title="Signing you in…" subtitle="Your password has been updated">
+        <div className="flex justify-center py-8">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
       </AuthLayout>
     );
   }
@@ -118,6 +141,7 @@ export default function ResetPassword() {
               onChange={(e) => setNewPassword(e.target.value)}
               className="pl-10 h-12"
               required
+              disabled={loading}
             />
           </div>
         </div>
@@ -134,6 +158,7 @@ export default function ResetPassword() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               className="pl-10 h-12"
               required
+              disabled={loading}
             />
           </div>
         </div>
@@ -144,7 +169,7 @@ export default function ResetPassword() {
               Resetting...
             </>
           ) : (
-            "Reset password"
+            'Reset password'
           )}
         </Button>
       </form>

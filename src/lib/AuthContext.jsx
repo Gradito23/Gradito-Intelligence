@@ -197,10 +197,10 @@ export const AuthProvider = ({ children }) => {
     return () => subscription.unsubscribe();
   }, [applySession, checkAppState]);
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async ({ touchLogin = false } = {}) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (session) {
-      await applySession(session);
+      await applySession(session, { touchLogin });
     }
   }, [applySession]);
 
