@@ -31,6 +31,7 @@ export const ADMIN_NAV_SECTIONS = [
       { path: '/admin/integrations', label: 'Overview', icon: Plug, permission: { resource: 'integrations', action: 'read' } },
       { path: '/admin/integrations/email', label: 'Email', icon: Plug, permission: { resource: 'integrations', action: 'read' } },
       { path: '/admin/integrations/ai', label: 'OpenAI', permission: { resource: 'integrations', action: 'read' } },
+      { path: '/admin/integrations/google-sso', label: 'Google SSO', permission: { resource: 'integrations', action: 'read' } },
     ],
   },
   {

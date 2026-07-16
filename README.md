@@ -86,6 +86,14 @@ npx supabase secrets set PLATFORM_KEK="$(openssl rand -base64 32)"
 
 Then apply the encryption migration (`supabase db push`), redeploy edge functions, and open **Admin → Integrations** (or invoke `backfill_secrets` on `integration-openai` / `integration-email`) so existing plaintext keys are encrypted. Keep a secure backup of `PLATFORM_KEK` — losing it makes ciphertext unrecoverable.
 
+### Production URL and Google SSO
+
+Production app: **https://ai.gradito.com**
+
+1. Set hosting env: `VITE_APP_URL=https://ai.gradito.com`
+2. Set Supabase edge secret: `npx supabase secrets set APP_URL="https://ai.gradito.com"` (for invite + password-reset links)
+3. Google SSO: **Admin → Integrations → Google SSO** — Phase 1 (Google Cloud URLs) and Phase 2 (Supabase Client ID + Secret)
+
 ---
 
 ## Test fixtures

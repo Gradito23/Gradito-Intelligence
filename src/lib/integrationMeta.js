@@ -1,6 +1,22 @@
 import { Bot, Mail } from 'lucide-react';
+import GoogleIcon from '@/components/GoogleIcon';
+import { getGoogleSSOStatus } from '@/lib/googleSsoSetupMeta';
 
 export const INTEGRATION_CATEGORIES = [
+  {
+    id: 'authentication',
+    label: 'Authentication',
+    integrations: [
+      {
+        id: 'google_sso',
+        label: 'Google SSO',
+        description: 'Configure Google sign-in via Supabase Auth.',
+        path: '/admin/integrations/google-sso',
+        icon: GoogleIcon,
+        status: 'active',
+      },
+    ],
+  },
   {
     id: 'communications',
     label: 'Communications',
@@ -67,4 +83,8 @@ export function getOpenAIIntegrationStatus(openaiData) {
   if (!openaiData.enabled) return 'Configured · Disabled';
   const model = openaiData.default_model_id;
   return model ? `Connected · Default: ${model}` : 'Connected · No default model';
+}
+
+export function getGoogleSSOIntegrationStatus() {
+  return getGoogleSSOStatus();
 }

@@ -37,6 +37,7 @@ const UsersList = lazy(() => import('@/pages/admin/UsersList'));
 const RolesList = lazy(() => import('@/pages/admin/RolesList'));
 const PermissionsMatrix = lazy(() => import('@/pages/admin/PermissionsMatrix'));
 const OpenAIIntegration = lazy(() => import('@/pages/admin/OpenAIIntegration'));
+const GoogleSSOIntegration = lazy(() => import('@/pages/admin/GoogleSSOIntegration'));
 const ConfigCrudPage = lazy(() => import('@/pages/admin/ConfigCrudPage'));
 
 const PUBLIC_PATHS = new Set([
@@ -229,6 +230,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
                         <OpenAIIntegration />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="integrations/google-sso"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
+                        <GoogleSSOIntegration />
                       </PermissionRoute>
                     )}
                   />

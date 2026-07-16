@@ -3,7 +3,7 @@ import { Plug } from 'lucide-react';
 import IntegrationCategorySection from '@/components/admin/IntegrationCategorySection';
 import { useEmailIntegration } from '@/hooks/useEmailIntegration';
 import { useOpenAIIntegration } from '@/hooks/useOpenAIIntegration';
-import { INTEGRATION_CATEGORIES, getEmailIntegrationStatus, getOpenAIIntegrationStatus } from '@/lib/integrationMeta';
+import { INTEGRATION_CATEGORIES, getEmailIntegrationStatus, getGoogleSSOIntegrationStatus, getOpenAIIntegrationStatus } from '@/lib/integrationMeta';
 
 export default function IntegrationsHub() {
   const { data: emailData } = useEmailIntegration();
@@ -15,6 +15,9 @@ export default function IntegrationsHub() {
     }
     if (integration.id === 'openai') {
       return getOpenAIIntegrationStatus(openaiData);
+    }
+    if (integration.id === 'google_sso') {
+      return getGoogleSSOIntegrationStatus();
     }
     return null;
   };
