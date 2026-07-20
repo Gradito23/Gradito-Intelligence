@@ -70,14 +70,29 @@ function InviteDialog({ open, onClose, roles, onInvited }) {
   const invite = useInviteUser();
 
   const defaultRoleId = roles.find((r) => r.name === 'user')?.id ?? roles[0]?.id ?? '';
+  const effectiveRoleId = roleId || defaultRoleId;
+
+  useEffect(() => {
+    if (!open) return;
+    setEmail('');
+    setRoleId(defaultRoleId);
+    // Reset form only when the dialog opens; defaultRoleId may still be empty if roles are loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally depend on open only
+  }, [open]);
+
+  useEffect(() => {
+    if (open && defaultRoleId && !roleId) {
+      setRoleId(defaultRoleId);
+    }
+  }, [open, defaultRoleId, roleId]);
 
   const handleInvite = async () => {
-    if (!email.trim() || !roleId) return;
+    if (!email.trim() || !effectiveRoleId) return;
     try {
-      await invite.mutateAsync({ email: email.trim(), role_id: roleId || defaultRoleId });
+      await invite.mutateAsync({ email: email.trim(), role_id: effectiveRoleId });
       toast({ title: `Invite sent to ${email.trim()}` });
       setEmail('');
-      setRoleId('');
+      setRoleId(defaultRoleId);
       onInvited();
       onClose();
     } catch (err) {
@@ -105,7 +120,7 @@ function InviteDialog({ open, onClose, roles, onInvited }) {
           </div>
           <div>
             <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Role</label>
-            <Select value={roleId || defaultRoleId} onValueChange={setRoleId}>
+            <Select value={effectiveRoleId} onValueChange={setRoleId}>
               <SelectTrigger className="h-9">
                 <SelectValue />
               </SelectTrigger>
@@ -123,7 +138,7 @@ function InviteDialog({ open, onClose, roles, onInvited }) {
             <Button variant="outline" onClick={onClose} size="sm">Cancel</Button>
             <Button
               onClick={handleInvite}
-              disabled={!email.trim() || invite.isPending}
+              disabled={!email.trim() || !effectiveRoleId || invite.isPending}
               size="sm"
               className="bg-navy hover:bg-navy/90 text-white"
             >
