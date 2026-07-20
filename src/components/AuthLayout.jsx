@@ -7,7 +7,7 @@ export default function AuthLayout({ title, subtitle, footer, children }) {
         {/* Gradito Wordmark */}
         <div className="text-center mb-10">
           <h1 className="font-display text-4xl font-bold text-navy tracking-wide">GRADITO</h1>
-          <p className="text-xs text-muted-foreground mt-1 tracking-widest uppercase">Chef Intelligence</p>
+          <p className="text-xs text-muted-foreground mt-1 tracking-widest uppercase">Intelligence</p>
           {title && (
             <div className="mt-8">
               <div className="w-10 h-px bg-gold mx-auto mb-4" />

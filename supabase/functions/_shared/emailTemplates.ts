@@ -41,7 +41,7 @@ function renderLayout({
           <tr>
             <td style="background-color:${BRAND.navy};padding:28px 32px;text-align:center;">
               <p style="margin:0;font-size:28px;font-weight:700;letter-spacing:0.08em;color:${BRAND.white};font-family:Georgia,'Times New Roman',serif;">GRADITO</p>
-              <p style="margin:8px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.75);">Chef Intelligence</p>
+              <p style="margin:8px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.75);">Intelligence</p>
             </td>
           </tr>
           <tr>

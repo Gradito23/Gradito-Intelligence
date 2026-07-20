@@ -30,7 +30,7 @@ export default function IntegrationsHub() {
           Integrations
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect external services to Gradito Chef Intelligence
+          Connect external services to Gradito Intelligence
         </p>
       </div>
 

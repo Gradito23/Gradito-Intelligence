@@ -32,7 +32,7 @@ export default function Sidebar() {
                     GRADITO
                   </h1>
                   <p className="text-xs text-sidebar-foreground/50 mt-1 tracking-widest uppercase">
-                    Chef Intelligence
+                    Intelligence
                   </p>
                 </>
               )}

@@ -142,7 +142,7 @@ export default function PayoutStatement({ rows, commissionLines, events, periodL
             <div className="bg-navy text-white px-8 py-6 rounded-t-2xl print:rounded-none">
               <div className="flex items-start justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-widest text-white/50 mb-1">Gradito Chef Intelligence</p>
+                  <p className="text-xs uppercase tracking-widest text-white/50 mb-1">Gradito Intelligence</p>
                   <h1 className="font-display text-3xl font-bold">Payout Statement</h1>
                   <p className="text-white/70 mt-1">{periodLabel} · Generated {generatedDate}</p>
                 </div>
