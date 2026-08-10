@@ -7,8 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import AuthLayout from "@/components/AuthLayout";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
+import { fetchGoogleSsoEnabled } from "@/lib/googleSsoSetupMeta";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -18,6 +20,7 @@ export default function Register() {
   const [loading, setLoading] = useState(false);
   const [showOtp, setShowOtp] = useState(false);
   const [otpCode, setOtpCode] = useState("");
+  const [googleUnavailableOpen, setGoogleUnavailableOpen] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -76,6 +79,11 @@ export default function Register() {
 
   const handleGoogle = async () => {
     setError("");
+    const enabled = await fetchGoogleSsoEnabled(supabase);
+    if (!enabled) {
+      setGoogleUnavailableOpen(true);
+      return;
+    }
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: `${window.location.origin}/` },
@@ -158,6 +166,16 @@ export default function Register() {
         <GoogleIcon className="w-5 h-5 mr-2" />
         Continue with Google
       </Button>
+
+      <ConfirmDialog
+        open={googleUnavailableOpen}
+        onOpenChange={setGoogleUnavailableOpen}
+        title="Google sign-in unavailable"
+        description="Google sign-in is not configured yet. Please contact your System Administrator."
+        cancelLabel="OK"
+        hideConfirm
+        branded
+      />
 
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">

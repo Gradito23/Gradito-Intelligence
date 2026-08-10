@@ -15,13 +15,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { toast } from '@/components/ui/use-toast';
 import ChefAvatar from '@/components/ui/ChefAvatar';
+import IntakeRequestDetail from '@/components/intake/IntakeRequestDetail';
 import {
   Check,
   X,
-  ChevronDown,
-  ChevronUp,
+  ChevronRight,
   ClipboardList,
   Loader2,
   Inbox,
@@ -47,18 +54,49 @@ function formatList(arr) {
 
 function chefPayloadFromRequest(req) {
   const p = req.payload || {};
+  const maxGuest = p.max_guest_count ?? p.max_solo_guests ?? 12;
   return {
     first_name: req.first_name,
     last_name: req.last_name,
+    preferred_name: p.preferred_name || undefined,
     email: req.email || p.email || undefined,
     mobile: req.mobile || p.mobile || undefined,
     photo_url: req.photo_url || p.photo_url || undefined,
+    city: p.city || undefined,
+    state: p.state || undefined,
+    home_airport: p.home_airport || undefined,
+    has_vehicle: typeof p.has_vehicle === 'boolean' ? p.has_vehicle : undefined,
+    current_position: p.current_position || undefined,
+    current_company: p.current_company || undefined,
+    years_cooking: p.years_cooking ?? undefined,
+    awards: p.awards || undefined,
+    resume_url: p.resume_url || undefined,
     menu_url: p.menu_url || undefined,
     bio_url: p.bio_url || undefined,
     roles_available: p.roles_available || 'Head',
     travel_policy: p.travel_policy || 'Home only',
     default_travel_fee: p.default_travel_fee ?? 0,
-    max_solo_guests: p.max_solo_guests ?? 12,
+    max_solo_guests: maxGuest,
+    max_guest_count: maxGuest,
+    commercial_kitchen_access: p.commercial_kitchen_access || undefined,
+    own_kitchen_max_guests: p.own_kitchen_max_guests ?? undefined,
+    starting_event_fee_usd: p.starting_event_fee_usd ?? undefined,
+    starting_fee_flexible: p.starting_fee_flexible || undefined,
+    expected_compensation_usd: p.expected_compensation_usd ?? undefined,
+    travel_distance: p.travel_distance || undefined,
+    has_passport: typeof p.has_passport === 'boolean' ? p.has_passport : undefined,
+    ideal_events_per_period: p.ideal_events_per_period ?? undefined,
+    preferred_event_days: p.preferred_event_days || [],
+    lead_time: p.lead_time || undefined,
+    opportunity_preferences: p.opportunity_preferences || [],
+    instagram_url: p.instagram_url || undefined,
+    tiktok_url: p.tiktok_url || undefined,
+    linkedin_url: p.linkedin_url || undefined,
+    youtube_url: p.youtube_url || undefined,
+    website_url: p.website_url || undefined,
+    newsletter_url: p.newsletter_url || undefined,
+    social_follower_band: p.social_follower_band || undefined,
+    media_history: p.media_history || undefined,
     equipment_notes: p.equipment_notes || undefined,
     signature_experiences: p.signature_experiences || undefined,
     home_areas: p.home_areas || [],
@@ -69,7 +107,8 @@ function chefPayloadFromRequest(req) {
     blackout_holidays: p.blackout_holidays || [],
     blackout_dates: p.blackout_dates || [],
     availability_notes: p.availability_notes || undefined,
-    notes: p.notes || undefined,
+    notes: p.notes || p.professional_bio || undefined,
+    talent_profile: p.talent_profile || {},
     quality_rating: 3,
     profile_status: 'Complete',
     status: 'Active',
@@ -84,7 +123,7 @@ export default function IntakeRequests() {
   const canWrite = hasPermission('intake', 'write');
 
   const [filter, setFilter] = useState('pending');
-  const [expandedId, setExpandedId] = useState(null);
+  const [detailRequest, setDetailRequest] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -126,6 +165,7 @@ export default function IntakeRequests() {
         });
       } catch { /* ignore */ }
       toast({ title: 'Approved', description: `${req.first_name} ${req.last_name} added to Chefs.` });
+      if (detailRequest?.id === req.id) setDetailRequest(null);
       invalidate();
     } catch (err) {
       toast({
@@ -161,6 +201,7 @@ export default function IntakeRequests() {
       toast({ title: 'Rejected', description: `${req.first_name} ${req.last_name} was rejected.` });
       setRejectTarget(null);
       setRejectReason('');
+      if (detailRequest?.id === req.id) setDetailRequest(null);
       invalidate();
     } catch (err) {
       toast({
@@ -228,134 +269,155 @@ export default function IntakeRequests() {
       ) : (
         <div className="space-y-2">
           {filtered.map((req) => {
-            const expanded = expandedId === req.id;
             const payload = req.payload || {};
             const fullName = `${req.first_name} ${req.last_name}`;
-            const areas = formatList(payload.home_areas);
+            const location = [payload.city, payload.state].filter(Boolean).join(', ')
+              || formatList(payload.home_areas);
             const submitted = new Date(req.created_date || req.created_at).toLocaleDateString();
             const busy = busyId === req.id;
+            const selected = detailRequest?.id === req.id;
 
             return (
-              <Card key={req.id} className="overflow-hidden">
-                <div className="p-4 flex flex-wrap items-center gap-3 justify-between">
-                  <button
-                    type="button"
-                    className="flex items-center gap-3 text-left min-w-0 flex-1"
-                    onClick={() => setExpandedId(expanded ? null : req.id)}
-                  >
-                    <ChefAvatar photoUrl={req.photo_url} name={fullName} size="md" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium truncate">{fullName}</p>
-                        <Badge className={`text-xs border-0 ${STATUS_BADGE[req.status] || ''}`}>
-                          {req.status}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {req.email || 'No email'} · {areas} · {submitted}
-                      </p>
+              <Card
+                key={req.id}
+                className={`overflow-hidden transition-colors ${selected ? 'ring-2 ring-navy/30' : ''}`}
+              >
+                <button
+                  type="button"
+                  className="w-full p-4 flex items-center gap-3 text-left hover:bg-secondary/30 transition-colors"
+                  onClick={() => setDetailRequest(req)}
+                >
+                  <ChefAvatar photoUrl={req.photo_url} name={fullName} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="font-medium truncate">{fullName}</p>
+                      <Badge className={`text-xs border-0 ${STATUS_BADGE[req.status] || ''}`}>
+                        {req.status}
+                      </Badge>
                     </div>
-                    {expanded ? <ChevronUp size={16} className="shrink-0" /> : <ChevronDown size={16} className="shrink-0" />}
-                  </button>
-
-                  {req.status === 'pending' && canWrite && (
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
-                        disabled={busy}
-                        onClick={() => handleApprove(req)}
-                      >
-                        {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="mr-1" />}
-                        Approve
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="text-red-700 border-red-200 hover:bg-red-50"
-                        disabled={busy}
-                        onClick={() => { setRejectTarget(req); setRejectReason(''); }}
-                      >
-                        <X size={14} className="mr-1" />
-                        Reject
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {expanded && (
-                  <div className="border-t px-4 py-4 bg-secondary/10 space-y-3 text-sm">
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Contact</p>
-                        <p>{req.email || '—'}</p>
-                        <p>{req.mobile || '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Role / Travel</p>
-                        <p>{payload.roles_available || '—'} · {payload.travel_policy || '—'}</p>
-                        <p>Max solo guests: {payload.max_solo_guests ?? '—'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Home areas</p>
-                        <p>{formatList(payload.home_areas)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Cuisines</p>
-                        <p>{formatList(payload.cuisines)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Experience types</p>
-                        <p>{formatList(payload.experience_types)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Dietary / Languages</p>
-                        <p>{formatList(payload.dietary_specialties)}</p>
-                        <p>{formatList(payload.languages)}</p>
-                      </div>
-                    </div>
-                    {(payload.menu_url || payload.bio_url) && (
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Links</p>
-                        {payload.menu_url && (
-                          <a href={payload.menu_url} target="_blank" rel="noreferrer" className="text-navy underline block truncate">
-                            Menu
-                          </a>
-                        )}
-                        {payload.bio_url && (
-                          <p className="whitespace-pre-wrap text-muted-foreground break-all">{payload.bio_url}</p>
-                        )}
-                      </div>
-                    )}
-                    {payload.notes && (
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Bio / notes</p>
-                        <p className="whitespace-pre-wrap">{payload.notes}</p>
-                      </div>
-                    )}
-                    {payload.signature_experiences && (
-                      <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground">Signature experiences</p>
-                        <p className="whitespace-pre-wrap">{payload.signature_experiences}</p>
-                      </div>
-                    )}
-                    {req.status !== 'pending' && (
-                      <div className="text-xs text-muted-foreground pt-2 border-t">
-                        Reviewed {req.reviewed_at ? new Date(req.reviewed_at).toLocaleString() : '—'}
-                        {req.rejection_reason && (
-                          <p className="mt-1 text-red-700">Reason: {req.rejection_reason}</p>
-                        )}
-                      </div>
-                    )}
+                    <p className="text-xs text-muted-foreground truncate">
+                      {req.email || 'No email'} · {location || '—'} · {submitted}
+                    </p>
                   </div>
-                )}
+                  <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {req.status === 'pending' && canWrite && (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white hidden sm:inline-flex"
+                          disabled={busy}
+                          onClick={() => handleApprove(req)}
+                        >
+                          {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} className="mr-1" />}
+                          Approve
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-red-700 border-red-200 hover:bg-red-50 hidden sm:inline-flex"
+                          disabled={busy}
+                          onClick={() => { setRejectTarget(req); setRejectReason(''); }}
+                        >
+                          <X size={14} className="mr-1" />
+                          Reject
+                        </Button>
+                      </>
+                    )}
+                    <ChevronRight size={18} className="text-muted-foreground" />
+                  </div>
+                </button>
               </Card>
             );
           })}
         </div>
       )}
+
+      <Sheet
+        open={!!detailRequest}
+        onOpenChange={(open) => { if (!open) setDetailRequest(null); }}
+      >
+        <SheetContent
+          side="right"
+          className="w-full sm:max-w-xl p-0 flex flex-col gap-0"
+        >
+          {detailRequest && (
+            <>
+              <div className="bg-navy text-white p-5 shrink-0">
+                <SheetHeader className="space-y-3 text-left">
+                  <div className="flex items-start gap-3 pr-6">
+                    <ChefAvatar
+                      photoUrl={detailRequest.photo_url}
+                      name={`${detailRequest.first_name} ${detailRequest.last_name}`}
+                      size="lg"
+                    />
+                    <div className="min-w-0">
+                      <SheetTitle className="text-white font-heading text-xl">
+                        {detailRequest.first_name} {detailRequest.last_name}
+                      </SheetTitle>
+                      <p className="text-white/70 text-sm mt-1 truncate">
+                        {detailRequest.email || 'No email'}
+                      </p>
+                      <Badge className={`mt-2 text-xs border-0 ${STATUS_BADGE[detailRequest.status] || ''}`}>
+                        {detailRequest.status}
+                      </Badge>
+                    </div>
+                  </div>
+                </SheetHeader>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5">
+                <IntakeRequestDetail request={detailRequest} />
+                {detailRequest.status !== 'pending' && (
+                  <div className="text-xs text-muted-foreground mt-4 pt-3 border-t">
+                    Reviewed{' '}
+                    {detailRequest.reviewed_at
+                      ? new Date(detailRequest.reviewed_at).toLocaleString()
+                      : '—'}
+                    {detailRequest.rejection_reason && (
+                      <p className="mt-1 text-red-700">Reason: {detailRequest.rejection_reason}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {detailRequest.status === 'pending' && canWrite && (
+                <SheetFooter className="shrink-0 border-t p-4 gap-2 sm:flex-row sm:justify-stretch">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-red-700 border-red-200 hover:bg-red-50 flex-1"
+                    disabled={busyId === detailRequest.id}
+                    onClick={() => {
+                      setRejectTarget(detailRequest);
+                      setRejectReason('');
+                    }}
+                  >
+                    <X size={14} className="mr-1" />
+                    Reject
+                  </Button>
+                  <Button
+                    type="button"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white flex-1"
+                    disabled={busyId === detailRequest.id}
+                    onClick={async () => {
+                      await handleApprove(detailRequest);
+                    }}
+                  >
+                    {busyId === detailRequest.id ? (
+                      <Loader2 size={14} className="animate-spin mr-1" />
+                    ) : (
+                      <Check size={14} className="mr-1" />
+                    )}
+                    Approve & add to roster
+                  </Button>
+                </SheetFooter>
+              )}
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={!!rejectTarget} onOpenChange={(open) => { if (!open) setRejectTarget(null); }}>
         <DialogContent>

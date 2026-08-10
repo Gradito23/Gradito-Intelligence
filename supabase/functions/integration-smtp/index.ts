@@ -1,4 +1,5 @@
 import { corsHeaders, isValidEmail, jsonResponse, requireAdmin, SECRET_MASK } from '../_shared/auth.ts';
+import { renderTestEmail } from '../_shared/emailTemplates.ts';
 import {
   loadResendSettings,
   packResendApiKey,
@@ -83,8 +84,8 @@ Deno.serve(async (req) => {
 
       const { messageId } = await sendResendEmail(settings, {
         to: testTo,
-        subject: 'Gradito — SMTP test email',
-        html: '<p>Your Resend integration is working.</p>',
+        subject: 'Gradito Intelligence — Email test',
+        html: renderTestEmail(),
       });
 
       return jsonResponse({ ok: true, message_id: messageId });

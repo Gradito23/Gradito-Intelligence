@@ -6,6 +6,12 @@ import {
   packSecret,
   resolveSecret,
 } from './crypto.ts';
+import {
+  EmailInlineAttachment,
+  resolveEmailAttachments,
+} from './emailBrandAssets.ts';
+
+export type { EmailInlineAttachment };
 
 export type ResendSettings = {
   id: number;
@@ -90,12 +96,14 @@ export async function packResendApiKey(
 
 export async function sendResendEmail(
   settings: ResendSettings,
-  params: { to: string; subject: string; html: string },
+  params: { to: string; subject: string; html: string; attachments?: EmailInlineAttachment[] },
 ): Promise<{ messageId: string }> {
   const fromName = settings.from_name?.trim() || 'Gradito';
   const fromEmail = settings.from_email?.trim();
   if (!fromEmail) throw new Error('Sender email is not configured');
   if (!settings.api_key?.trim()) throw new Error('API key is not configured');
+
+  const attachments = resolveEmailAttachments(params.html, params.attachments);
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -108,6 +116,16 @@ export async function sendResendEmail(
       to: [params.to],
       subject: params.subject,
       html: params.html,
+      ...(attachments.length > 0
+        ? {
+            attachments: attachments.map((a) => ({
+              filename: a.filename,
+              content: a.contentBase64,
+              content_id: a.contentId,
+              content_type: a.contentType,
+            })),
+          }
+        : {}),
     }),
   });
 

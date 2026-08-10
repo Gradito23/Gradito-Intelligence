@@ -1,4 +1,10 @@
 import nodemailer from 'npm:nodemailer@6.9.7';
+import {
+  EmailInlineAttachment,
+  resolveEmailAttachments,
+} from './emailBrandAssets.ts';
+
+export type { EmailInlineAttachment };
 
 export type CustomSmtpConfig = {
   id: string;
@@ -64,12 +70,13 @@ function buildTransportConfig(config: CustomSmtpConfig) {
 
 export async function sendCustomSmtpEmail(
   config: CustomSmtpConfig,
-  params: { to: string; subject: string; html: string },
+  params: { to: string; subject: string; html: string; attachments?: EmailInlineAttachment[] },
   options?: { verify?: boolean },
 ): Promise<void> {
   const transport = nodemailer.createTransport(buildTransportConfig(config));
 
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const attachments = resolveEmailAttachments(params.html, params.attachments);
 
   const run = async () => {
     if (options?.verify) {
@@ -80,6 +87,17 @@ export async function sendCustomSmtpEmail(
       to: params.to,
       subject: params.subject,
       html: params.html,
+      ...(attachments.length > 0
+        ? {
+            attachments: attachments.map((a) => ({
+              filename: a.filename,
+              content: a.content,
+              cid: a.contentId,
+              contentType: a.contentType,
+              contentDisposition: 'inline' as const,
+            })),
+          }
+        : {}),
     });
   };
 

@@ -40,7 +40,7 @@ function renderLayout({
         <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:${BRAND.white};border-radius:12px;overflow:hidden;border:1px solid ${BRAND.border};">
           <tr>
             <td style="background-color:${BRAND.navy};padding:28px 32px;text-align:center;">
-              <p style="margin:0;font-size:28px;font-weight:700;letter-spacing:0.08em;color:${BRAND.white};font-family:Georgia,'Times New Roman',serif;">GRADITO</p>
+              <img src="cid:gradito-logo" width="160" height="44" alt="Gradito" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;" />
               <p style="margin:8px 0 0;font-size:11px;letter-spacing:0.2em;text-transform:uppercase;color:rgba(255,255,255,0.75);">Intelligence</p>
             </td>
           </tr>

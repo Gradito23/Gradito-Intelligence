@@ -85,6 +85,7 @@ export function getOpenAIIntegrationStatus(openaiData) {
   return model ? `Connected · Default: ${model}` : 'Connected · No default model';
 }
 
-export function getGoogleSSOIntegrationStatus() {
-  return getGoogleSSOStatus();
+export function getGoogleSSOIntegrationStatus(googleSsoData) {
+  if (!googleSsoData) return getGoogleSSOStatus(null);
+  return getGoogleSSOStatus(googleSsoData.enabled);
 }

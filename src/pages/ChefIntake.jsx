@@ -5,106 +5,185 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { CUISINES, EXPERIENCE_TYPES, SERVICE_AREAS, DIETARY_SPECIALTIES } from '@/lib/constants';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from '@/components/ui/use-toast';
-import { CheckCircle, ChefHat, Loader2, Plus, Upload, X, Calendar } from 'lucide-react';
+import GraditoLogo from '@/components/brand/GraditoLogo';
+import CheckboxGroup from '@/components/intake/CheckboxGroup';
+import CategorizedPortfolioUpload from '@/components/intake/CategorizedPortfolioUpload';
+import MultiFileUpload from '@/components/intake/MultiFileUpload';
+import {
+  FEE_FLEXIBLE_OPTIONS,
+  FOLLOWER_BAND_OPTIONS,
+  INTAKE_CUISINES,
+  INTAKE_DIETARY,
+  KITCHEN_ACCESS_OPTIONS,
+  LEAD_TIME_OPTIONS,
+  OPPORTUNITY_EDUCATION_MEDIA,
+  OPPORTUNITY_EVENTS,
+  OPPORTUNITY_PRIVATE_DINING,
+  PREFERRED_EVENT_DAYS,
+  TRAVEL_DISTANCE_OPTIONS,
+  YES_NO_OPTIONS,
+} from '@/lib/chefIntakeOptions';
+import {
+  buildIntakePayload,
+  createEmptyIntakeForm,
+  validateIntakeForm,
+} from '@/lib/chefIntakeForm';
+import { CheckCircle, Loader2 } from 'lucide-react';
+
+function Section({ title, description, children }) {
+  return (
+    <Card className="p-6 space-y-4">
+      <div>
+        <h3 className="font-heading text-lg font-semibold">{title}</h3>
+        {description && (
+          <p className="text-sm text-muted-foreground mt-1">{description}</p>
+        )}
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+function Subsection({ title, children }) {
+  return (
+    <div className="space-y-3 pt-2 first:pt-0">
+      <h4 className="text-sm font-semibold tracking-wide text-foreground border-b border-border pb-1.5">
+        {title}
+      </h4>
+      {children}
+    </div>
+  );
+}
+
+function Field({ label, required, children, hint }) {
+  return (
+    <div className="space-y-1.5">
+      <Label>
+        {label}
+        {required ? <span className="text-destructive"> *</span> : ''}
+      </Label>
+      {hint && (
+        typeof hint === 'string'
+          ? <p className="text-xs text-muted-foreground">{hint}</p>
+          : <div className="text-xs text-muted-foreground">{hint}</div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+const IMAGE_ACCEPT = 'image/jpeg,image/png,image/webp';
+const ADDITIONAL_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
+
+const PORTFOLIO_CATEGORIES = [
+  {
+    key: 'headshots',
+    label: 'Professional Headshots (Optional)',
+    accept: IMAGE_ACCEPT,
+    description: 'Upload one or more professional headshots. First headshot is used as your profile photo.',
+  },
+  {
+    key: 'food_portfolio',
+    label: 'Food Portfolio (Optional)',
+    accept: IMAGE_ACCEPT,
+    description: "Upload as many food images as you'd like.",
+    examples: [
+      'Signature Dishes',
+      'Plated Courses',
+      'Tasting Menus',
+      'Family-Style Meals',
+      'Desserts',
+      'Live Fire Cooking',
+      'Restaurant Dishes',
+      'Catering Presentations',
+      'Behind-the-Scenes Food Preparation',
+    ],
+  },
+  {
+    key: 'event_photos',
+    label: 'Chef & Event Photos (Optional)',
+    accept: IMAGE_ACCEPT,
+    description: 'Upload images of yourself and your work.',
+    examples: [
+      'You Cooking',
+      "Chef's Table Experiences",
+      'Private Dinners',
+      'Brand Activations',
+      'Cooking Classes',
+      'Demonstrations',
+      'Behind the Scenes',
+      'Team Photos',
+      'Guest Experiences',
+    ],
+  },
+  {
+    key: 'additional_files',
+    label: 'Additional Files (Optional)',
+    accept: ADDITIONAL_ACCEPT,
+    examples: [
+      'Press Features',
+      'Magazine Articles',
+      'Menus',
+      'Awards',
+      'Event Concepts',
+      'Media Kits',
+      'Brand Decks',
+      'Presentations',
+      'PDFs',
+    ],
+  },
+];
 
 export default function ChefIntake() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [photoUploading, setPhotoUploading] = useState(false);
-  const [extraLinks, setExtraLinks] = useState([]);
-  const [customHomeArea, setCustomHomeArea] = useState('');
-  const [customCuisine, setCustomCuisine] = useState('');
-  const [customExperience, setCustomExperience] = useState('');
-  const [blackoutDateEntry, setBlackoutDateEntry] = useState({ start: '', end: '' });
-  const [form, setForm] = useState({
-    first_name: '', last_name: '', email: '', mobile: '',
-    photo_url: '', menu_url: '', bio_url: '', bio_details: '',
-    roles_available: 'Head',
-    travel_policy: 'Home only',
-    default_travel_fee: 0,
-    max_solo_guests: 12,
-    equipment_notes: '', signature_experiences: '',
-    home_areas: [], cuisines: [], experience_types: [],
-    dietary_specialties: [], languages: [],
-    blackout_holidays: [], blackout_dates: [], availability_notes: '',
-  });
+  const [form, setForm] = useState(createEmptyIntakeForm);
 
-  const toggleArray = (field, value) => {
-    setForm(prev => ({
-      ...prev,
-      [field]: prev[field].includes(value)
-        ? prev[field].filter(v => v !== value)
-        : [...prev[field], value],
-    }));
-  };
-
-  const addCustomToArray = (field, value, setter) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    if (!form[field].includes(trimmed)) {
-      setForm(prev => ({ ...prev, [field]: [...prev[field], trimmed] }));
-    }
-    setter('');
-  };
-
-  const handlePhotoUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setPhotoUploading(true);
-    try {
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      setForm(prev => ({ ...prev, photo_url: file_url }));
-    } catch (err) {
-      toast({
-        title: 'Photo upload failed',
-        description: err.message || 'Could not upload photo.',
-        variant: 'destructive',
-      });
-    } finally {
-      setPhotoUploading(false);
-      e.target.value = '';
-    }
-  };
-
-  const addExtraLink = () => setExtraLinks(prev => [...prev, '']);
-  const updateExtraLink = (i, val) => setExtraLinks(prev => prev.map((l, idx) => idx === i ? val : l));
-  const removeExtraLink = (i) => setExtraLinks(prev => prev.filter((_, idx) => idx !== i));
+  const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const errors = validateIntakeForm(form);
+    if (errors.length) {
+      const message = errors[0];
+      setSubmitError(message);
+      toast({ title: 'Please complete required fields', description: message, variant: 'destructive' });
+      return;
+    }
+
     setLoading(true);
     setSubmitError('');
-    const { bio_details, ...chefFields } = form;
-    const allLinks = [form.bio_url, ...extraLinks].filter(Boolean).join('\n');
+    const payload = buildIntakePayload(form);
+
     try {
       await base44.entities.ChefIntakeRequest.create({
-        first_name: form.first_name,
-        last_name: form.last_name,
-        email: form.email || null,
-        mobile: form.mobile || null,
-        photo_url: form.photo_url || null,
+        first_name: payload.first_name,
+        last_name: payload.last_name,
+        email: payload.email,
+        mobile: payload.mobile,
+        photo_url: payload.photo_url,
         status: 'pending',
-        payload: {
-          ...chefFields,
-          bio_url: allLinks || undefined,
-          notes: bio_details || undefined,
-        },
+        payload,
       });
       try {
         await base44.entities.ActivityLog.create({
           actor: 'Intake Form',
           action: 'Created',
           entity_type: 'Intake',
-          entity_label: `${form.first_name} ${form.last_name}`,
-          summary: `Chef ${form.first_name} ${form.last_name} submitted intake form (pending review)`,
+          entity_label: `${payload.first_name} ${payload.last_name}`,
+          summary: `Chef ${payload.first_name} ${payload.last_name} submitted intake form (pending review)`,
         });
       } catch {
-        // Activity log requires auth; do not fail the chef's thank-you flow
+        // Activity log requires auth
       }
       setSubmitted(true);
     } catch (err) {
@@ -118,11 +197,13 @@ export default function ChefIntake() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-8 text-center">
-          <CheckCircle size={48} className="mx-auto text-gold mb-4" />
-          <h2 className="font-heading text-2xl font-bold mb-2">Thank You!</h2>
-          <p className="text-muted-foreground">Your profile has been submitted to the Gradito team for review. We'll be in touch soon.</p>
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <Card className="max-w-md w-full p-8 text-center space-y-4">
+          <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto" />
+          <h2 className="font-heading text-2xl font-semibold">Thank you, Chef!</h2>
+          <p className="text-muted-foreground">
+            Your profile has been submitted to the Gradito team for review. We&apos;ll be in touch soon.
+          </p>
         </Card>
       </div>
     );
@@ -131,284 +212,483 @@ export default function ChefIntake() {
   return (
     <div className="min-h-screen bg-background">
       <div className="bg-navy py-8 px-4 text-center">
-        <h1 className="font-display text-3xl font-bold text-white tracking-wide">GRADITO</h1>
-        <p className="text-gold text-sm mt-1 tracking-widest uppercase">Chef Intake Form</p>
+        <div className="flex justify-center text-white">
+          <GraditoLogo className="h-9 w-auto" title="Gradito" />
+        </div>
+        <p className="text-gold text-sm mt-2 tracking-widest uppercase">Chef Intake Form</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="max-w-2xl mx-auto p-6 space-y-6">
-        {/* Personal Information */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Personal Information</h3>
-          <div className="grid grid-cols-2 gap-4">
-            <div><Label>First Name *</Label><Input value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} required /></div>
-            <div><Label>Last Name *</Label><Input value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} required /></div>
-          </div>
-          <div><Label>Email</Label><Input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-          <div><Label>Mobile</Label><Input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} /></div>
-
-          {/* Profile Photo Upload */}
-          <div>
-            <Label>Profile Photo</Label>
-            <div className="mt-2 flex items-center gap-4">
-              {form.photo_url ? (
-                <img src={form.photo_url} alt="Profile" className="w-20 h-20 rounded-full object-cover border-2 border-border" />
-              ) : (
-                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center border-2 border-dashed border-border">
-                  <ChefHat className="w-8 h-8 text-muted-foreground" />
-                </div>
-              )}
-              <label className="cursor-pointer">
-                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-                <div className="flex items-center gap-2 px-4 py-2 border border-input rounded-md text-sm hover:bg-muted transition-colors">
-                  {photoUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  {photoUploading ? 'Uploading...' : 'Upload Photo'}
-                </div>
-              </label>
-            </div>
-          </div>
+      <form onSubmit={handleSubmit} className="max-w-3xl mx-auto p-6 space-y-6">
+        <Card className="p-6 space-y-3">
+          <h2 className="font-heading text-xl font-semibold">Welcome to Gradito</h2>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            We&apos;re excited to welcome you to the Gradito chef network. This profile is the foundation
+            of your Gradito chef profile and helps us understand your culinary background, specialties,
+            personality, availability, and professional goals.
+          </p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Gradito specializes in Michelin-grade private dining experiences and private chef placements.
+            The more thoughtfully you complete your profile, the better we can represent you and connect
+            you with opportunities that align with your expertise and ambitions.
+          </p>
         </Card>
 
-        {/* Portfolio */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Bio</h3>
-          <div><Label>Bio Link</Label><Input placeholder="https://..." value={form.bio_url} onChange={e => setForm({ ...form, bio_url: e.target.value })} /></div>
-
-          {extraLinks.map((link, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <Input placeholder="https://..." value={link} onChange={e => updateExtraLink(i, e.target.value)} className="flex-1" />
-              <Button type="button" variant="ghost" size="icon" onClick={() => removeExtraLink(i)}>
-                <X className="w-4 h-4" />
-              </Button>
+        {/* §1 Contact */}
+        <Section title="Section 1: Contact Information">
+          <Subsection title="Basic Information">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Full Name" required>
+                <Input
+                  value={form.full_name}
+                  onChange={(e) => set('full_name', e.target.value)}
+                  placeholder="First Last"
+                  required
+                />
+              </Field>
+              <Field label="Preferred Name (Optional)">
+                <Input value={form.preferred_name} onChange={(e) => set('preferred_name', e.target.value)} />
+              </Field>
+              <Field label="Email Address" required>
+                <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required />
+              </Field>
+              <Field label="Cell Phone Number" required>
+                <Input value={form.mobile} onChange={(e) => set('mobile', e.target.value)} required />
+              </Field>
             </div>
-          ))}
+          </Subsection>
 
-          <Button type="button" variant="outline" size="sm" onClick={addExtraLink} className="gap-2">
-            <Plus className="w-4 h-4" /> Add Link
-          </Button>
+          <Subsection title="Location">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="City" required>
+                <Input value={form.city} onChange={(e) => set('city', e.target.value)} required />
+              </Field>
+              <Field label="State" required>
+                <Input value={form.state} onChange={(e) => set('state', e.target.value)} required />
+              </Field>
+              <Field label="Home Airport (Optional)">
+                <Input value={form.home_airport} onChange={(e) => set('home_airport', e.target.value)} />
+              </Field>
+            </div>
+          </Subsection>
 
-          <div>
-            <Label>Bio Details</Label>
+          <Subsection title="Transportation">
+            <Field label="Do you have access to a personal vehicle?" required>
+              <Select value={form.has_vehicle} onValueChange={(v) => set('has_vehicle', v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {YES_NO_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          </Subsection>
+
+          <Subsection title="Professional Links">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Instagram (Optional)">
+                <Input value={form.instagram_url} onChange={(e) => set('instagram_url', e.target.value)} placeholder="https://" />
+              </Field>
+              <Field label="Website (Optional)">
+                <Input value={form.website_url} onChange={(e) => set('website_url', e.target.value)} placeholder="https://" />
+              </Field>
+              <Field label="TikTok (Optional)">
+                <Input value={form.tiktok_url} onChange={(e) => set('tiktok_url', e.target.value)} placeholder="https://" />
+              </Field>
+              <Field label="LinkedIn (Optional)">
+                <Input value={form.linkedin_url} onChange={(e) => set('linkedin_url', e.target.value)} placeholder="https://" />
+              </Field>
+            </div>
+          </Subsection>
+        </Section>
+
+        {/* §2 Professional */}
+        <Section title="Section 2: Professional Background">
+          <Field label="Professional Bio" required hint="Copy and paste your professional biography.">
             <Textarea
-              value={form.bio_details}
-              onChange={e => setForm({ ...form, bio_details: e.target.value })}
-              placeholder="Paste your bio, background, or any notes about yourself..."
-              className="min-h-[120px] mt-1"
+              rows={5}
+              value={form.professional_bio}
+              onChange={(e) => set('professional_bio', e.target.value)}
+              required
             />
+          </Field>
+          <MultiFileUpload
+            label="Resume / CV"
+            required
+            value={form.resume_urls}
+            onChange={(urls) => set('resume_urls', urls)}
+            multiple={false}
+            accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="Current Position" required>
+              <Input value={form.current_position} onChange={(e) => set('current_position', e.target.value)} required />
+            </Field>
+            <Field label="Current Restaurant / Company">
+              <Input value={form.current_company} onChange={(e) => set('current_company', e.target.value)} />
+            </Field>
+            <Field label="Years Cooking Professionally" required>
+              <Input
+                type="number"
+                min="0"
+                step="0.5"
+                value={form.years_cooking}
+                onChange={(e) => set('years_cooking', e.target.value)}
+                required
+              />
+            </Field>
+            <Field label="Languages Spoken (Comma-Separated)">
+              <Input
+                value={form.languages}
+                onChange={(e) => set('languages', e.target.value)}
+                placeholder="English, Spanish"
+              />
+            </Field>
           </div>
-        </Card>
+          <Field label="Awards, Recognitions, Or Notable Accomplishments">
+            <Textarea rows={3} value={form.awards} onChange={(e) => set('awards', e.target.value)} />
+          </Field>
+        </Section>
 
-        {/* Role & Availability */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Role & Availability</h3>
-          <div>
-            <Label>Role</Label>
-            <Select value={form.roles_available} onValueChange={v => setForm({ ...form, roles_available: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+        {/* §3 Culinary */}
+        <Section title="Section 3: Culinary Expertise">
+          <Field label="Primary Cuisine Specialties" required hint="Which cuisines best represent your expertise?">
+            <CheckboxGroup
+              options={INTAKE_CUISINES}
+              value={form.cuisines}
+              onChange={(v) => set('cuisines', v)}
+              otherValue={form.cuisine_other}
+              onOtherChange={(v) => set('cuisine_other', v)}
+              columns={3}
+            />
+          </Field>
+          <Field label="Dietary Expertise" required hint="Which dietary preferences are you comfortable accommodating?">
+            <CheckboxGroup
+              options={INTAKE_DIETARY}
+              value={form.dietary_specialties}
+              onChange={(v) => set('dietary_specialties', v)}
+              otherValue={form.dietary_other}
+              onOtherChange={(v) => set('dietary_other', v)}
+            />
+          </Field>
+          <Field label="Which cuisines do you feel most confident preparing for clients?" required>
+            <Textarea rows={3} value={form.confident_cuisines} onChange={(e) => set('confident_cuisines', e.target.value)} required />
+          </Field>
+          <Field label="Are there any cuisines, ingredients, or techniques you're currently exploring or excited about?">
+            <Textarea rows={3} value={form.exploring_cuisines} onChange={(e) => set('exploring_cuisines', e.target.value)} />
+          </Field>
+        </Section>
+
+        {/* §4 Story */}
+        <Section
+          title="Section 4: Your Story"
+          description="Help us better understand you as a chef. These responses may be incorporated into your Gradito profile and help us introduce you to prospective clients and partners."
+        >
+          <Field label="Tell us about your culinary journey" required>
+            <Textarea rows={4} value={form.culinary_journey} onChange={(e) => set('culinary_journey', e.target.value)} required />
+          </Field>
+          <Field label="How would you describe your approach to hospitality?" required>
+            <Textarea rows={3} value={form.hospitality_approach} onChange={(e) => set('hospitality_approach', e.target.value)} required />
+          </Field>
+          <Field label="What makes dining with you unique?" required>
+            <Textarea rows={3} value={form.what_makes_unique} onChange={(e) => set('what_makes_unique', e.target.value)} required />
+          </Field>
+          <Field label="What do you hope guests remember most after sharing one of your meals?" required>
+            <Textarea rows={3} value={form.guests_remember} onChange={(e) => set('guests_remember', e.target.value)} required />
+          </Field>
+          <Field label="Is there anything else you'd like prospective clients to know about you?">
+            <Textarea rows={3} value={form.clients_should_know} onChange={(e) => set('clients_should_know', e.target.value)} />
+          </Field>
+        </Section>
+
+        {/* §5 Career */}
+        <Section
+          title="Section 5: Career Goals"
+          description="These questions help us understand your long-term ambitions so we can keep you in mind for future opportunities."
+        >
+          <Field label="If budget weren't a factor, what dinner or culinary experience would you love to create?">
+            <Textarea rows={3} value={form.dream_dinner} onChange={(e) => set('dream_dinner', e.target.value)} />
+          </Field>
+          <Field label="Is there a brand, hotel, restaurant, winery, resort, or company you'd love to collaborate with?">
+            <Textarea rows={3} value={form.dream_collaboration} onChange={(e) => set('dream_collaboration', e.target.value)} />
+          </Field>
+          <Field label="Is there a destination you've always wanted to cook in?">
+            <Textarea rows={2} value={form.dream_destination} onChange={(e) => set('dream_destination', e.target.value)} />
+          </Field>
+          <Field
+            label="What are you hoping to grow over the next few years?"
+            hint="e.g. Private Dining, Brand Partnerships, Television, Restaurants, Teaching, Cookbook, Media"
+          >
+            <Textarea rows={3} value={form.growth_goals} onChange={(e) => set('growth_goals', e.target.value)} />
+          </Field>
+          <Field label="What's one opportunity you hope Gradito helps create?">
+            <Textarea rows={3} value={form.gradito_opportunity_hope} onChange={(e) => set('gradito_opportunity_hope', e.target.value)} />
+          </Field>
+        </Section>
+
+        {/* §6 Opportunities */}
+        <Section title="Section 6: Opportunity Preferences">
+          <Field label="Private Dining & Placements" required>
+            <CheckboxGroup
+              options={OPPORTUNITY_PRIVATE_DINING}
+              value={form.opp_private_dining}
+              onChange={(v) => set('opp_private_dining', v)}
+            />
+          </Field>
+          <Field label="Events & Experiences" required>
+            <CheckboxGroup
+              options={OPPORTUNITY_EVENTS}
+              value={form.opp_events}
+              onChange={(v) => set('opp_events', v)}
+              otherValue={form.opp_events_other}
+              onOtherChange={(v) => set('opp_events_other', v)}
+            />
+          </Field>
+          <Field label="Education & Media" required>
+            <CheckboxGroup
+              options={OPPORTUNITY_EDUCATION_MEDIA}
+              value={form.opp_education_media}
+              onChange={(v) => set('opp_education_media', v)}
+            />
+          </Field>
+          <Field
+            label="Is there a type of opportunity you are not interested in?"
+            hint="e.g. Meal Prep, Corporate Events, Television, Travel, Festivals, Cooking Classes"
+          >
+            <Textarea rows={2} value={form.opportunities_not_interested} onChange={(e) => set('opportunities_not_interested', e.target.value)} />
+          </Field>
+        </Section>
+
+        {/* §7 Availability & pricing */}
+        <Section title="Section 7: Availability & Pricing">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="How far are you typically willing to travel for an event?">
+              <Select value={form.travel_distance} onValueChange={(v) => set('travel_distance', v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {TRAVEL_DISTANCE_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Do you have a valid passport?">
+              <Select value={form.has_passport} onValueChange={(v) => set('has_passport', v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {YES_NO_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Ideal Gradito events per month/year" hint="Approximate Number">
+              <Input
+                type="number"
+                min="0"
+                value={form.ideal_events_per_period}
+                onChange={(e) => set('ideal_events_per_period', e.target.value)}
+              />
+            </Field>
+            <Field label="Typical lead time before accepting an event">
+              <Select value={form.lead_time} onValueChange={(v) => set('lead_time', v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {LEAD_TIME_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+
+          <Field label="Preferred event days">
+            <CheckboxGroup
+              options={PREFERRED_EVENT_DAYS}
+              value={form.preferred_event_days}
+              onChange={(v) => set('preferred_event_days', v)}
+              columns={3}
+            />
+          </Field>
+
+          <Field
+            label="What is the largest event you would feel comfortable leading with appropriate support staff?"
+            required
+            hint="Gradito provides additional culinary and service staff as guest counts increase (e.g., sous chefs, servers, bartenders, captains, etc.). We're looking to understand the largest event you'd feel confident overseeing as the lead chef."
+          >
+            <Input
+              type="number"
+              min="1"
+              value={form.max_guest_count}
+              onChange={(e) => set('max_guest_count', e.target.value)}
+              required
+              placeholder="Maximum Guest Count"
+            />
+          </Field>
+
+          <Field
+            label="Commercial kitchen access"
+            hint="Do you have access to a commercial kitchen for prep work (especially for larger events)?"
+          >
+            <Select value={form.commercial_kitchen_access} onValueChange={(v) => set('commercial_kitchen_access', v)}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="Head">Head Chef</SelectItem>
-                <SelectItem value="Sous">Sous Chef</SelectItem>
-                <SelectItem value="Both">Both</SelectItem>
+                {KITCHEN_ACCESS_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
               </SelectContent>
             </Select>
-          </div>
-          <div>
-            <Label>Max Solo Guests</Label>
-            <Input type="number" value={form.max_solo_guests} onChange={e => setForm({ ...form, max_solo_guests: Number(e.target.value) })} />
-          </div>
-        </Card>
+          </Field>
 
-        {/* Service Areas */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Service Areas</h3>
-          <Label>Home Areas (no travel fee)</Label>
-          <div className="grid grid-cols-2 gap-2">
-            {SERVICE_AREAS.map(area => (
-              <label key={area} className="flex items-center gap-2 text-sm">
-                <Checkbox checked={form.home_areas.includes(area)} onCheckedChange={() => toggleArray('home_areas', area)} />
-                {area}
-              </label>
-            ))}
-            {form.home_areas.filter(a => !SERVICE_AREAS.includes(a)).map(a => (
-              <label key={a} className="flex items-center gap-2 text-sm">
-                <Checkbox checked onCheckedChange={() => toggleArray('home_areas', a)} />
-                {a}
-              </label>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input placeholder="Add custom area..." value={customHomeArea} onChange={e => setCustomHomeArea(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomToArray('home_areas', customHomeArea, setCustomHomeArea); }}} />
-            <Button type="button" variant="outline" onClick={() => addCustomToArray('home_areas', customHomeArea, setCustomHomeArea)}>
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
+          <Field
+            label="Own kitchen guest limit"
+            hint="Up to how many guests can you cook from your own kitchen? Above this count, you’d need a commercial kitchen rental. Example: 40 — home kitchen OK up to 40 guests; commercial kitchen required after that."
+          >
+            <Input
+              type="number"
+              min="1"
+              value={form.own_kitchen_max_guests}
+              onChange={(e) => set('own_kitchen_max_guests', e.target.value)}
+              placeholder="e.g. 40"
+            />
+          </Field>
 
-          <div>
-            <Label>Travel Policy</Label>
-            <Select value={form.travel_policy} onValueChange={v => setForm({ ...form, travel_policy: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Home only">Home only</SelectItem>
-                <SelectItem value="Select areas">Select areas</SelectItem>
-                <SelectItem value="Anywhere">Anywhere</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {form.travel_policy === 'Anywhere' && (
-            <div><Label>Default Travel Fee</Label><Input type="number" value={form.default_travel_fee} onChange={e => setForm({ ...form, default_travel_fee: Number(e.target.value) })} /></div>
-          )}
-        </Card>
+          <Field
+            label="What is your typical starting event fee for a standard private dinner (up to 12 guests)?"
+            hint="Private events can range from intimate dinners for two guests to 100+ guest receptions. This starting fee helps us understand the types of opportunities that are likely to be a good fit for you. Final pricing is always determined on a case-by-case basis based on guest count, staffing, travel, and event complexity."
+          >
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={form.starting_event_fee_usd}
+              onChange={(e) => set('starting_event_fee_usd', e.target.value)}
+              placeholder="Starting Event Fee (USD)"
+            />
+          </Field>
 
-        {/* Availability */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Availability</h3>
-
-          <div>
-            <Label className="block mb-2">Blackout Dates — Holidays</Label>
-            <p className="text-sm text-muted-foreground mb-3">Select any holidays you do not work.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {[
-                'New Year\'s Day', 'Martin Luther King Jr. Day', 'Presidents\' Day',
-                'Memorial Day', 'Juneteenth', 'Independence Day (July 4)', 'Labor Day',
-                'Indigenous Peoples\' / Columbus Day', 'Veterans Day', 'Thanksgiving',
-                'Day after Thanksgiving', 'Christmas Eve', 'Christmas Day', 'New Year\'s Eve',
-              ].map(h => (
-                <label key={h} className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={form.blackout_holidays.includes(h)}
-                    onCheckedChange={() => toggleArray('blackout_holidays', h)}
-                  />
-                  {h}
-                </label>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <Label className="block mb-2">Blackout Dates — Specific Dates</Label>
-            {form.blackout_dates.length > 0 && (
-              <div className="space-y-2 mb-3">
-                {form.blackout_dates.map((d, i) => (
-                  <div key={i} className="flex items-center justify-between bg-muted rounded-md px-3 py-2 text-sm">
-                    <span className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-muted-foreground" />
-                      {d.start}{d.end && d.end !== d.start ? ` → ${d.end}` : ''}
-                    </span>
-                    <button type="button" onClick={() => setForm(prev => ({ ...prev, blackout_dates: prev.blackout_dates.filter((_, idx) => idx !== i) }))}>
-                      <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+          <Field
+            label="Is your starting event fee flexible for the right opportunity?"
+            hint={(
+              <>
+                <p>Examples may include:</p>
+                <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                  <li>A dream client or brand</li>
+                  <li>Editorial or press opportunities</li>
+                  <li>Television or media appearances</li>
+                  <li>High-profile collaborations</li>
+                  <li>Repeat business</li>
+                </ul>
+              </>
             )}
-            <div className="flex gap-2 items-end">
-              <div className="flex-1">
-                <label className="text-xs text-muted-foreground mb-1 block">Start Date</label>
-                <Input type="date" value={blackoutDateEntry.start} onChange={e => setBlackoutDateEntry(p => ({ ...p, start: e.target.value }))} />
-              </div>
-              <div className="flex-1">
-                <label className="text-xs text-muted-foreground mb-1 block">End Date (optional)</label>
-                <Input type="date" value={blackoutDateEntry.end} onChange={e => setBlackoutDateEntry(p => ({ ...p, end: e.target.value }))} />
-              </div>
-              <Button type="button" variant="outline" className="gap-1" onClick={() => {
-                if (!blackoutDateEntry.start) return;
-                setForm(prev => ({ ...prev, blackout_dates: [...prev.blackout_dates, { start: blackoutDateEntry.start, end: blackoutDateEntry.end || blackoutDateEntry.start }] }));
-                setBlackoutDateEntry({ start: '', end: '' });
-              }}>
-                <Plus className="w-4 h-4" /> Add
-              </Button>
-            </div>
-          </div>
+          >
+            <Select value={form.starting_fee_flexible} onValueChange={(v) => set('starting_fee_flexible', v)}>
+              <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <SelectContent>
+                {FEE_FLEXIBLE_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
 
-          <div>
-            <Label>Additional Availability Notes</Label>
-            <Textarea
-              value={form.availability_notes}
-              onChange={e => setForm({ ...form, availability_notes: e.target.value })}
-              placeholder="e.g. Only available weekends through summer, no events before 5pm on weekdays..."
-              className="min-h-[80px] mt-1"
+          <Field
+            label="Expected salary / compensation (USD)"
+            required
+            hint="For private chef placements and longer-term opportunities (distinct from event starting fee)."
+          >
+            <Input
+              type="number"
+              min="0"
+              step="1"
+              value={form.expected_compensation_usd}
+              onChange={(e) => set('expected_compensation_usd', e.target.value)}
+              required
             />
-          </div>
-        </Card>
+          </Field>
+        </Section>
 
-        {/* Cuisines */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Cuisines</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {CUISINES.map(c => (
-              <label key={c} className="flex items-center gap-2 text-sm">
-                <Checkbox checked={form.cuisines.includes(c)} onCheckedChange={() => toggleArray('cuisines', c)} />
-                {c}
-              </label>
-            ))}
-            {form.cuisines.filter(c => !CUISINES.includes(c)).map(c => (
-              <label key={c} className="flex items-center gap-2 text-sm">
-                <Checkbox checked onCheckedChange={() => toggleArray('cuisines', c)} />
-                {c}
-              </label>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input placeholder="Add custom cuisine..." value={customCuisine} onChange={e => setCustomCuisine(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomToArray('cuisines', customCuisine, setCustomCuisine); }}} />
-            <Button type="button" variant="outline" onClick={() => addCustomToArray('cuisines', customCuisine, setCustomCuisine)}>
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-        </Card>
+        {/* §8 Portfolio */}
+        <Section title="Section 8: Portfolio & Media" description="Help us showcase your work.">
+          <CategorizedPortfolioUpload
+            categories={PORTFOLIO_CATEGORIES}
+            values={{
+              headshots: form.headshots,
+              food_portfolio: form.food_portfolio,
+              event_photos: form.event_photos,
+              additional_files: form.additional_files,
+            }}
+            onChange={(key, urls) => {
+              setForm((prev) => ({
+                ...prev,
+                [key]: urls,
+                ...(key === 'headshots'
+                  ? { photo_url: prev.photo_url || urls[0] || '' }
+                  : {}),
+              }));
+            }}
+          />
+          <Field
+            label="Share Links (Optional)"
+            hint={(
+              <>
+                <p>Examples:</p>
+                <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                  <li>Google Drive</li>
+                  <li>Dropbox</li>
+                  <li>Website</li>
+                  <li>Press Articles</li>
+                  <li>YouTube</li>
+                  <li>Vimeo</li>
+                  <li>Podcast Appearances</li>
+                  <li>Media Coverage</li>
+                  <li>Recipe Portfolios</li>
+                </ul>
+              </>
+            )}
+          >
+            <Textarea rows={3} value={form.share_links} onChange={(e) => set('share_links', e.target.value)} />
+          </Field>
+        </Section>
 
-        {/* Experience Types */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Experience Types</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {EXPERIENCE_TYPES.map(t => (
-              <label key={t} className="flex items-center gap-2 text-sm">
-                <Checkbox checked={form.experience_types.includes(t)} onCheckedChange={() => toggleArray('experience_types', t)} />
-                {t}
-              </label>
-            ))}
-            {form.experience_types.filter(t => !EXPERIENCE_TYPES.includes(t)).map(t => (
-              <label key={t} className="flex items-center gap-2 text-sm">
-                <Checkbox checked onCheckedChange={() => toggleArray('experience_types', t)} />
-                {t}
-              </label>
-            ))}
+        {/* §9 Social */}
+        <Section title="Section 9: Social & Media">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <Field label="YouTube (Optional)">
+              <Input value={form.youtube_url} onChange={(e) => set('youtube_url', e.target.value)} placeholder="https://" />
+            </Field>
+            <Field label="Newsletter (Optional)">
+              <Input value={form.newsletter_url} onChange={(e) => set('newsletter_url', e.target.value)} placeholder="https://" />
+            </Field>
+            <Field label="Approximate Followers Across Platforms">
+              <Select value={form.social_follower_band} onValueChange={(v) => set('social_follower_band', v)}>
+                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {FOLLOWER_BAND_OPTIONS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
           </div>
-          <div className="flex gap-2">
-            <Input placeholder="Add custom experience type..." value={customExperience} onChange={e => setCustomExperience(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustomToArray('experience_types', customExperience, setCustomExperience); }}} />
-            <Button type="button" variant="outline" onClick={() => addCustomToArray('experience_types', customExperience, setCustomExperience)}>
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-          <div><Label>Signature Experiences</Label><Textarea value={form.signature_experiences} onChange={e => setForm({ ...form, signature_experiences: e.target.value })} placeholder="Describe your unique specialties..." /></div>
-        </Card>
+          <Field label="Brand Partnerships, Media Appearances, Television, Podcasts, Or Press Coverage">
+            <Textarea rows={4} value={form.media_history} onChange={(e) => set('media_history', e.target.value)} />
+          </Field>
+        </Section>
 
-        {/* Dietary & Languages */}
-        <Card className="p-6 space-y-4">
-          <h3 className="font-heading text-lg font-semibold">Dietary & Languages</h3>
-          <div className="grid grid-cols-2 gap-2">
-            {DIETARY_SPECIALTIES.map(d => (
-              <label key={d} className="flex items-center gap-2 text-sm">
-                <Checkbox checked={form.dietary_specialties.includes(d)} onCheckedChange={() => toggleArray('dietary_specialties', d)} />
-                {d}
-              </label>
-            ))}
-          </div>
-          <div>
-            <Label>Languages</Label>
-            <Input placeholder="English, Spanish, ..." value={form.languages.join(', ')} onChange={e => setForm({ ...form, languages: e.target.value.split(',').map(l => l.trim()).filter(Boolean) })} />
-          </div>
-          <div><Label>Equipment Notes</Label><Textarea value={form.equipment_notes} onChange={e => setForm({ ...form, equipment_notes: e.target.value })} placeholder="Any equipment you bring..." /></div>
-        </Card>
+        {/* §10 Final */}
+        <Section title="Section 10: Final Thoughts">
+          <Field label="Is there anything else you'd like the Gradito team to know?">
+            <Textarea rows={3} value={form.anything_else} onChange={(e) => set('anything_else', e.target.value)} />
+          </Field>
+          <Field label="What would make partnering with Gradito a great experience for you?">
+            <Textarea rows={3} value={form.partnering_experience} onChange={(e) => set('partnering_experience', e.target.value)} />
+          </Field>
+        </Section>
 
         {submitError && (
-          <p className="text-sm text-destructive text-center" role="alert">{submitError}</p>
+          <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{submitError}</div>
         )}
 
-        <Button type="submit" disabled={loading} className="w-full bg-gold hover:bg-gold/90 text-white py-6 text-lg font-heading">
-          {loading ? <Loader2 className="animate-spin mr-2" /> : <ChefHat className="mr-2" />}
-          Submit Profile
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full h-12 bg-navy hover:bg-navy/90 text-white"
+        >
+          {loading ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Submitting…
+            </>
+          ) : (
+            'Submit Profile'
+          )}
         </Button>
       </form>
     </div>

@@ -8,6 +8,7 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ProtectedRoute, { PermissionRoute } from '@/components/ProtectedRoute';
 import PageSkeleton from '@/components/PageSkeleton';
 import AdminRoute from '@/components/AdminRoute';
+import GraditoLogo from '@/components/brand/GraditoLogo';
 
 const PageNotFound = lazy(() => import('@/lib/PageNotFound'));
 const Login = lazy(() => import('@/pages/Login'));
@@ -53,7 +54,9 @@ function FullPageSpinner() {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-background">
       <div className="text-center">
-        <h1 className="font-display text-2xl font-bold text-navy tracking-wide mb-4">GRADITO</h1>
+        <div className="flex justify-center text-navy mb-4">
+          <GraditoLogo className="h-8 w-auto" title="Gradito" />
+        </div>
         <div className="w-8 h-8 border-4 border-border border-t-gold rounded-full animate-spin mx-auto" />
       </div>
     </div>

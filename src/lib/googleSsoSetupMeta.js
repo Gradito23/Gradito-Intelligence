@@ -36,6 +36,26 @@ export const SUPABASE_PHASE_STEPS = [
   'Enable Google, paste Client ID and Client Secret from Phase 1, Save.',
 ];
 
-export function getGoogleSSOStatus() {
-  return 'Setup guide';
+export function getGoogleSSOStatus(enabled) {
+  if (enabled == null) return 'Loading…';
+  return enabled ? 'Connected' : 'Not configured';
+}
+
+/**
+ * Public read of admin-marked Google SSO enablement (no secrets).
+ * Defaults to false on missing row or query errors so login stays safe.
+ */
+export async function fetchGoogleSsoEnabled(supabase) {
+  const { data, error } = await supabase
+    .from('integration_google_sso_settings')
+    .select('enabled')
+    .eq('id', 1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Failed to load Google SSO settings:', error.message);
+    return false;
+  }
+
+  return Boolean(data?.enabled);
 }

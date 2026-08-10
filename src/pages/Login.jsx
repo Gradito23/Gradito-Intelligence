@@ -8,7 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
+import ConfirmDialog from "@/components/ui/confirm-dialog";
 import GoogleIcon from "@/components/GoogleIcon";
+import { fetchGoogleSsoEnabled } from "@/lib/googleSsoSetupMeta";
 
 function getOAuthErrorFromUrl() {
   const params = new URLSearchParams(window.location.search);
@@ -33,6 +35,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleUnavailableOpen, setGoogleUnavailableOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -85,6 +88,11 @@ export default function Login() {
 
   const handleGoogle = async () => {
     setError("");
+    const enabled = await fetchGoogleSsoEnabled(supabase);
+    if (!enabled) {
+      setGoogleUnavailableOpen(true);
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
     const next = params.get("next") || getDefaultLandingPath(hasPermission);
     const redirectTo = !params.get("next")
@@ -111,6 +119,16 @@ export default function Login() {
         <GoogleIcon className="w-5 h-5 mr-2" />
         Continue with Google
       </Button>
+
+      <ConfirmDialog
+        open={googleUnavailableOpen}
+        onOpenChange={setGoogleUnavailableOpen}
+        title="Google sign-in unavailable"
+        description="Google sign-in is not configured yet. Please contact your System Administrator."
+        cancelLabel="OK"
+        hideConfirm
+        branded
+      />
 
       <div className="relative mb-6">
         <div className="absolute inset-0 flex items-center">
