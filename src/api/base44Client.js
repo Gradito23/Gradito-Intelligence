@@ -68,11 +68,26 @@ async function uploadFile({ file }) {
 
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError) throw new Error(authError.message)
-  if (!user) {
-    throw new Error('You must be signed in to upload files')
+
+  let folder
+  if (user?.id) {
+    folder = user.id
+  } else {
+    // Public /intake form — store under intake/{guestId}/ (anon RLS policy)
+    let guestId = null
+    try {
+      guestId = sessionStorage.getItem('gradito_intake_guest_id')
+      if (!guestId) {
+        guestId = crypto.randomUUID()
+        sessionStorage.setItem('gradito_intake_guest_id', guestId)
+      }
+    } catch {
+      guestId = crypto.randomUUID()
+    }
+    folder = `intake/${guestId}`
   }
 
-  const path = `${user.id}/${Date.now()}-${safeFileName(file.name)}`
+  const path = `${folder}/${Date.now()}-${safeFileName(file.name)}`
   const { error: uploadError } = await supabase.storage
     .from('uploads')
     .upload(path, file, {

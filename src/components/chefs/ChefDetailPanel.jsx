@@ -403,6 +403,70 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
                   />
                 </div>
                 <EditableField label="Max Solo Guests" value={draft.max_solo_guests} onChange={v => update('max_solo_guests', Number(v))} type="number" />
+                <EditableField label="Max Guest Capacity" value={draft.max_guest_count} onChange={v => update('max_guest_count', Number(v))} type="number" />
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Commercial Kitchen Access</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={draft.commercial_kitchen_access || ''}
+                    onChange={(e) => update('commercial_kitchen_access', e.target.value || null)}
+                  >
+                    <option value="">—</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                    <option value="Depends on the project">Depends on the project</option>
+                  </select>
+                </div>
+                <EditableField
+                  label="Own Kitchen Guest Limit"
+                  value={draft.own_kitchen_max_guests ?? ''}
+                  onChange={(v) => update('own_kitchen_max_guests', v === '' ? null : Number(v))}
+                  type="number"
+                />
+                <EditableField
+                  label="Starting Event Fee (USD)"
+                  value={draft.starting_event_fee_usd ?? ''}
+                  onChange={(v) => update('starting_event_fee_usd', v === '' ? null : Number(v))}
+                  type="number"
+                />
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Starting Fee Flexible</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={draft.starting_fee_flexible || ''}
+                    onChange={(e) => update('starting_fee_flexible', e.target.value || null)}
+                  >
+                    <option value="">—</option>
+                    <option value="Yes">Yes</option>
+                    <option value="Sometimes">Sometimes</option>
+                    <option value="No">No</option>
+                  </select>
+                </div>
+                <EditableField
+                  label="Expected Compensation (USD)"
+                  value={draft.expected_compensation_usd ?? ''}
+                  onChange={(v) => update('expected_compensation_usd', v === '' ? null : Number(v))}
+                  type="number"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <EditableField label="City" value={draft.city || ''} onChange={(v) => update('city', v)} />
+                  <EditableField label="State" value={draft.state || ''} onChange={(v) => update('state', v)} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Personal Vehicle</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={draft.has_vehicle === true ? 'yes' : draft.has_vehicle === false ? 'no' : ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      update('has_vehicle', v === 'yes' ? true : v === 'no' ? false : null);
+                    }}
+                  >
+                    <option value="">—</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </div>
                 <div>
                   <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Equipment Notes</label>
                   <Textarea
