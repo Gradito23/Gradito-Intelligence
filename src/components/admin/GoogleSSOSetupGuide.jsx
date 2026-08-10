@@ -1,14 +1,22 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink, Loader2 } from 'lucide-react';
 import CopyableValue from '@/components/admin/CopyableValue';
+import {
+  useGoogleSSOIntegration,
+  useSaveGoogleSSOSettings,
+} from '@/hooks/useGoogleSSOIntegration';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/use-toast';
 import {
   APP_URL,
   getGoogleCloudCredentialsUrl,
+  getGoogleSSOStatus,
   getSupabaseCallbackUrl,
   getSupabaseGoogleProviderUrl,
   getSupabaseProjectRef,
@@ -51,6 +59,85 @@ function WorksheetField({ id, label, value, onChange }) {
   );
 }
 
+function GoogleSSOEnableCard() {
+  const { data, isLoading, isError, error } = useGoogleSSOIntegration();
+  const saveMutation = useSaveGoogleSSOSettings();
+  const [enabled, setEnabled] = useState(false);
+
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.enabled ?? false);
+  }, [data]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    try {
+      await saveMutation.mutateAsync({ enabled });
+      toast({
+        title: enabled ? 'Google SSO enabled' : 'Google SSO disabled',
+        description: enabled
+          ? 'Continue with Google is available on login and register.'
+          : 'Users will see a contact-administrator message instead of Google sign-in.',
+      });
+    } catch (err) {
+      toast({ title: 'Save failed', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  if (isLoading) {
+    return <Skeleton className="h-36 w-full" />;
+  }
+
+  if (isError) {
+    return (
+      <p className="text-sm text-destructive">
+        Failed to load Google SSO settings: {error.message}
+      </p>
+    );
+  }
+
+  const statusLabel = getGoogleSSOStatus(data?.enabled);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-base">Enable in Gradito</CardTitle>
+          <Badge variant={data?.enabled ? 'default' : 'secondary'}>{statusLabel}</Badge>
+        </div>
+        <CardDescription>
+          After Google and Supabase are configured, enable Google SSO here so login stops showing the
+          unavailable modal.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSave} className="space-y-4">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label htmlFor="google-sso-enabled">Enable Google SSO</Label>
+              <p className="text-xs text-muted-foreground">
+                Marks Gradito ready; does not store Client ID or Secret.
+              </p>
+            </div>
+            <Switch
+              id="google-sso-enabled"
+              checked={enabled}
+              onCheckedChange={setEnabled}
+            />
+          </div>
+          <Button
+            type="submit"
+            disabled={saveMutation.isPending || enabled === Boolean(data?.enabled)}
+            className="bg-navy hover:bg-navy/90 text-white"
+          >
+            {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function GoogleSSOSetupGuide() {
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -65,6 +152,8 @@ export default function GoogleSSOSetupGuide() {
 
   return (
     <div className="space-y-6">
+      <GoogleSSOEnableCard />
+
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base">Phase 1 — Google Cloud</CardTitle>

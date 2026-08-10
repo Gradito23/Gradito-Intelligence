@@ -2,12 +2,14 @@ import React from 'react';
 import { Plug } from 'lucide-react';
 import IntegrationCategorySection from '@/components/admin/IntegrationCategorySection';
 import { useEmailIntegration } from '@/hooks/useEmailIntegration';
+import { useGoogleSSOIntegration } from '@/hooks/useGoogleSSOIntegration';
 import { useOpenAIIntegration } from '@/hooks/useOpenAIIntegration';
 import { INTEGRATION_CATEGORIES, getEmailIntegrationStatus, getGoogleSSOIntegrationStatus, getOpenAIIntegrationStatus } from '@/lib/integrationMeta';
 
 export default function IntegrationsHub() {
   const { data: emailData } = useEmailIntegration();
   const { data: openaiData } = useOpenAIIntegration();
+  const { data: googleSsoData } = useGoogleSSOIntegration();
 
   const getStatusText = (integration) => {
     if (integration.id === 'email') {
@@ -17,7 +19,7 @@ export default function IntegrationsHub() {
       return getOpenAIIntegrationStatus(openaiData);
     }
     if (integration.id === 'google_sso') {
-      return getGoogleSSOIntegrationStatus();
+      return getGoogleSSOIntegrationStatus(googleSsoData);
     }
     return null;
   };
