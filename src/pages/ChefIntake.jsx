@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CUISINES, EXPERIENCE_TYPES, SERVICE_AREAS, DIETARY_SPECIALTIES } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
+import GraditoLogo from '@/components/brand/GraditoLogo';
 import { CheckCircle, ChefHat, Loader2, Plus, Upload, X, Calendar } from 'lucide-react';
 
 export default function ChefIntake() {
@@ -131,8 +132,10 @@ export default function ChefIntake() {
   return (
     <div className="min-h-screen bg-background">
       <div className="bg-navy py-8 px-4 text-center">
-        <h1 className="font-display text-3xl font-bold text-white tracking-wide">GRADITO</h1>
-        <p className="text-gold text-sm mt-1 tracking-widest uppercase">Chef Intake Form</p>
+        <div className="flex justify-center text-white">
+          <GraditoLogo className="h-9 w-auto" title="Gradito" />
+        </div>
+        <p className="text-gold text-sm mt-2 tracking-widest uppercase">Chef Intake Form</p>
       </div>
 
       <form onSubmit={handleSubmit} className="max-w-2xl mx-auto p-6 space-y-6">

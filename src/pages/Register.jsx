@@ -174,6 +174,7 @@ export default function Register() {
         description="Google sign-in is not configured yet. Please contact your System Administrator."
         cancelLabel="OK"
         hideConfirm
+        branded
       />
 
       <div className="relative mb-6">

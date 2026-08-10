@@ -127,6 +127,7 @@ export default function Login() {
         description="Google sign-in is not configured yet. Please contact your System Administrator."
         cancelLabel="OK"
         hideConfirm
+        branded
       />
 
       <div className="relative mb-6">

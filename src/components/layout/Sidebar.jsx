@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Menu, PanelLeft, PanelLeftClose, X } from 'lucide-react';
+import GraditoIcon from '@/components/brand/GraditoIcon';
+import GraditoLogo from '@/components/brand/GraditoLogo';
 import UserAccountMenu from './UserAccountMenu';
 import OpsSidebarNav from './OpsSidebarNav';
 import AdminSidebarNav from './AdminSidebarNav';
@@ -23,15 +25,13 @@ export default function Sidebar() {
       <>
         <div className={cn('pb-4', showCollapsed ? 'px-2 pt-4' : 'p-6')}>
           <div className={cn('flex items-center', showCollapsed ? 'flex-col gap-2' : 'justify-between gap-2')}>
-            <div className={cn(showCollapsed && 'text-center')}>
+            <div className={cn('text-sidebar-foreground', showCollapsed && 'text-center')}>
               {showCollapsed ? (
-                <h1 className="font-display text-lg font-bold text-sidebar-foreground tracking-wide">G</h1>
+                <GraditoIcon className="h-7 w-7 mx-auto" title="Gradito" />
               ) : (
                 <>
-                  <h1 className="font-display text-2xl font-bold text-sidebar-foreground tracking-wide">
-                    GRADITO
-                  </h1>
-                  <p className="text-xs text-sidebar-foreground/50 mt-1 tracking-widest uppercase">
+                  <GraditoLogo className="h-7 w-auto max-w-[9.5rem]" title="Gradito" />
+                  <p className="text-xs text-sidebar-foreground/50 mt-1.5 tracking-widest uppercase">
                     Intelligence
                   </p>
                 </>

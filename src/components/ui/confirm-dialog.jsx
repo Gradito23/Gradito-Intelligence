@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import GraditoLogo from '@/components/brand/GraditoLogo';
 
 export default function ConfirmDialog({
   open,
@@ -25,6 +26,7 @@ export default function ConfirmDialog({
   loading = false,
   confirmDisabled = false,
   hideConfirm = false,
+  branded = false,
 }) {
   const handleConfirm = async () => {
     await onConfirm?.();
@@ -40,14 +42,21 @@ export default function ConfirmDialog({
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>{title}</AlertDialogTitle>
+          {branded && (
+            <div className="flex justify-center text-navy mb-1">
+              <GraditoLogo className="h-7 w-auto" title="Gradito" />
+            </div>
+          )}
+          <AlertDialogTitle className={branded ? 'text-center' : undefined}>
+            {title}
+          </AlertDialogTitle>
           {description && (
             <AlertDialogDescription asChild>
-              <div>{description}</div>
+              <div className={branded ? 'text-center' : undefined}>{description}</div>
             </AlertDialogDescription>
           )}
         </AlertDialogHeader>
-        <AlertDialogFooter>
+        <AlertDialogFooter className={branded && hideConfirm ? 'sm:justify-center' : undefined}>
           <AlertDialogCancel disabled={loading}>{cancelLabel}</AlertDialogCancel>
           {secondaryLabel && (
             <Button
