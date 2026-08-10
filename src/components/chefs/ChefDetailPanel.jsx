@@ -15,8 +15,24 @@ import GoldStars from '@/components/ui/GoldStars';
 import { formatCurrency } from '@/hooks/useAppData';
 import { Phone, Mail, ExternalLink, MapPin, Globe, Users, X, Plus, Save, Trash2, AlertTriangle, Link, Copy } from 'lucide-react';
 import { CUISINES, SERVICE_AREAS, EXPERIENCE_TYPES, DIETARY_SPECIALTIES } from '@/lib/constants';
+import {
+  FOLLOWER_BAND_OPTIONS,
+  LEAD_TIME_OPTIONS,
+  OPPORTUNITY_EDUCATION_MEDIA,
+  OPPORTUNITY_EVENTS,
+  OPPORTUNITY_PRIVATE_DINING,
+  PREFERRED_EVENT_DAYS,
+  TRAVEL_DISTANCE_OPTIONS,
+} from '@/lib/chefIntakeOptions';
+import MultiFileUpload from '@/components/intake/MultiFileUpload';
 import { toast } from '@/components/ui/use-toast';
 import ConfirmDialog from '@/components/ui/confirm-dialog';
+
+const OPPORTUNITY_CHIP_OPTIONS = [
+  ...OPPORTUNITY_PRIVATE_DINING,
+  ...OPPORTUNITY_EVENTS,
+  ...OPPORTUNITY_EDUCATION_MEDIA,
+].filter((o) => !o.toLowerCase().includes('please specify'));
 
 function EditableField({ label, value, onChange, type = 'text', placeholder }) {
   return (
@@ -158,7 +174,12 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
 
   useEffect(() => {
     if (chef) {
-      setDraft({ ...chef });
+      setDraft({
+        ...chef,
+        talent_profile: chef.talent_profile && typeof chef.talent_profile === 'object'
+          ? { ...chef.talent_profile }
+          : {},
+      });
       setDirty(false);
     } else {
       setDraft(null);
@@ -171,10 +192,24 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
     setDirty(true);
   }, []);
 
+  const updateTalent = useCallback((key, value) => {
+    setDraft((prev) => ({
+      ...prev,
+      talent_profile: { ...(prev.talent_profile || {}), [key]: value },
+    }));
+    setDirty(true);
+  }, []);
+
   const save = async () => {
     if (!dirty || !draft) return;
     setSaving(true);
-    await base44.entities.Chef.update(chef.id, draft);
+    const tp = draft.talent_profile || {};
+    const payload = {
+      ...draft,
+      talent_profile: tp,
+      notes: tp.professional_bio ?? draft.notes ?? null,
+    };
+    await base44.entities.Chef.update(chef.id, payload);
     await base44.entities.ActivityLog.create({
       actor: 'Team',
       action: 'Updated',
@@ -220,6 +255,11 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
   if (!chef || !draft) return null;
 
   const fullName = `${draft.first_name} ${draft.last_name}`;
+  const tp = draft.talent_profile || {};
+  const opportunityOptions = [
+    ...OPPORTUNITY_CHIP_OPTIONS,
+    ...(draft.opportunity_preferences || []).filter((p) => !OPPORTUNITY_CHIP_OPTIONS.includes(p)),
+  ];
   const chefAssignments = eventChefs.filter(ec => ec.chef_id === chef.id);
   const chefEventIds = [...new Set(chefAssignments.map(ec => ec.event_id))];
   const chefEvents = events.filter(e => chefEventIds.includes(e.id)).sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -237,6 +277,9 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
                 <SheetHeader className="p-0">
                   <SheetTitle className="text-white font-heading text-xl">{fullName}</SheetTitle>
                 </SheetHeader>
+                {draft.preferred_name && (
+                  <p className="text-white/70 text-sm mt-0.5">Goes by {draft.preferred_name}</p>
+                )}
                 {/* Inline star rating */}
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -343,6 +386,255 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
                 <EditableField label="Menu URL" value={draft.menu_url} onChange={v => update('menu_url', v)} placeholder="Canva link" />
                 <EditableField label="Bio URL" value={draft.bio_url} onChange={v => update('bio_url', v)} placeholder="Canva link" />
                 <EditableField label="Photo URL" value={draft.photo_url} onChange={v => update('photo_url', v)} />
+              </Card>
+
+              <Card className="p-4 space-y-3">
+                <h4 className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Professional</h4>
+                <EditableField label="Preferred Name" value={draft.preferred_name || ''} onChange={(v) => update('preferred_name', v || null)} />
+                <EditableField label="Home Airport" value={draft.home_airport || ''} onChange={(v) => update('home_airport', v || null)} />
+                <EditableField label="Current Position" value={draft.current_position || ''} onChange={(v) => update('current_position', v || null)} />
+                <EditableField label="Current Restaurant / Company" value={draft.current_company || ''} onChange={(v) => update('current_company', v || null)} />
+                <EditableField
+                  label="Years Cooking Professionally"
+                  value={draft.years_cooking ?? ''}
+                  onChange={(v) => update('years_cooking', v === '' ? null : Number(v))}
+                  type="number"
+                />
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Awards & Recognitions</label>
+                  <Textarea
+                    value={draft.awards || ''}
+                    onChange={(e) => update('awards', e.target.value || null)}
+                    className="text-sm resize-none"
+                    rows={2}
+                  />
+                </div>
+                <div>
+                  <EditableField label="Resume URL" value={draft.resume_url || ''} onChange={(v) => update('resume_url', v || null)} />
+                  {draft.resume_url && (
+                    <a
+                      href={draft.resume_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-primary mt-1"
+                    >
+                      <ExternalLink size={12} /> Open resume
+                    </a>
+                  )}
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Professional Bio</label>
+                  <Textarea
+                    value={tp.professional_bio || ''}
+                    onChange={(e) => updateTalent('professional_bio', e.target.value || null)}
+                    className="text-sm resize-none"
+                    rows={4}
+                  />
+                </div>
+              </Card>
+
+              <Card className="p-4 space-y-3">
+                <h4 className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Social & Web</h4>
+                <EditableField label="Instagram" value={draft.instagram_url || ''} onChange={(v) => update('instagram_url', v || null)} placeholder="https://" />
+                <EditableField label="TikTok" value={draft.tiktok_url || ''} onChange={(v) => update('tiktok_url', v || null)} placeholder="https://" />
+                <EditableField label="LinkedIn" value={draft.linkedin_url || ''} onChange={(v) => update('linkedin_url', v || null)} placeholder="https://" />
+                <EditableField label="YouTube" value={draft.youtube_url || ''} onChange={(v) => update('youtube_url', v || null)} placeholder="https://" />
+                <EditableField label="Website" value={draft.website_url || ''} onChange={(v) => update('website_url', v || null)} placeholder="https://" />
+                <EditableField label="Newsletter" value={draft.newsletter_url || ''} onChange={(v) => update('newsletter_url', v || null)} placeholder="https://" />
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Follower Band</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={draft.social_follower_band || ''}
+                    onChange={(e) => update('social_follower_band', e.target.value || null)}
+                  >
+                    <option value="">—</option>
+                    {FOLLOWER_BAND_OPTIONS.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Media History</label>
+                  <Textarea
+                    value={draft.media_history || ''}
+                    onChange={(e) => update('media_history', e.target.value || null)}
+                    className="text-sm resize-none"
+                    rows={3}
+                  />
+                </div>
+              </Card>
+
+              <Card className="p-4 space-y-3">
+                <h4 className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Intake Availability</h4>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Travel Distance</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={draft.travel_distance || ''}
+                    onChange={(e) => update('travel_distance', e.target.value || null)}
+                  >
+                    <option value="">—</option>
+                    {TRAVEL_DISTANCE_OPTIONS.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Passport</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={draft.has_passport === true ? 'yes' : draft.has_passport === false ? 'no' : ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      update('has_passport', v === 'yes' ? true : v === 'no' ? false : null);
+                    }}
+                  >
+                    <option value="">—</option>
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </div>
+                <EditableField
+                  label="Ideal Events Per Period"
+                  value={draft.ideal_events_per_period ?? ''}
+                  onChange={(v) => update('ideal_events_per_period', v === '' ? null : Number(v))}
+                  type="number"
+                />
+                <ChipPicker
+                  label="Preferred Event Days"
+                  selected={draft.preferred_event_days || []}
+                  options={PREFERRED_EVENT_DAYS}
+                  onChange={(v) => update('preferred_event_days', v)}
+                />
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Lead Time</label>
+                  <select
+                    className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+                    value={draft.lead_time || ''}
+                    onChange={(e) => update('lead_time', e.target.value || null)}
+                  >
+                    <option value="">—</option>
+                    {LEAD_TIME_OPTIONS.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+                <ChipPicker
+                  label="Opportunity Preferences"
+                  selected={draft.opportunity_preferences || []}
+                  options={opportunityOptions}
+                  onChange={(v) => update('opportunity_preferences', v)}
+                />
+              </Card>
+
+              <Card className="p-4 space-y-3">
+                <h4 className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Story & Goals</h4>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Confident Cuisines</label>
+                  <Textarea value={tp.confident_cuisines || ''} onChange={(e) => updateTalent('confident_cuisines', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Exploring / Excited About</label>
+                  <Textarea value={tp.exploring_cuisines || ''} onChange={(e) => updateTalent('exploring_cuisines', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Culinary Journey</label>
+                  <Textarea value={tp.culinary_journey || ''} onChange={(e) => updateTalent('culinary_journey', e.target.value || null)} className="text-sm resize-none" rows={3} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Hospitality Approach</label>
+                  <Textarea value={tp.hospitality_approach || ''} onChange={(e) => updateTalent('hospitality_approach', e.target.value || null)} className="text-sm resize-none" rows={3} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">What Makes Unique</label>
+                  <Textarea value={tp.what_makes_unique || ''} onChange={(e) => updateTalent('what_makes_unique', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Guests Remember</label>
+                  <Textarea value={tp.guests_remember || ''} onChange={(e) => updateTalent('guests_remember', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Clients Should Know</label>
+                  <Textarea value={tp.clients_should_know || ''} onChange={(e) => updateTalent('clients_should_know', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Dream Dinner</label>
+                  <Textarea value={tp.dream_dinner || ''} onChange={(e) => updateTalent('dream_dinner', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Dream Collaboration</label>
+                  <Textarea value={tp.dream_collaboration || ''} onChange={(e) => updateTalent('dream_collaboration', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Dream Destination</label>
+                  <Textarea value={tp.dream_destination || ''} onChange={(e) => updateTalent('dream_destination', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Growth Goals</label>
+                  <Textarea value={tp.growth_goals || ''} onChange={(e) => updateTalent('growth_goals', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Hope From Gradito</label>
+                  <Textarea value={tp.gradito_opportunity_hope || ''} onChange={(e) => updateTalent('gradito_opportunity_hope', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Opportunities Not Interested</label>
+                  <Textarea value={tp.opportunities_not_interested || ''} onChange={(e) => updateTalent('opportunities_not_interested', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Partnering Experience</label>
+                  <Textarea value={tp.partnering_experience || ''} onChange={(e) => updateTalent('partnering_experience', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Anything Else</label>
+                  <Textarea value={tp.anything_else || ''} onChange={(e) => updateTalent('anything_else', e.target.value || null)} className="text-sm resize-none" rows={2} />
+                </div>
+              </Card>
+
+              <Card className="p-4 space-y-3">
+                <h4 className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Portfolio Media</h4>
+                <MultiFileUpload
+                  label="Professional Headshots"
+                  value={tp.headshots || []}
+                  onChange={(urls) => {
+                    setDraft((prev) => ({
+                      ...prev,
+                      talent_profile: { ...(prev.talent_profile || {}), headshots: urls },
+                      photo_url: prev.photo_url || urls[0] || '',
+                    }));
+                    setDirty(true);
+                  }}
+                  accept="image/jpeg,image/png,image/webp"
+                  hint="First headshot fills Photo URL when empty."
+                />
+                <MultiFileUpload
+                  label="Food Portfolio"
+                  value={tp.food_portfolio || []}
+                  onChange={(urls) => updateTalent('food_portfolio', urls)}
+                  accept="image/jpeg,image/png,image/webp"
+                />
+                <MultiFileUpload
+                  label="Chef & Event Photos"
+                  value={tp.event_photos || []}
+                  onChange={(urls) => updateTalent('event_photos', urls)}
+                  accept="image/jpeg,image/png,image/webp"
+                />
+                <MultiFileUpload
+                  label="Additional Files"
+                  value={tp.additional_files || []}
+                  onChange={(urls) => updateTalent('additional_files', urls)}
+                  hint="Press, menus, awards, media kits, PDFs"
+                />
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground font-medium block mb-1">Share Links</label>
+                  <Textarea
+                    value={tp.share_links || ''}
+                    onChange={(e) => updateTalent('share_links', e.target.value || null)}
+                    className="text-sm resize-none"
+                    rows={3}
+                  />
+                </div>
               </Card>
 
               <Card className="p-4 space-y-3">
