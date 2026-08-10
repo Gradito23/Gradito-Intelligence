@@ -68,7 +68,7 @@ export default function CategorizedPortfolioUpload({ categories = [], values = {
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <Label>File category</Label>
+        <Label>File Category</Label>
         <p className="text-xs text-muted-foreground">
           Select a category first, then upload files into that category.
         </p>

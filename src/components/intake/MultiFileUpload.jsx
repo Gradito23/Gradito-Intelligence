@@ -14,6 +14,7 @@ import { Loader2, Upload, X } from 'lucide-react';
  * @param {string} [props.accept]
  * @param {boolean} [props.multiple=true]
  * @param {string} [props.hint]
+ * @param {boolean} [props.required]
  */
 export default function MultiFileUpload({
   label,
@@ -22,6 +23,7 @@ export default function MultiFileUpload({
   accept = 'image/jpeg,image/png,image/webp,application/pdf',
   multiple = true,
   hint,
+  required = false,
 }) {
   const [uploading, setUploading] = useState(false);
 
@@ -59,7 +61,12 @@ export default function MultiFileUpload({
 
   return (
     <div className="space-y-2">
-      {label && <Label>{label}</Label>}
+      {label && (
+        <Label>
+          {label}
+          {required ? <span className="text-destructive"> *</span> : ''}
+        </Label>
+      )}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <div className="flex flex-wrap gap-2">
         {value.map((url, i) => {

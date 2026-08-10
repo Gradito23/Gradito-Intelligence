@@ -3,8 +3,7 @@
 export function createEmptyIntakeForm() {
   return {
     // §1 Contact
-    first_name: '',
-    last_name: '',
+    full_name: '',
     preferred_name: '',
     email: '',
     mobile: '',
@@ -92,12 +91,22 @@ export function createEmptyIntakeForm() {
   };
 }
 
+export function splitFullName(fullName) {
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { first_name: '', last_name: '' };
+  if (parts.length === 1) return { first_name: parts[0], last_name: parts[0] };
+  return {
+    first_name: parts[0],
+    last_name: parts.slice(1).join(' '),
+  };
+}
+
 export function validateIntakeForm(form) {
   const errors = [];
   const req = (cond, msg) => { if (!cond) errors.push(msg); };
 
-  req(form.first_name?.trim(), 'First name is required');
-  req(form.last_name?.trim(), 'Last name is required');
+  const nameParts = (form.full_name || '').trim().split(/\s+/).filter(Boolean);
+  req(nameParts.length >= 2, 'Please enter your full name (first and last)');
   req(form.email?.trim(), 'Email is required');
   req(form.mobile?.trim(), 'Cell phone is required');
   req(form.city?.trim(), 'City is required');
@@ -187,11 +196,12 @@ export function buildIntakePayload(form) {
   };
 
   const maxGuest = form.max_guest_count === '' ? null : Number(form.max_guest_count);
+  const { first_name, last_name } = splitFullName(form.full_name);
 
   return {
     // Denorm / chef columns
-    first_name: form.first_name.trim(),
-    last_name: form.last_name.trim(),
+    first_name,
+    last_name,
     preferred_name: form.preferred_name?.trim() || null,
     email: form.email.trim() || null,
     mobile: form.mobile.trim() || null,

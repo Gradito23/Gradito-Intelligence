@@ -52,12 +52,23 @@ function Section({ title, description, children }) {
   );
 }
 
+function Subsection({ title, children }) {
+  return (
+    <div className="space-y-3 pt-2 first:pt-0">
+      <h4 className="text-sm font-semibold tracking-wide text-foreground border-b border-border pb-1.5">
+        {title}
+      </h4>
+      {children}
+    </div>
+  );
+}
+
 function Field({ label, required, children, hint }) {
   return (
     <div className="space-y-1.5">
       <Label>
         {label}
-        {required ? ' *' : ''}
+        {required ? <span className="text-destructive"> *</span> : ''}
       </Label>
       {hint && (
         typeof hint === 'string'
@@ -75,13 +86,13 @@ const ADDITIONAL_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
 const PORTFOLIO_CATEGORIES = [
   {
     key: 'headshots',
-    label: 'Professional Headshots (optional)',
+    label: 'Professional Headshots (Optional)',
     accept: IMAGE_ACCEPT,
     description: 'Upload one or more professional headshots. First headshot is used as your profile photo.',
   },
   {
     key: 'food_portfolio',
-    label: 'Food Portfolio (optional)',
+    label: 'Food Portfolio (Optional)',
     accept: IMAGE_ACCEPT,
     description: "Upload as many food images as you'd like.",
     examples: [
@@ -98,7 +109,7 @@ const PORTFOLIO_CATEGORIES = [
   },
   {
     key: 'event_photos',
-    label: 'Chef & Event Photos (optional)',
+    label: 'Chef & Event Photos (Optional)',
     accept: IMAGE_ACCEPT,
     description: 'Upload images of yourself and your work.',
     examples: [
@@ -115,7 +126,7 @@ const PORTFOLIO_CATEGORIES = [
   },
   {
     key: 'additional_files',
-    label: 'Additional Files (optional)',
+    label: 'Additional Files (Optional)',
     accept: ADDITIONAL_ACCEPT,
     examples: [
       'Press Features',
@@ -224,31 +235,43 @@ export default function ChefIntake() {
 
         {/* §1 Contact */}
         <Section title="Section 1: Contact Information">
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="First name" required>
-              <Input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} required />
-            </Field>
-            <Field label="Last name" required>
-              <Input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} required />
-            </Field>
-            <Field label="Preferred name">
-              <Input value={form.preferred_name} onChange={(e) => set('preferred_name', e.target.value)} />
-            </Field>
-            <Field label="Email address" required>
-              <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required />
-            </Field>
-            <Field label="Cell phone number" required>
-              <Input value={form.mobile} onChange={(e) => set('mobile', e.target.value)} required />
-            </Field>
-            <Field label="City" required>
-              <Input value={form.city} onChange={(e) => set('city', e.target.value)} required />
-            </Field>
-            <Field label="State" required>
-              <Input value={form.state} onChange={(e) => set('state', e.target.value)} required />
-            </Field>
-            <Field label="Home airport">
-              <Input value={form.home_airport} onChange={(e) => set('home_airport', e.target.value)} />
-            </Field>
+          <Subsection title="Basic Information">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Full Name" required>
+                <Input
+                  value={form.full_name}
+                  onChange={(e) => set('full_name', e.target.value)}
+                  placeholder="First Last"
+                  required
+                />
+              </Field>
+              <Field label="Preferred Name (Optional)">
+                <Input value={form.preferred_name} onChange={(e) => set('preferred_name', e.target.value)} />
+              </Field>
+              <Field label="Email Address" required>
+                <Input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} required />
+              </Field>
+              <Field label="Cell Phone Number" required>
+                <Input value={form.mobile} onChange={(e) => set('mobile', e.target.value)} required />
+              </Field>
+            </div>
+          </Subsection>
+
+          <Subsection title="Location">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="City" required>
+                <Input value={form.city} onChange={(e) => set('city', e.target.value)} required />
+              </Field>
+              <Field label="State" required>
+                <Input value={form.state} onChange={(e) => set('state', e.target.value)} required />
+              </Field>
+              <Field label="Home Airport (Optional)">
+                <Input value={form.home_airport} onChange={(e) => set('home_airport', e.target.value)} />
+              </Field>
+            </div>
+          </Subsection>
+
+          <Subsection title="Transportation">
             <Field label="Do you have access to a personal vehicle?" required>
               <Select value={form.has_vehicle} onValueChange={(v) => set('has_vehicle', v)}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
@@ -257,26 +280,29 @@ export default function ChefIntake() {
                 </SelectContent>
               </Select>
             </Field>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-4 pt-2">
-            <Field label="Instagram">
-              <Input value={form.instagram_url} onChange={(e) => set('instagram_url', e.target.value)} placeholder="https://" />
-            </Field>
-            <Field label="Website">
-              <Input value={form.website_url} onChange={(e) => set('website_url', e.target.value)} placeholder="https://" />
-            </Field>
-            <Field label="TikTok">
-              <Input value={form.tiktok_url} onChange={(e) => set('tiktok_url', e.target.value)} placeholder="https://" />
-            </Field>
-            <Field label="LinkedIn">
-              <Input value={form.linkedin_url} onChange={(e) => set('linkedin_url', e.target.value)} placeholder="https://" />
-            </Field>
-          </div>
+          </Subsection>
+
+          <Subsection title="Professional Links">
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Instagram (Optional)">
+                <Input value={form.instagram_url} onChange={(e) => set('instagram_url', e.target.value)} placeholder="https://" />
+              </Field>
+              <Field label="Website (Optional)">
+                <Input value={form.website_url} onChange={(e) => set('website_url', e.target.value)} placeholder="https://" />
+              </Field>
+              <Field label="TikTok (Optional)">
+                <Input value={form.tiktok_url} onChange={(e) => set('tiktok_url', e.target.value)} placeholder="https://" />
+              </Field>
+              <Field label="LinkedIn (Optional)">
+                <Input value={form.linkedin_url} onChange={(e) => set('linkedin_url', e.target.value)} placeholder="https://" />
+              </Field>
+            </div>
+          </Subsection>
         </Section>
 
         {/* §2 Professional */}
         <Section title="Section 2: Professional Background">
-          <Field label="Professional bio" required hint="Copy and paste your professional biography.">
+          <Field label="Professional Bio" required hint="Copy and paste your professional biography.">
             <Textarea
               rows={5}
               value={form.professional_bio}
@@ -285,20 +311,21 @@ export default function ChefIntake() {
             />
           </Field>
           <MultiFileUpload
-            label="Resume / CV *"
+            label="Resume / CV"
+            required
             value={form.resume_urls}
             onChange={(urls) => set('resume_urls', urls)}
             multiple={false}
             accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           />
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Current position" required>
+            <Field label="Current Position" required>
               <Input value={form.current_position} onChange={(e) => set('current_position', e.target.value)} required />
             </Field>
-            <Field label="Current restaurant / company">
+            <Field label="Current Restaurant / Company">
               <Input value={form.current_company} onChange={(e) => set('current_company', e.target.value)} />
             </Field>
-            <Field label="Years cooking professionally" required>
+            <Field label="Years Cooking Professionally" required>
               <Input
                 type="number"
                 min="0"
@@ -308,7 +335,7 @@ export default function ChefIntake() {
                 required
               />
             </Field>
-            <Field label="Languages spoken (Comma-separated)">
+            <Field label="Languages Spoken (Comma-Separated)">
               <Input
                 value={form.languages}
                 onChange={(e) => set('languages', e.target.value)}
@@ -316,14 +343,14 @@ export default function ChefIntake() {
               />
             </Field>
           </div>
-          <Field label="Awards, recognitions, or notable accomplishments">
+          <Field label="Awards, Recognitions, Or Notable Accomplishments">
             <Textarea rows={3} value={form.awards} onChange={(e) => set('awards', e.target.value)} />
           </Field>
         </Section>
 
         {/* §3 Culinary */}
         <Section title="Section 3: Culinary Expertise">
-          <Field label="Primary cuisine specialties" required hint="Which cuisines best represent your expertise?">
+          <Field label="Primary Cuisine Specialties" required hint="Which cuisines best represent your expertise?">
             <CheckboxGroup
               options={INTAKE_CUISINES}
               value={form.cuisines}
@@ -333,7 +360,7 @@ export default function ChefIntake() {
               columns={3}
             />
           </Field>
-          <Field label="Dietary expertise" required hint="Which dietary preferences are you comfortable accommodating?">
+          <Field label="Dietary Expertise" required hint="Which dietary preferences are you comfortable accommodating?">
             <CheckboxGroup
               options={INTAKE_DIETARY}
               value={form.dietary_specialties}
@@ -449,7 +476,7 @@ export default function ChefIntake() {
                 </SelectContent>
               </Select>
             </Field>
-            <Field label="Ideal Gradito events per month/year" hint="Approximate number">
+            <Field label="Ideal Gradito events per month/year" hint="Approximate Number">
               <Input
                 type="number"
                 min="0"
@@ -590,7 +617,7 @@ export default function ChefIntake() {
             }}
           />
           <Field
-            label="Share links"
+            label="Share Links (Optional)"
             hint={(
               <>
                 <p>Examples:</p>
@@ -615,13 +642,13 @@ export default function ChefIntake() {
         {/* §9 Social */}
         <Section title="Section 9: Social & Media">
           <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="YouTube">
+            <Field label="YouTube (Optional)">
               <Input value={form.youtube_url} onChange={(e) => set('youtube_url', e.target.value)} placeholder="https://" />
             </Field>
-            <Field label="Newsletter">
+            <Field label="Newsletter (Optional)">
               <Input value={form.newsletter_url} onChange={(e) => set('newsletter_url', e.target.value)} placeholder="https://" />
             </Field>
-            <Field label="Approximate followers across platforms">
+            <Field label="Approximate Followers Across Platforms">
               <Select value={form.social_follower_band} onValueChange={(v) => set('social_follower_band', v)}>
                 <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
@@ -630,7 +657,7 @@ export default function ChefIntake() {
               </Select>
             </Field>
           </div>
-          <Field label="Brand partnerships, media appearances, television, podcasts, or press coverage">
+          <Field label="Brand Partnerships, Media Appearances, Television, Podcasts, Or Press Coverage">
             <Textarea rows={4} value={form.media_history} onChange={(e) => set('media_history', e.target.value)} />
           </Field>
         </Section>
@@ -660,7 +687,7 @@ export default function ChefIntake() {
               Submitting…
             </>
           ) : (
-            'Submit profile'
+            'Submit Profile'
           )}
         </Button>
       </form>
