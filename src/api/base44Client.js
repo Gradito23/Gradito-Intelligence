@@ -66,12 +66,13 @@ async function uploadFile({ file }) {
     throw new Error('No file provided')
   }
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError) throw new Error(authError.message)
+  // Prefer getSession: logged-out public /intake must not throw "Auth session missing!"
+  const { data: { session } } = await supabase.auth.getSession()
+  const userId = session?.user?.id || null
 
   let folder
-  if (user?.id) {
-    folder = user.id
+  if (userId) {
+    folder = userId
   } else {
     // Public /intake form — store under intake/{guestId}/ (anon RLS policy)
     let guestId = null
