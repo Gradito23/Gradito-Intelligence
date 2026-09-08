@@ -113,19 +113,11 @@ export function validateIntakeForm(form) {
   req(form.state?.trim(), 'State is required');
   req(form.has_vehicle === 'Yes' || form.has_vehicle === 'No', 'Vehicle access is required');
 
-  req(form.professional_bio?.trim(), 'Professional bio is required');
   req(form.resume_urls?.length > 0, 'Resume upload is required');
   req(form.current_position?.trim(), 'Current position is required');
   req(form.years_cooking !== '' && form.years_cooking != null, 'Years cooking professionally is required');
 
   req(form.cuisines?.length > 0, 'Select at least one cuisine specialty');
-  req(form.dietary_specialties?.length > 0, 'Select at least one dietary specialty');
-  req(form.confident_cuisines?.trim(), 'Confident cuisines answer is required');
-
-  req(form.culinary_journey?.trim(), 'Culinary journey is required');
-  req(form.hospitality_approach?.trim(), 'Hospitality approach is required');
-  req(form.what_makes_unique?.trim(), 'Unique dining answer is required');
-  req(form.guests_remember?.trim(), 'Guest memory answer is required');
 
   const hasOpp = (form.opp_private_dining?.length || 0)
     + (form.opp_events?.length || 0)
@@ -136,6 +128,10 @@ export function validateIntakeForm(form) {
   if (form.own_kitchen_max_guests !== '' && form.own_kitchen_max_guests != null) {
     req(Number(form.own_kitchen_max_guests) > 0, 'Own kitchen guest limit must be a positive number');
   }
+  req(
+    form.starting_event_fee_usd !== '' && Number(form.starting_event_fee_usd) >= 0,
+    'Starting event fee is required',
+  );
   req(
     form.expected_compensation_usd !== '' && Number(form.expected_compensation_usd) >= 0,
     'Expected salary / compensation is required',

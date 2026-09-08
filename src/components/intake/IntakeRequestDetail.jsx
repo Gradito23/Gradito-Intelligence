@@ -119,9 +119,7 @@ export default function IntakeRequestDetail({ request }) {
 
       <Section title="4. Your Story">
         <Field label="Culinary journey">{tp.culinary_journey}</Field>
-        <Field label="Approach to hospitality">{tp.hospitality_approach}</Field>
         <Field label="What makes dining unique">{tp.what_makes_unique}</Field>
-        <Field label="What guests should remember">{tp.guests_remember}</Field>
         <Field label="Anything else for clients">{tp.clients_should_know}</Field>
       </Section>
 
