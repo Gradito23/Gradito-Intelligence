@@ -302,12 +302,11 @@ export default function ChefIntake() {
 
         {/* §2 Professional */}
         <Section title="Section 2: Professional Background">
-          <Field label="Professional Bio" required hint="Copy and paste your professional biography.">
+          <Field label="Professional Bio" hint="Copy and paste your professional biography.">
             <Textarea
               rows={5}
               value={form.professional_bio}
               onChange={(e) => set('professional_bio', e.target.value)}
-              required
             />
           </Field>
           <MultiFileUpload
@@ -360,7 +359,7 @@ export default function ChefIntake() {
               columns={3}
             />
           </Field>
-          <Field label="Dietary Expertise" required hint="Which dietary preferences are you comfortable accommodating?">
+          <Field label="Dietary Expertise" hint="Which dietary preferences are you comfortable accommodating?">
             <CheckboxGroup
               options={INTAKE_DIETARY}
               value={form.dietary_specialties}
@@ -369,8 +368,8 @@ export default function ChefIntake() {
               onOtherChange={(v) => set('dietary_other', v)}
             />
           </Field>
-          <Field label="Which cuisines do you feel most confident preparing for clients?" required>
-            <Textarea rows={3} value={form.confident_cuisines} onChange={(e) => set('confident_cuisines', e.target.value)} required />
+          <Field label="Which cuisines do you feel most confident preparing for clients?">
+            <Textarea rows={3} value={form.confident_cuisines} onChange={(e) => set('confident_cuisines', e.target.value)} />
           </Field>
           <Field label="Are there any cuisines, ingredients, or techniques you're currently exploring or excited about?">
             <Textarea rows={3} value={form.exploring_cuisines} onChange={(e) => set('exploring_cuisines', e.target.value)} />
@@ -382,17 +381,11 @@ export default function ChefIntake() {
           title="Section 4: Your Story"
           description="Help us better understand you as a chef. These responses may be incorporated into your Gradito profile and help us introduce you to prospective clients and partners."
         >
-          <Field label="Tell us about your culinary journey" required>
-            <Textarea rows={4} value={form.culinary_journey} onChange={(e) => set('culinary_journey', e.target.value)} required />
+          <Field label="Tell us about your culinary journey">
+            <Textarea rows={4} value={form.culinary_journey} onChange={(e) => set('culinary_journey', e.target.value)} />
           </Field>
-          <Field label="How would you describe your approach to hospitality?" required>
-            <Textarea rows={3} value={form.hospitality_approach} onChange={(e) => set('hospitality_approach', e.target.value)} required />
-          </Field>
-          <Field label="What makes dining with you unique?" required>
-            <Textarea rows={3} value={form.what_makes_unique} onChange={(e) => set('what_makes_unique', e.target.value)} required />
-          </Field>
-          <Field label="What do you hope guests remember most after sharing one of your meals?" required>
-            <Textarea rows={3} value={form.guests_remember} onChange={(e) => set('guests_remember', e.target.value)} required />
+          <Field label="What makes dining with you unique?">
+            <Textarea rows={3} value={form.what_makes_unique} onChange={(e) => set('what_makes_unique', e.target.value)} />
           </Field>
           <Field label="Is there anything else you'd like prospective clients to know about you?">
             <Textarea rows={3} value={form.clients_should_know} onChange={(e) => set('clients_should_know', e.target.value)} />
@@ -545,6 +538,7 @@ export default function ChefIntake() {
 
           <Field
             label="What is your typical starting event fee for a standard private dinner (up to 12 guests)?"
+            required
             hint="Private events can range from intimate dinners for two guests to 100+ guest receptions. This starting fee helps us understand the types of opportunities that are likely to be a good fit for you. Final pricing is always determined on a case-by-case basis based on guest count, staffing, travel, and event complexity."
           >
             <Input
@@ -554,6 +548,7 @@ export default function ChefIntake() {
               value={form.starting_event_fee_usd}
               onChange={(e) => set('starting_event_fee_usd', e.target.value)}
               placeholder="Starting Event Fee (USD)"
+              required
             />
           </Field>
 
