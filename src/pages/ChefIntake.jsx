@@ -36,7 +36,8 @@ import {
   createEmptyIntakeForm,
   validateIntakeForm,
 } from '@/lib/chefIntakeForm';
-import { CheckCircle, Loader2 } from 'lucide-react';
+import { useOnboardingGuide } from '@/hooks/useOnboardingGuide';
+import { CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
 
 function Section({ title, description, children }) {
   return (
@@ -142,11 +143,22 @@ const PORTFOLIO_CATEGORIES = [
   },
 ];
 
+function publishedGuide(guide) {
+  const url = guide?.enabled && typeof guide.url === 'string' ? guide.url.trim() : '';
+  if (!url) return null;
+  return {
+    url,
+    title: (guide.title && String(guide.title).trim()) || 'Chef & FOH Onboarding Guide',
+  };
+}
+
 export default function ChefIntake() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [form, setForm] = useState(createEmptyIntakeForm);
+  const { data: guideSettings } = useOnboardingGuide();
+  const guide = publishedGuide(guideSettings);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -198,12 +210,28 @@ export default function ChefIntake() {
   if (submitted) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-6">
-        <Card className="max-w-md w-full p-8 text-center space-y-4">
+        <Card className="max-w-lg w-full p-8 text-center space-y-4">
           <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto" />
           <h2 className="font-heading text-2xl font-semibold">Thank you, Chef!</h2>
           <p className="text-muted-foreground">
             Your profile has been submitted to the Gradito team for review. We&apos;ll be in touch soon.
           </p>
+          {guide && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Next, review the {guide.title} before your first Gradito event.
+              </p>
+              <Button asChild className="bg-navy hover:bg-navy/90 text-white">
+                <a href={guide.url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4 mr-1.5" />
+                  Open the Onboarding Guide
+                </a>
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Bookmark this guide — this page will not stay available after you leave.
+              </p>
+            </>
+          )}
         </Card>
       </div>
     );
@@ -231,6 +259,12 @@ export default function ChefIntake() {
             The more thoughtfully you complete your profile, the better we can represent you and connect
             you with opportunities that align with your expertise and ambitions.
           </p>
+          {guide && (
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              After you submit, you will receive the Chef & FOH Onboarding Guide — how Gradito
+              events, menus, invoicing, and service standards work.
+            </p>
+          )}
         </Card>
 
         {/* §1 Contact */}

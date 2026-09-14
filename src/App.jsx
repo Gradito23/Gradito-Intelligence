@@ -40,6 +40,7 @@ const PermissionsMatrix = lazy(() => import('@/pages/admin/PermissionsMatrix'));
 const OpenAIIntegration = lazy(() => import('@/pages/admin/OpenAIIntegration'));
 const GoogleSSOIntegration = lazy(() => import('@/pages/admin/GoogleSSOIntegration'));
 const ConfigCrudPage = lazy(() => import('@/pages/admin/ConfigCrudPage'));
+const UserGuide = lazy(() => import('@/pages/admin/UserGuide'));
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -209,6 +210,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'chefs', action: 'write' }}>
                         <BulkUpload />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="user-guide"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'config', action: 'read' }}>
+                        <UserGuide />
                       </PermissionRoute>
                     )}
                   />
