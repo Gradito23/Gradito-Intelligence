@@ -16,6 +16,7 @@ const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 const AcceptInvite = lazy(() => import('@/pages/AcceptInvite'));
 const ChefIntake = lazy(() => import('@/pages/ChefIntake'));
+const GuideRedirect = lazy(() => import('@/pages/GuideRedirect'));
 
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
@@ -79,7 +80,8 @@ function InviteHashRedirect() {
 function AuthenticatedApp() {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
   const location = useLocation();
-  const isPublicRoute = PUBLIC_PATHS.has(location.pathname);
+  const isPublicRoute = PUBLIC_PATHS.has(location.pathname)
+    || location.pathname.startsWith('/guide/');
 
   if (isPublicRoute && (isLoadingPublicSettings || isLoadingAuth)) {
     return <FullPageSpinner />;
@@ -102,6 +104,7 @@ function AuthenticatedApp() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/intake" element={<ChefIntake />} />
+          <Route path="/guide/:token" element={<GuideRedirect />} />
 
           <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
             <Route element={<AppLayout />}>

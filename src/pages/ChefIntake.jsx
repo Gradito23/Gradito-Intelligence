@@ -37,6 +37,7 @@ import {
   validateIntakeForm,
 } from '@/lib/chefIntakeForm';
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide';
+import { supabase } from '@/api/supabaseClient';
 import { CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
 
 function Section({ title, description, children }) {
@@ -154,6 +155,7 @@ function publishedGuide(guide) {
 
 export default function ChefIntake() {
   const [submitted, setSubmitted] = useState(false);
+  const [guideEmailSent, setGuideEmailSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [form, setForm] = useState(createEmptyIntakeForm);
@@ -197,6 +199,21 @@ export default function ChefIntake() {
       } catch {
         // Activity log requires auth
       }
+      let emailed = false;
+      try {
+        const { data } = await supabase.functions.invoke('onboarding-guide-email', {
+          method: 'POST',
+          body: {
+            first_name: payload.first_name,
+            last_name: payload.last_name,
+            email: payload.email,
+          },
+        });
+        emailed = Boolean(data?.sent);
+      } catch {
+        emailed = false;
+      }
+      setGuideEmailSent(emailed);
       setSubmitted(true);
     } catch (err) {
       const message = err.message || 'Something went wrong. Please try again.';
@@ -216,6 +233,11 @@ export default function ChefIntake() {
           <p className="text-muted-foreground">
             Your profile has been submitted to the Gradito team for review. We&apos;ll be in touch soon.
           </p>
+          {guideEmailSent && form.email?.trim() && (
+            <p className="text-sm text-muted-foreground">
+              We&apos;ve also emailed the Onboarding Guide to {form.email.trim()}.
+            </p>
+          )}
           {guide && (
             <>
               <p className="text-sm text-muted-foreground">

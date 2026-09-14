@@ -44,7 +44,15 @@ export function useServiceAreas() {
 export function useActivityLogs() {
   return useQuery({
     queryKey: ['activityLogs'],
-    queryFn: () => base44.entities.ActivityLog.list('-created_date', 100),
+    queryFn: () => base44.entities.ActivityLog.list('-created_date', 500),
+    initialData: [],
+  });
+}
+
+export function useOnboardingGuideDeliveries() {
+  return useQuery({
+    queryKey: ['onboardingGuideDeliveries'],
+    queryFn: () => base44.entities.OnboardingGuideDelivery.list('-sent_at', 500),
     initialData: [],
   });
 }
