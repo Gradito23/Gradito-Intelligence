@@ -172,3 +172,49 @@ export function renderTestEmail(): string {
     bodyHtml: `<p style="margin:0;">Your Gradito email integration is configured correctly. This is a test message from the platform.</p>`,
   });
 }
+
+export function renderOnboardingGuideEmail({
+  chefName,
+  guideTitle,
+  ctaUrl,
+  openPixelUrl,
+}: {
+  chefName?: string | null;
+  guideTitle: string;
+  ctaUrl: string;
+  openPixelUrl?: string | null;
+}): string {
+  const greeting = chefName?.trim()
+    ? `Hi Chef ${escapeHtml(chefName.trim())},`
+    : 'Hi Chef,';
+  const title = escapeHtml(guideTitle);
+  const pixel = openPixelUrl
+    ? `<img src="${escapeHtml(openPixelUrl)}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0;opacity:0;" />`
+    : '';
+
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${BRAND.navy};font-weight:600;">Your Gradito Onboarding Guide</h1>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Thank you for completing your Chef Talent Profile. The next step is to review the
+      <strong style="color:${BRAND.navy};">${title}</strong> before your first Gradito event.
+    </p>
+    <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      It covers how we run events, menus, invoicing, and service standards. Bookmark it so you can come back to it anytime.
+    </p>
+    ${renderCta('Open the Onboarding Guide', ctaUrl)}
+    <p style="margin:0 0 16px;font-size:13px;line-height:1.5;color:${BRAND.muted};">
+      If the button does not work, copy and paste this URL into your browser:<br />
+      <a href="${escapeHtml(ctaUrl)}" style="color:${BRAND.gold};word-break:break-all;">${escapeHtml(ctaUrl)}</a>
+    </p>
+    <p style="margin:0;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      We&apos;re excited to have you on the team.
+    </p>
+    ${pixel}
+  `;
+
+  return renderLayout({
+    preheader: `Your ${guideTitle} is ready — review it before your first Gradito event.`,
+    bodyHtml,
+  });
+}

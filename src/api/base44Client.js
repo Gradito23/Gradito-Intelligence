@@ -9,6 +9,8 @@ import {
   ActivityLogRepository,
   ChefRepository,
   ChefIntakeRequestRepository,
+  OnboardingGuideRepository,
+  OnboardingGuideDeliveryRepository,
   ClientRepository,
   CommissionLineRepository,
   EventChefRepository,
@@ -166,6 +168,11 @@ export const base44 = {
     ServiceArea: entityFromRepo(ServiceAreaRepository),
     MatchRun: entityFromRepo(MatchRunRepository),
     ActivityLog: entityFromRepo(ActivityLogRepository),
+    OnboardingGuide: {
+      get: () => OnboardingGuideRepository.get(),
+      update: (payload) => OnboardingGuideRepository.update(payload),
+    },
+    OnboardingGuideDelivery: entityFromRepo(OnboardingGuideDeliveryRepository),
     // Legacy Users page; admin user management uses Profile APIs instead.
     User: {
       list: async () => [],

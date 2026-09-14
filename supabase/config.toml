@@ -24,3 +24,6 @@ additional_redirect_urls = ["http://localhost:5173", "http://localhost:5173/acce
 
 [storage]
 enabled = true
+
+[functions.onboarding-guide-email]
+verify_jwt = false
