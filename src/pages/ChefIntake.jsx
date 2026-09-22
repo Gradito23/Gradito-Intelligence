@@ -272,25 +272,22 @@ export default function ChefIntake() {
         <Card className="p-6 space-y-3">
           <h2 className="font-heading text-xl font-semibold">Welcome to Gradito</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            We&apos;re excited to welcome you to the Gradito chef network. This profile is the foundation
-            of your Gradito chef profile and helps us understand your culinary background, specialties,
-            personality, availability, and professional goals.
+            We&apos;re excited to welcome you to the Gradito chef network. This profile helps us understand
+            your culinary background, specialties, personality, availability, and professional goals.
           </p>
           <p className="text-sm text-muted-foreground leading-relaxed">
             Gradito specializes in Michelin-grade private dining experiences and private chef placements.
             The more thoughtfully you complete your profile, the better we can represent you and connect
             you with opportunities that align with your expertise and ambitions.
           </p>
-          {guide && (
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              After you submit, you will receive the Chef & FOH Onboarding Guide — how Gradito
-              events, menus, invoicing, and service standards work.
-            </p>
-          )}
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            After you submit, you&apos;ll receive access to the Chef & FOH Onboarding Guide. Please review
+            and bookmark it before your first Gradito event.
+          </p>
         </Card>
 
         {/* §1 Contact */}
-        <Section title="Section 1: Contact Information">
+        <Section title="Contact Information">
           <Subsection title="Basic Information">
             <div className="grid sm:grid-cols-2 gap-4">
               <Field label="Full Name" required>
@@ -357,7 +354,7 @@ export default function ChefIntake() {
         </Section>
 
         {/* §2 Professional */}
-        <Section title="Section 2: Professional Background">
+        <Section title="Professional Background">
           <Field label="Professional Bio" hint="Copy and paste your professional biography.">
             <Textarea
               rows={5}
@@ -404,7 +401,7 @@ export default function ChefIntake() {
         </Section>
 
         {/* §3 Culinary */}
-        <Section title="Section 3: Culinary Expertise">
+        <Section title="Culinary Expertise">
           <Field label="Primary Cuisine Specialties" required hint="Which cuisines best represent your expertise?">
             <CheckboxGroup
               options={INTAKE_CUISINES}
@@ -434,7 +431,7 @@ export default function ChefIntake() {
 
         {/* §4 Story */}
         <Section
-          title="Section 4: Your Story"
+          title="Your Story"
           description="Help us better understand you as a chef. These responses may be incorporated into your Gradito profile and help us introduce you to prospective clients and partners."
         >
           <Field label="Tell us about your culinary journey">
@@ -450,7 +447,7 @@ export default function ChefIntake() {
 
         {/* §5 Career */}
         <Section
-          title="Section 5: Career Goals"
+          title="Career Goals"
           description="These questions help us understand your long-term ambitions so we can keep you in mind for future opportunities."
         >
           <Field label="If budget weren't a factor, what dinner or culinary experience would you love to create?">
@@ -474,7 +471,7 @@ export default function ChefIntake() {
         </Section>
 
         {/* §6 Opportunities */}
-        <Section title="Section 6: Opportunity Preferences">
+        <Section title="Opportunity Preferences">
           <Field label="Private Dining & Placements" required>
             <CheckboxGroup
               options={OPPORTUNITY_PRIVATE_DINING}
@@ -507,7 +504,7 @@ export default function ChefIntake() {
         </Section>
 
         {/* §7 Availability & pricing */}
-        <Section title="Section 7: Availability & Pricing">
+        <Section title="Availability & Pricing">
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="How far are you typically willing to travel for an event?">
               <Select value={form.travel_distance} onValueChange={(v) => set('travel_distance', v)}>
@@ -648,7 +645,7 @@ export default function ChefIntake() {
         </Section>
 
         {/* §8 Portfolio */}
-        <Section title="Section 8: Portfolio & Media" description="Help us showcase your work.">
+        <Section title="Portfolio & Media" description="Help us showcase your work.">
           <CategorizedPortfolioUpload
             categories={PORTFOLIO_CATEGORIES}
             values={{
@@ -691,7 +688,7 @@ export default function ChefIntake() {
         </Section>
 
         {/* §9 Social */}
-        <Section title="Section 9: Social & Media">
+        <Section title="Social & Media">
           <div className="grid sm:grid-cols-2 gap-4">
             <Field label="YouTube (Optional)">
               <Input value={form.youtube_url} onChange={(e) => set('youtube_url', e.target.value)} placeholder="https://" />
@@ -714,7 +711,7 @@ export default function ChefIntake() {
         </Section>
 
         {/* §10 Final */}
-        <Section title="Section 10: Final Thoughts">
+        <Section title="Final Thoughts">
           <Field label="Is there anything else you'd like the Gradito team to know?">
             <Textarea rows={3} value={form.anything_else} onChange={(e) => set('anything_else', e.target.value)} />
           </Field>
