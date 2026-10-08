@@ -42,6 +42,8 @@ const OpenAIIntegration = lazy(() => import('@/pages/admin/OpenAIIntegration'));
 const GoogleSSOIntegration = lazy(() => import('@/pages/admin/GoogleSSOIntegration'));
 const ConfigCrudPage = lazy(() => import('@/pages/admin/ConfigCrudPage'));
 const UserGuide = lazy(() => import('@/pages/admin/UserGuide'));
+const TechnicalDocument = lazy(() => import('@/pages/admin/TechnicalDocument'));
+const IntegrationsDocument = lazy(() => import('@/pages/admin/IntegrationsDocument'));
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -224,6 +226,8 @@ function AuthenticatedApp() {
                       </PermissionRoute>
                     )}
                   />
+                  <Route path="technical-document" element={<TechnicalDocument />} />
+                  <Route path="integrations-document" element={<IntegrationsDocument />} />
                   <Route
                     path="integrations"
                     element={(

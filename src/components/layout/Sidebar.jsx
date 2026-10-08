@@ -6,6 +6,7 @@ import GraditoLogo from '@/components/brand/GraditoLogo';
 import UserAccountMenu from './UserAccountMenu';
 import OpsSidebarNav from './OpsSidebarNav';
 import AdminSidebarNav from './AdminSidebarNav';
+import AdminSidebarDocLinks from './AdminSidebarDocLinks';
 import { useSidebarLayout } from './SidebarLayoutContext';
 import { cn } from '@/lib/utils';
 
@@ -52,13 +53,18 @@ export default function Sidebar() {
             )}
           </div>
         </div>
-        <nav className={cn('flex-1 overflow-y-auto', showCollapsed ? 'px-1 space-y-2' : 'px-3 space-y-4')}>
-          {isAdminRoute ? (
-            <AdminSidebarNav onNavigate={closeMobile} collapsed={showCollapsed} />
-          ) : (
-            <OpsSidebarNav onNavigate={closeMobile} collapsed={showCollapsed} />
+        <div className="flex-1 flex flex-col min-h-0">
+          <nav className={cn('flex-1 overflow-y-auto min-h-0', showCollapsed ? 'px-1 space-y-2' : 'px-3 space-y-4')}>
+            {isAdminRoute ? (
+              <AdminSidebarNav onNavigate={closeMobile} collapsed={showCollapsed} />
+            ) : (
+              <OpsSidebarNav onNavigate={closeMobile} collapsed={showCollapsed} />
+            )}
+          </nav>
+          {isAdminRoute && (
+            <AdminSidebarDocLinks onNavigate={closeMobile} collapsed={showCollapsed} />
           )}
-        </nav>
+        </div>
         <UserAccountMenu collapsed={showCollapsed} />
       </>
     );
