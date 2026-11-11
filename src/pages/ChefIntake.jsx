@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -36,9 +37,23 @@ import {
   createEmptyIntakeForm,
   validateIntakeForm,
 } from '@/lib/chefIntakeForm';
+import {
+  CONTRACTOR_NDA_PATH,
+  CONTRACTOR_TERMS_PATH,
+} from '@/lib/contractorLegal';
+import {
+  clearIntakeDraft,
+  loadIntakeDraft,
+  saveIntakeDraft,
+} from '@/lib/intakeDraftStorage';
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide';
 import { supabase } from '@/api/supabaseClient';
+import { Checkbox } from '@/components/ui/checkbox';
 import { CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
+
+function createInitialIntakeForm() {
+  return { ...createEmptyIntakeForm(), ...(loadIntakeDraft() || {}) };
+}
 
 function Section({ title, description, children }) {
   return (
@@ -158,9 +173,13 @@ export default function ChefIntake() {
   const [guideEmailSent, setGuideEmailSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [form, setForm] = useState(createEmptyIntakeForm);
+  const [form, setForm] = useState(createInitialIntakeForm);
   const { data: guideSettings } = useOnboardingGuide();
   const guide = publishedGuide(guideSettings);
+
+  useEffect(() => {
+    if (!submitted) saveIntakeDraft(form);
+  }, [form, submitted]);
 
   const set = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -213,6 +232,7 @@ export default function ChefIntake() {
       } catch {
         emailed = false;
       }
+      clearIntakeDraft();
       setGuideEmailSent(emailed);
       setSubmitted(true);
     } catch (err) {
@@ -720,13 +740,60 @@ export default function ChefIntake() {
           </Field>
         </Section>
 
+        <Section
+          title="Agreements"
+          description="Please read and accept both documents to submit."
+        >
+          <div className="space-y-4">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <Checkbox
+                checked={form.agreed_to_terms}
+                onCheckedChange={(checked) => set('agreed_to_terms', checked === true)}
+                className="mt-0.5"
+                aria-required
+              />
+              <span className="text-sm leading-relaxed">
+                I have read and agree to the{' '}
+                <Link
+                  to={CONTRACTOR_TERMS_PATH}
+                  className="text-navy underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Gradito Contractor Terms &amp; Conditions
+                </Link>
+                .
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <Checkbox
+                checked={form.agreed_to_nda}
+                onCheckedChange={(checked) => set('agreed_to_nda', checked === true)}
+                className="mt-0.5"
+                aria-required
+              />
+              <span className="text-sm leading-relaxed">
+                I have read and agree to the{' '}
+                <Link
+                  to={CONTRACTOR_NDA_PATH}
+                  className="text-navy underline"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  Gradito Contractor Confidentiality Agreement (NDA)
+                </Link>
+                .
+              </span>
+            </label>
+          </div>
+        </Section>
+
         {submitError && (
           <div className="p-3 rounded-lg bg-destructive/10 text-destructive text-sm">{submitError}</div>
         )}
 
         <Button
           type="submit"
-          disabled={loading}
+          disabled={loading || !form.agreed_to_terms || !form.agreed_to_nda}
           className="w-full h-12 bg-navy hover:bg-navy/90 text-white"
         >
           {loading ? (

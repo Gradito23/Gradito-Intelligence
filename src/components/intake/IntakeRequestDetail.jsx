@@ -185,6 +185,32 @@ export default function IntakeRequestDetail({ request }) {
         <Field label="What would make partnering great">{tp.partnering_experience}</Field>
       </Section>
 
+      {p.agreements && (
+        <Section title="Agreements">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Role recorded">{p.agreements.role}</Field>
+            <Field label="Terms">
+              {p.agreements.terms?.accepted
+                ? `Accepted · v${p.agreements.terms.version || '—'}${
+                    p.agreements.terms.accepted_at
+                      ? ` · ${new Date(p.agreements.terms.accepted_at).toLocaleString()}`
+                      : ''
+                  }`
+                : null}
+            </Field>
+            <Field label="NDA">
+              {p.agreements.nda?.accepted
+                ? `Accepted · v${p.agreements.nda.version || '—'}${
+                    p.agreements.nda.accepted_at
+                      ? ` · ${new Date(p.agreements.nda.accepted_at).toLocaleString()}`
+                      : ''
+                  }`
+                : null}
+            </Field>
+          </div>
+        </Section>
+      )}
+
       {/* Legacy short-form submissions */}
       {(formatList(p.home_areas) || formatList(p.experience_types) || p.signature_experiences || p.equipment_notes) && (
         <Section title="Legacy / additional fields">

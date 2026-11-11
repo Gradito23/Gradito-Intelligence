@@ -16,6 +16,8 @@ const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 const AcceptInvite = lazy(() => import('@/pages/AcceptInvite'));
 const ChefIntake = lazy(() => import('@/pages/ChefIntake'));
+const ContractorTerms = lazy(() => import('@/pages/legal/ContractorTerms'));
+const ContractorNda = lazy(() => import('@/pages/legal/ContractorNda'));
 const GuideRedirect = lazy(() => import('@/pages/GuideRedirect'));
 
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
@@ -83,7 +85,8 @@ function AuthenticatedApp() {
   const { isLoadingAuth, isLoadingPublicSettings, authError } = useAuth();
   const location = useLocation();
   const isPublicRoute = PUBLIC_PATHS.has(location.pathname)
-    || location.pathname.startsWith('/guide/');
+    || location.pathname.startsWith('/guide/')
+    || location.pathname.startsWith('/legal/');
 
   if (isPublicRoute && (isLoadingPublicSettings || isLoadingAuth)) {
     return <FullPageSpinner />;
@@ -106,6 +109,8 @@ function AuthenticatedApp() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/intake" element={<ChefIntake />} />
+          <Route path="/legal/contractor-terms" element={<ContractorTerms />} />
+          <Route path="/legal/contractor-nda" element={<ContractorNda />} />
           <Route path="/guide/:token" element={<GuideRedirect />} />
 
           <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>

@@ -1,5 +1,7 @@
 /** Initial form state + payload builders for revised chef intake. */
 
+import { CONTRACTOR_LEGAL_VERSION } from '@/lib/contractorLegal';
+
 export function createEmptyIntakeForm() {
   return {
     // §1 Contact
@@ -84,6 +86,10 @@ export function createEmptyIntakeForm() {
     anything_else: '',
     partnering_experience: '',
 
+    // Agreements
+    agreed_to_terms: false,
+    agreed_to_nda: false,
+
     // Legacy defaults used on approve for ops systems
     roles_available: 'Head',
     travel_policy: 'Home only',
@@ -136,6 +142,9 @@ export function validateIntakeForm(form) {
     form.expected_compensation_usd !== '' && Number(form.expected_compensation_usd) >= 0,
     'Expected salary / compensation is required',
   );
+
+  req(form.agreed_to_terms === true, 'Please agree to the Gradito Contractor Terms & Conditions');
+  req(form.agreed_to_nda === true, 'Please agree to the Gradito Contractor Confidentiality Agreement (NDA)');
 
   return errors;
 }
@@ -246,5 +255,18 @@ export function buildIntakePayload(form) {
       ? 'Anywhere'
       : 'Home only',
     notes: form.professional_bio || null,
+    agreements: {
+      terms: {
+        accepted: form.agreed_to_terms === true,
+        version: CONTRACTOR_LEGAL_VERSION,
+        accepted_at: new Date().toISOString(),
+      },
+      nda: {
+        accepted: form.agreed_to_nda === true,
+        version: CONTRACTOR_LEGAL_VERSION,
+        accepted_at: new Date().toISOString(),
+      },
+      role: form.current_position?.trim() || form.roles_available || null,
+    },
   };
 }
