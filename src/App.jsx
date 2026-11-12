@@ -44,6 +44,7 @@ const OpenAIIntegration = lazy(() => import('@/pages/admin/OpenAIIntegration'));
 const GoogleSSOIntegration = lazy(() => import('@/pages/admin/GoogleSSOIntegration'));
 const ConfigCrudPage = lazy(() => import('@/pages/admin/ConfigCrudPage'));
 const UserGuide = lazy(() => import('@/pages/admin/UserGuide'));
+const ChefSalaryCalculator = lazy(() => import('@/pages/admin/ChefSalaryCalculator'));
 const TechnicalDocument = lazy(() => import('@/pages/admin/TechnicalDocument'));
 const IntegrationsDocument = lazy(() => import('@/pages/admin/IntegrationsDocument'));
 
@@ -228,6 +229,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'config', action: 'read' }}>
                         <UserGuide />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="chef-salary-calculator"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'config', action: 'read' }}>
+                        <ChefSalaryCalculator />
                       </PermissionRoute>
                     )}
                   />

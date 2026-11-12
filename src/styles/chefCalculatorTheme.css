@@ -1,0 +1,73 @@
+/* Scoped theme matching chef-pay-calculator standalone app */
+
+.chef-salary-calculator-theme {
+  --background: 38 42% 97%;
+  --foreground: 25 14% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 25 14% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 25 14% 12%;
+  --primary: 25 16% 14%;
+  --primary-foreground: 38 42% 97%;
+  --secondary: 36 32% 93%;
+  --secondary-foreground: 25 16% 14%;
+  --muted: 36 26% 94%;
+  --muted-foreground: 28 10% 43%;
+  --accent: 36 54% 50%;
+  --accent-foreground: 25 20% 12%;
+  --destructive: 0 72% 48%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 34 22% 87%;
+  --input: 34 22% 87%;
+  --ring: 36 54% 50%;
+  --radius: 0.85rem;
+
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.chef-salary-calculator-theme .range-warm {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: hsl(var(--border));
+  outline: none;
+  cursor: pointer;
+}
+
+.chef-salary-calculator-theme .range-warm::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 24px;
+  width: 24px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  border: 3px solid hsl(var(--card));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.22);
+  transition: transform 150ms ease;
+}
+
+.chef-salary-calculator-theme .range-warm::-webkit-slider-thumb:hover {
+  transform: scale(1.08);
+}
+
+.chef-salary-calculator-theme .range-warm::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 999px;
+  background: hsl(var(--primary));
+  border: 3px solid hsl(var(--card));
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.22);
+}
+
+.chef-salary-calculator-theme .no-spin::-webkit-outer-spin-button,
+.chef-salary-calculator-theme .no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.chef-salary-calculator-theme .no-spin {
+  -moz-appearance: textfield;
+}
