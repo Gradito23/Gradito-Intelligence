@@ -398,7 +398,7 @@ export async function upsertEventsBatch(
     .from('events')
     .select('perfect_venue_id')
     .in('perfect_venue_id', pvIds);
-  if (selectError) throw selectError;
+  if (selectError) throw new Error(selectError.message || 'Failed to query existing events');
 
   const existingSet = new Set((existingRows ?? []).map((r) => r.perfect_venue_id));
 
@@ -432,7 +432,7 @@ export async function upsertEventsBatch(
 
   if (insertRows.length) {
     const { error } = await adminClient.from('events').insert(insertRows);
-    if (error) throw error;
+    if (error) throw new Error(error.message || 'Failed to insert Perfect Venue events');
     inserted = insertRows.length;
   }
 
@@ -440,7 +440,7 @@ export async function upsertEventsBatch(
     const { error } = await adminClient
       .from('events')
       .upsert(updateRows, { onConflict: 'perfect_venue_id' });
-    if (error) throw error;
+    if (error) throw new Error(error.message || 'Failed to upsert Perfect Venue events');
     updated = updateRows.length;
   }
 
