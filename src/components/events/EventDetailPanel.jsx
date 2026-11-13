@@ -276,6 +276,10 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="Lead">Lead</SelectItem>
+                  <SelectItem value="Qualified">Qualified</SelectItem>
+                  <SelectItem value="Proposal Sent">Proposal Sent</SelectItem>
+                  <SelectItem value="Balance Due">Balance Due</SelectItem>
                   <SelectItem value="Confirmed">Confirmed</SelectItem>
                   <SelectItem value="Completed">Completed</SelectItem>
                   <SelectItem value="Cancelled">Cancelled</SelectItem>
@@ -307,7 +311,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
                   value={draft.perfect_venue_id || ''}
                   onChange={e => update('perfect_venue_id', e.target.value)}
                   className={`h-8 text-sm font-mono ${!draft.perfect_venue_id ? 'border-amber-400 focus:ring-amber-400' : ''}`}
-                  placeholder="e.g. PV-1440"
+                  placeholder="Perfect Venue API UUID"
                 />
                 {!draft.perfect_venue_id && (
                   <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1"><AlertTriangle size={10} /> Required — blocks save</p>

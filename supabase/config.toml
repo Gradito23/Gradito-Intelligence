@@ -27,3 +27,6 @@ enabled = true
 
 [functions.onboarding-guide-email]
 verify_jwt = false
+
+[functions.integration-perfect-venue]
+verify_jwt = false

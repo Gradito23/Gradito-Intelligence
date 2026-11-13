@@ -9,17 +9,27 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import EventDetailPanel from '@/components/events/EventDetailPanel';
 import CreateEventModal from '@/components/events/CreateEventModal';
-import { Calendar, DollarSign, TrendingUp, Users, Plus, CalendarPlus } from 'lucide-react';
+import { Calendar, DollarSign, TrendingUp, Users, Plus, CalendarPlus, RefreshCw, Loader2 } from 'lucide-react';
+import {
+  usePerfectVenueIntegration,
+  usePerfectVenueSync,
+} from '@/hooks/usePerfectVenueIntegration';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { SERVICE_AREAS } from '@/lib/constants';
+import { EVENT_SOURCE_LABELS, EVENT_STATUS_COLORS, EVENT_STATUS_OPTIONS } from '@/lib/eventStatuses';
 import { toast } from '@/components/ui/use-toast';
-
-const STATUS_COLORS = {
-  Completed: 'bg-emerald-100 text-emerald-800',
-  Confirmed: 'bg-blue-100 text-blue-800',
-  Cancelled: 'bg-red-100 text-red-800',
-};
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useAuth } from '@/lib/AuthContext';
+import PerfectVenueSyncHistory from '@/components/events/PerfectVenueSyncHistory';
 
 export default function Events() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const queryClient = useQueryClient();
   const { data: events } = useEvents();
   const { data: eventChefs } = useEventChefs();
@@ -30,15 +40,64 @@ export default function Events() {
   const [filterArea, setFilterArea] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
+  const [filterSource, setFilterSource] = useState('all');
+
+  const { data: pvStatus } = usePerfectVenueIntegration({ enabled: isAdmin });
+  const pvSyncMutation = usePerfectVenueSync();
+  const pvConnected = !!pvStatus?.connected;
+  const pvSyncDisabled = !pvConnected || pvSyncMutation.isPending;
+
+  const handlePerfectVenueSync = async () => {
+    if (!pvConnected) return;
+    try {
+      const result = await pvSyncMutation.mutateAsync('incremental');
+      toast({
+        title: 'Sync complete',
+        description: `${result.inserted ?? 0} inserted, ${result.updated ?? 0} updated`,
+      });
+    } catch (err) {
+      toast({ title: 'Sync failed', description: err.message, variant: 'destructive' });
+    }
+  };
+
+  const perfectVenueSyncButton = (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pvSyncDisabled}
+              onClick={handlePerfectVenueSync}
+            >
+              {pvSyncMutation.isPending ? (
+                <Loader2 size={16} className="mr-2 animate-spin" />
+              ) : (
+                <RefreshCw size={16} className="mr-2" />
+              )}
+              Sync Perfect Venue
+            </Button>
+          </span>
+        </TooltipTrigger>
+        {!pvConnected && (
+          <TooltipContent>
+            Connect in Admin → Integrations → Perfect Venue
+          </TooltipContent>
+        )}
+      </Tooltip>
+    </TooltipProvider>
+  );
 
   const filteredEvents = useMemo(() => {
     return events.filter(e => {
       if (filterArea !== 'all' && e.service_area !== filterArea) return false;
       if (filterStatus !== 'all' && e.status !== filterStatus) return false;
       if (filterType !== 'all' && e.event_type !== filterType) return false;
+      if (filterSource !== 'all' && (e.event_source || 'manual') !== filterSource) return false;
       return true;
     }).sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [events, filterArea, filterStatus, filterType]);
+  }, [events, filterArea, filterStatus, filterType, filterSource]);
 
   const now = new Date();
   const ytdEvents = events.filter(e => new Date(e.date).getFullYear() === now.getFullYear());
@@ -72,18 +131,8 @@ export default function Events() {
     toast({ title: `Event status → ${newStatus}` });
   };
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="font-heading text-3xl font-bold">Events</h1>
-          <p className="text-muted-foreground mt-1">Event ledger and performance tracking</p>
-        </div>
-        <Button onClick={() => setShowCreateEvent(true)} className="bg-navy hover:bg-navy/90 text-white">
-          <Plus size={16} className="mr-2" /> Create Event
-        </Button>
-      </div>
-
+  const eventsLedger = (
+    <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard title="Events YTD" value={ytdEvents.length} icon={Calendar} />
         <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} subtitle={`Margin: ${formatCurrency(margin)}`} icon={TrendingUp} />
@@ -100,12 +149,22 @@ export default function Events() {
           </SelectContent>
         </Select>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectTrigger className="w-40"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="Completed">Completed</SelectItem>
-            <SelectItem value="Confirmed">Confirmed</SelectItem>
-            <SelectItem value="Cancelled">Cancelled</SelectItem>
+            {EVENT_STATUS_OPTIONS.map((s) => (
+              <SelectItem key={s} value={s}>{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterSource} onValueChange={setFilterSource}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="Source" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Sources</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
+            <SelectItem value="perfect_venue">Perfect Venue</SelectItem>
+            <SelectItem value="bulk_import">Bulk import</SelectItem>
+            <SelectItem value="invoice_import">Invoice</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterType} onValueChange={setFilterType}>
@@ -142,7 +201,14 @@ export default function Events() {
                     onClick={() => setSelectedEvent(event)}
                   >
                     <td className="p-3 whitespace-nowrap">{new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
-                    <td className="p-3 font-medium">{event.client_name || '—'}</td>
+                    <td className="p-3 font-medium">
+                      <span>{event.client_name || '—'}</span>
+                      {event.event_source && event.event_source !== 'manual' && (
+                        <Badge variant="secondary" className="ml-2 text-[10px] px-1 py-0">
+                          {EVENT_SOURCE_LABELS[event.event_source] || event.event_source}
+                        </Badge>
+                      )}
+                    </td>
                     <td className="p-3">{event.service_area}</td>
                     <td className="p-3"><Badge variant="outline" className="text-xs">{event.event_type}</Badge></td>
                     <td className="p-3">{event.guest_count}</td>
@@ -150,13 +216,13 @@ export default function Events() {
                     {/* Inline status editor */}
                     <td className="p-3" onClick={e => e.stopPropagation()}>
                       <Select value={event.status} onValueChange={val => handleStatusChange(event, val, { stopPropagation: () => {} })}>
-                        <SelectTrigger className={`h-6 w-28 text-xs border-0 ${STATUS_COLORS[event.status] || ''}`} onClick={e => e.stopPropagation()}>
+                        <SelectTrigger className={`h-6 w-32 text-xs border-0 ${EVENT_STATUS_COLORS[event.status] || ''}`} onClick={e => e.stopPropagation()}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Confirmed">Confirmed</SelectItem>
-                          <SelectItem value="Completed">Completed</SelectItem>
-                          <SelectItem value="Cancelled">Cancelled</SelectItem>
+                          {EVENT_STATUS_OPTIONS.map((s) => (
+                            <SelectItem key={s} value={s}>{s}</SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </td>
@@ -175,6 +241,41 @@ export default function Events() {
             <Plus size={16} className="mr-2" /> Log an event
           </Button>
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-heading text-3xl font-bold">Events</h1>
+          <p className="text-muted-foreground mt-1">Event ledger and performance tracking</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {isAdmin && perfectVenueSyncButton}
+          <Button onClick={() => setShowCreateEvent(true)} className="bg-navy hover:bg-navy/90 text-white">
+            <Plus size={16} className="mr-2" /> Create Event
+          </Button>
+        </div>
+      </div>
+
+      {isAdmin ? (
+        <Tabs defaultValue="events">
+          <TabsList>
+            <TabsTrigger value="events">Events</TabsTrigger>
+            <TabsTrigger value="sync-history">Sync history</TabsTrigger>
+          </TabsList>
+          <TabsContent value="events" className="space-y-6 mt-4">
+            {eventsLedger}
+          </TabsContent>
+          <TabsContent value="sync-history" className="mt-4 space-y-4">
+            <div className="flex justify-end">{perfectVenueSyncButton}</div>
+            <PerfectVenueSyncHistory />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        eventsLedger
       )}
 
       <EventDetailPanel

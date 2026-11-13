@@ -309,6 +309,7 @@ export default function CreateEventModal({
     });
     const event = await base44.entities.Event.create({
       ...form,
+      event_source:          'manual',
       client_id:             client?.id || undefined,
       client_name:           client?.name || form.client_name,
       guest_count:           Number(form.guest_count) || 0,
@@ -386,8 +387,8 @@ export default function CreateEventModal({
           {/* Perfect Venue ID */}
           <div>
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">Perfect Venue ID *</Label>
-            <Input value={form.perfect_venue_id} onChange={e => f('perfect_venue_id', e.target.value)} className="mt-1" placeholder="e.g. PV-1440" />
-            <p className="text-xs text-muted-foreground/60 mt-0.5">Canonical ID across PerfectVenue, QuickBooks, Square & Novo</p>
+            <Input value={form.perfect_venue_id} onChange={e => f('perfect_venue_id', e.target.value)} className="mt-1" placeholder="PV API UUID (from OAuth sync)" />
+            <p className="text-xs text-muted-foreground/60 mt-0.5">Optional for manual events. OAuth sync uses the Perfect Venue API event id.</p>
           </div>
 
           {/* Core fields */}

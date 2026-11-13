@@ -4,12 +4,20 @@ import IntegrationCategorySection from '@/components/admin/IntegrationCategorySe
 import { useEmailIntegration } from '@/hooks/useEmailIntegration';
 import { useGoogleSSOIntegration } from '@/hooks/useGoogleSSOIntegration';
 import { useOpenAIIntegration } from '@/hooks/useOpenAIIntegration';
-import { INTEGRATION_CATEGORIES, getEmailIntegrationStatus, getGoogleSSOIntegrationStatus, getOpenAIIntegrationStatus } from '@/lib/integrationMeta';
+import { usePerfectVenueIntegration } from '@/hooks/usePerfectVenueIntegration';
+import {
+  INTEGRATION_CATEGORIES,
+  getEmailIntegrationStatus,
+  getGoogleSSOIntegrationStatus,
+  getOpenAIIntegrationStatus,
+  getPerfectVenueIntegrationStatus,
+} from '@/lib/integrationMeta';
 
 export default function IntegrationsHub() {
   const { data: emailData } = useEmailIntegration();
   const { data: openaiData } = useOpenAIIntegration();
   const { data: googleSsoData } = useGoogleSSOIntegration();
+  const { data: perfectVenueData } = usePerfectVenueIntegration();
 
   const getStatusText = (integration) => {
     if (integration.id === 'email') {
@@ -20,6 +28,9 @@ export default function IntegrationsHub() {
     }
     if (integration.id === 'google_sso') {
       return getGoogleSSOIntegrationStatus(googleSsoData);
+    }
+    if (integration.id === 'perfect_venue') {
+      return getPerfectVenueIntegrationStatus(perfectVenueData);
     }
     return null;
   };
