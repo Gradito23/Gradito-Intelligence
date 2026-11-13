@@ -8,6 +8,7 @@ import {
   usePerfectVenueAuthorizeUrl,
   usePerfectVenueSync,
   useSavePerfectVenueCredentials,
+  formatPerfectVenueSyncToast,
 } from '@/hooks/usePerfectVenueIntegration';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -75,8 +76,8 @@ export default function PerfectVenueIntegration() {
     try {
       const result = await syncMutation.mutateAsync(mode);
       toast({
-        title: `Sync complete`,
-        description: `${result.inserted ?? 0} inserted, ${result.updated ?? 0} updated`,
+        title: 'Sync complete',
+        description: formatPerfectVenueSyncToast(result),
       });
     } catch (err) {
       toast({ title: 'Sync failed', description: err.message, variant: 'destructive' });
@@ -185,6 +186,10 @@ export default function PerfectVenueIntegration() {
             {data?.last_sync_error && (
               <span className="block mt-1 text-destructive">{data.last_sync_error}</span>
             )}
+            <span className="block mt-2 text-muted-foreground">
+              Full sync backfills all venues from Perfect Venue. Incremental syncs only events changed since the last
+              successful sync (PV <code className="text-xs">updated_at</code>).
+            </span>
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">

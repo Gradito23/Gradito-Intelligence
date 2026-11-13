@@ -5,6 +5,18 @@ export const PV_OAUTH_TOKEN = 'https://api.perfectvenue.com/oauth/token';
 export const PV_OAUTH_REVOKE = 'https://api.perfectvenue.com/oauth/revoke';
 export const PV_OAUTH_SCOPES = 'public read contacts_read users_read';
 export const PV_SYNC_OVERLAP_MS = 5 * 60 * 1000;
+export const PV_API_VERSION = '2026-11-01';
+const SYNC_STALE_MS = 15 * 60 * 1000;
+const SYNC_ACTIVE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_EVENT_PAGES_PER_VENUE = 100;
+
+export class SyncInProgressError extends Error {
+  readonly httpStatus = 409;
+  constructor() {
+    super('Sync already in progress');
+    this.name = 'SyncInProgressError';
+  }
+}
 const GRADITO_SERVICE_AREAS = [
   'Manhattan',
   'Brooklyn',
@@ -91,8 +103,9 @@ export async function pvApiGet(accessToken, path, query) {
   const response = await fetch(url.toString(), {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/json'
-    }
+      Accept: 'application/json',
+      'PV-Version': PV_API_VERSION,
+    },
   });
   if (!response.ok) {
     const text = await response.text().catch(()=>'');
@@ -316,12 +329,15 @@ export function buildVenueMap(venues) {
       v
     ]));
 }
-export async function upsertEventFromPv(adminClient, ev, venues, contacts) {
+export async function upsertEventFromPv(adminClient, ev, venues, contacts, options = {}) {
+  const linkClients = options.linkClients === true;
   if (!ev.id) return 'skipped';
   const venue = ev.venue_id ? venues.get(ev.venue_id) : undefined;
   const contact = ev.contact_id ? contacts.get(ev.contact_id) : undefined;
   const clientName = contactDisplayName(contact, ev.name);
-  const clientId = await resolveClientId(adminClient, contact, clientName);
+  const clientId = linkClients
+    ? await resolveClientId(adminClient, contact, clientName)
+    : null;
   const crmPatch = {
     perfect_venue_id: ev.id,
     event_source: 'perfect_venue',
@@ -356,11 +372,11 @@ export async function upsertEventFromPv(adminClient, ev, venues, contacts) {
 }
 async function listEventsForVenue(accessToken, venueId, mode, dateFrom, dateTo) {
   const all = [];
-  for(let page = 1; page <= 200; page++){
+  for (let page = 1; page <= MAX_EVENT_PAGES_PER_VENUE; page++) {
     const query = {
       venue_id: venueId,
       page: String(page),
-      per_page: '100'
+      per_page: '100',
     };
     if (mode === 'incremental' && dateFrom) {
       query.date_field = 'updated_at';
@@ -370,11 +386,43 @@ async function listEventsForVenue(accessToken, venueId, mode, dateFrom, dateTo) 
     const data = await pvApiGet(accessToken, '/events', query);
     const events = data.events ?? (Array.isArray(data) ? data : []);
     all.push(...events);
-    const totalPages = data.meta?.total_pages;
-    if (events.length < 100 || totalPages && page >= totalPages) break;
     if (events.length === 0) break;
+    const totalPages = data.meta?.total_pages;
+    if (events.length < 100) break;
+    if (totalPages != null && page >= totalPages) break;
+    if (totalPages == null && page >= 50) {
+      console.warn(
+        `listEventsForVenue: venue ${venueId} stopping at page ${page} without total_pages`,
+      );
+      break;
+    }
   }
   return all;
+}
+
+async function expireStaleSyncRuns(adminClient) {
+  const staleBefore = new Date(Date.now() - SYNC_STALE_MS).toISOString();
+  await adminClient
+    .from('perfect_venue_sync_runs')
+    .update({
+      finished_at: new Date().toISOString(),
+      status: 'failed',
+      error_message: 'Timed out or interrupted',
+    })
+    .eq('status', 'running')
+    .lt('started_at', staleBefore);
+}
+
+async function assertNoActiveSync(adminClient) {
+  const activeSince = new Date(Date.now() - SYNC_ACTIVE_WINDOW_MS).toISOString();
+  const { data: active, error } = await adminClient
+    .from('perfect_venue_sync_runs')
+    .select('id')
+    .eq('status', 'running')
+    .gte('started_at', activeSince)
+    .limit(1);
+  if (error) throw new Error(error.message || 'Failed to check sync status');
+  if (active?.length) throw new SyncInProgressError();
 }
 export async function listSyncRuns(adminClient, limit = 50) {
   const { data, error } = await adminClient.from('perfect_venue_sync_runs').select('id, started_at, finished_at, sync_trigger, mode, status, inserted, updated, error_message, actor_id').order('started_at', {
@@ -384,29 +432,59 @@ export async function listSyncRuns(adminClient, limit = 50) {
   return data ?? [];
 }
 export async function syncPerfectVenueEvents(adminClient, mode, runContext = {
-  trigger: 'manual'
+  trigger: 'manual',
 }) {
   const row = await loadConnection(adminClient);
   if (!row?.connected) throw new Error('Perfect Venue is not connected');
-  const { data: runRow, error: runInsertError } = await adminClient.from('perfect_venue_sync_runs').insert({
-    sync_trigger: runContext.trigger,
-    mode,
-    status: 'running',
-    actor_id: runContext.actorId ?? null
-  }).select('id').single();
-  if (runInsertError) throw runInsertError;
+
+  await expireStaleSyncRuns(adminClient);
+  await assertNoActiveSync(adminClient);
+
+  const { data: runRow, error: runInsertError } = await adminClient
+    .from('perfect_venue_sync_runs')
+    .insert({
+      sync_trigger: runContext.trigger,
+      mode,
+      status: 'running',
+      actor_id: runContext.actorId ?? null,
+    })
+    .select('id')
+    .single();
+  if (runInsertError) throw new Error(runInsertError.message || 'Failed to start sync run');
   const runId = runRow.id;
+
+  let runFinalized = false;
+  let inserted = 0;
+  let updated = 0;
+  let eventsFetched = 0;
+  let venuesCount = 0;
+
+  const finalizeRun = async (
+    status: 'success' | 'failed',
+    extra: { error_message?: string; inserted?: number; updated?: number } = {},
+  ) => {
+    if (runFinalized) return;
+    runFinalized = true;
+    await adminClient
+      .from('perfect_venue_sync_runs')
+      .update({
+        finished_at: new Date().toISOString(),
+        status,
+        inserted: extra.inserted ?? inserted,
+        updated: extra.updated ?? updated,
+        error_message: extra.error_message ?? null,
+      })
+      .eq('id', runId);
+  };
+
   try {
     let accessToken = await resolveAccessToken(adminClient, row);
     const venues = await fetchVenues(accessToken);
-    const venueIds = venues.map((v)=>v.id);
+    const venueIds = venues.map((v) => v.id);
     const venueMap = buildVenueMap(venues);
-    let contacts;
-    try {
-      contacts = await fetchAllContacts(accessToken);
-    } catch  {
-      contacts = new Map();
-    }
+    venuesCount = venues.length;
+    const contacts = new Map();
+
     const now = new Date();
     const dateTo = now.toISOString();
     let dateFrom = null;
@@ -414,9 +492,8 @@ export async function syncPerfectVenueEvents(adminClient, mode, runContext = {
       const fromMs = new Date(row.last_synced_updated_at).getTime() - PV_SYNC_OVERLAP_MS;
       dateFrom = new Date(fromMs).toISOString();
     }
-    let inserted = 0;
-    let updated = 0;
-    for (const venueId of venueIds){
+
+    for (const venueId of venueIds) {
       let events;
       try {
         events = await listEventsForVenue(accessToken, venueId, mode, dateFrom, dateTo);
@@ -428,17 +505,22 @@ export async function syncPerfectVenueEvents(adminClient, mode, runContext = {
           throw err;
         }
       }
-      for (const ev of events){
-        const result = await upsertEventFromPv(adminClient, ev, venueMap, contacts);
+      eventsFetched += events.length;
+      for (const ev of events) {
+        const result = await upsertEventFromPv(adminClient, ev, venueMap, contacts, {
+          linkClients: false,
+        });
         if (result === 'inserted') inserted += 1;
         if (result === 'updated') updated += 1;
       }
     }
+
     const stats = {
       inserted,
       updated,
+      events_fetched: eventsFetched,
       mode,
-      at: now.toISOString()
+      at: now.toISOString(),
     };
     const patch = {
       venue_ids: venueIds,
@@ -446,30 +528,30 @@ export async function syncPerfectVenueEvents(adminClient, mode, runContext = {
       last_sync_at: now.toISOString(),
       last_sync_error: null,
       last_sync_stats: stats,
-      last_synced_updated_at: now.toISOString()
+      last_synced_updated_at: now.toISOString(),
     };
     if (mode === 'full') patch.last_full_sync_at = now.toISOString();
     await adminClient.from('integration_perfect_venue_connections').update(patch).eq('id', 1);
-    await adminClient.from('perfect_venue_sync_runs').update({
-      finished_at: now.toISOString(),
-      status: 'success',
-      inserted,
-      updated
-    }).eq('id', runId);
+
+    await finalizeRun('success');
     return {
       inserted,
       updated,
-      venues: venues.length,
-      run_id: runId
+      events_fetched: eventsFetched,
+      venues: venuesCount,
+      run_id: runId,
     };
   } catch (err) {
+    if (err instanceof SyncInProgressError) throw err;
     const message = err instanceof Error ? err.message : 'Sync failed';
-    await adminClient.from('perfect_venue_sync_runs').update({
-      finished_at: new Date().toISOString(),
-      status: 'failed',
-      error_message: message
-    }).eq('id', runId);
-    throw err;
+    await finalizeRun('failed', { error_message: message });
+    throw err instanceof Error ? err : new Error(message);
+  } finally {
+    if (!runFinalized) {
+      await finalizeRun('failed', {
+        error_message: 'Timed out or interrupted before completion',
+      });
+    }
   }
 }
 export async function toPublicStatus(adminClient, row) {

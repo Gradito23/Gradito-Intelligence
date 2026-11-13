@@ -86,6 +86,18 @@ export function usePerfectVenueDisconnect() {
   });
 }
 
+/** User-facing summary after a PV sync (insert/updated/fetched + source filter hint). */
+export function formatPerfectVenueSyncToast(result) {
+  const inserted = result?.inserted ?? 0;
+  const updated = result?.updated ?? 0;
+  const fetched = result?.events_fetched ?? inserted + updated;
+  const parts = [
+    `${inserted} inserted, ${updated} updated`,
+    fetched !== inserted + updated ? `(${fetched} fetched from Perfect Venue)` : `(${fetched} fetched)`,
+  ];
+  return `${parts.join(' ')}. Events totals include all sources—filter Source = Perfect Venue on the Events page.`;
+}
+
 export function usePerfectVenueSync() {
   const queryClient = useQueryClient();
   return useMutation({
