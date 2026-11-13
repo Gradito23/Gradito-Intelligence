@@ -44,7 +44,7 @@ export default function Events() {
   const [filterType, setFilterType] = useState('all');
   const [filterSource, setFilterSource] = useState('all');
 
-  const { data: pvStatus } = usePerfectVenueIntegration({ enabled: isAdmin });
+  const { data: pvStatus } = usePerfectVenueIntegration({ enabled: isAdmin, pollWhileSyncing: isAdmin });
   const pvSyncMutation = usePerfectVenueSync();
   const pvConnected = !!pvStatus?.connected;
   const pvSyncDisabled = !pvConnected || pvSyncMutation.isPending;

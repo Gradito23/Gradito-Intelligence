@@ -6,9 +6,8 @@ export const PV_OAUTH_REVOKE = 'https://api.perfectvenue.com/oauth/revoke';
 export const PV_OAUTH_SCOPES = 'public read contacts_read users_read';
 export const PV_SYNC_OVERLAP_MS = 5 * 60 * 1000;
 export const PV_API_VERSION = '2026-11-01';
-const SYNC_STALE_MS = 5 * 60 * 1000;
-const SYNC_ACTIVE_HEARTBEAT_MS = 3 * 60 * 1000;
-const SYNC_CHUNK_BUDGET_MS = 45 * 1000;
+const SYNC_STALE_MS = 3 * 60 * 1000;
+const SYNC_CHUNK_BUDGET_MS = 20 * 1000;
 const MAX_EVENT_PAGES_PER_VENUE = 100;
 export type PvSyncCheckpoint = {
   run_id: string;
@@ -34,6 +33,7 @@ export type PvSyncResult = {
   continue?: boolean;
   background?: boolean;
   idle?: boolean;
+  started?: boolean;
 };
 
 export class SyncInProgressError extends Error {
@@ -355,46 +355,104 @@ export function buildVenueMap(venues) {
       v
     ]));
 }
-export async function upsertEventFromPv(adminClient, ev, venues, contacts, options = {}) {
-  const linkClients = options.linkClients === true;
-  if (!ev.id) return 'skipped';
+function buildCrmPatchFromPv(ev, venues, contacts) {
   const venue = ev.venue_id ? venues.get(ev.venue_id) : undefined;
   const contact = ev.contact_id ? contacts.get(ev.contact_id) : undefined;
   const clientName = contactDisplayName(contact, ev.name);
-  const clientId = linkClients
-    ? await resolveClientId(adminClient, contact, clientName)
-    : null;
-  const crmPatch = {
+  return {
     perfect_venue_id: ev.id,
     event_source: 'perfect_venue',
     pv_venue_id: ev.venue_id ?? null,
     date: eventDate(ev.start_time),
     service_area: mapServiceArea(venue?.name),
-    client_id: clientId,
+    client_id: null as string | null,
     client_name: clientName,
     event_type: ev.event_type ?? null,
     guest_count: ev.group_size ?? null,
     status: mapPvStatus(ev.status),
-    pv_metadata: buildPvMetadata(ev)
+    pv_metadata: buildPvMetadata(ev),
   };
-  const { data: existing } = await adminClient.from('events').select('id, notes, client_revenue, invoice_number').eq('perfect_venue_id', ev.id).maybeSingle();
-  if (existing) {
-    const { error } = await adminClient.from('events').update(crmPatch).eq('id', existing.id);
-    if (error) throw error;
-    return 'updated';
+}
+
+/** Batch upsert one API page: select existing, bulk insert new, bulk upsert patches (preserves notes/revenue on update). */
+export async function upsertEventsBatch(
+  adminClient,
+  events,
+  venues,
+  contacts,
+  options: { linkClients?: boolean } = {},
+): Promise<{ inserted: number; updated: number; skipped: number }> {
+  const linkClients = options.linkClients === true;
+  let skipped = 0;
+  const withIds = (events ?? []).filter((ev) => {
+    if (!ev?.id) {
+      skipped += 1;
+      return false;
+    }
+    return true;
+  });
+  if (!withIds.length) return { inserted: 0, updated: 0, skipped };
+
+  const pvIds = withIds.map((ev) => ev.id);
+  const { data: existingRows, error: selectError } = await adminClient
+    .from('events')
+    .select('perfect_venue_id')
+    .in('perfect_venue_id', pvIds);
+  if (selectError) throw selectError;
+
+  const existingSet = new Set((existingRows ?? []).map((r) => r.perfect_venue_id));
+
+  const insertRows: Record<string, unknown>[] = [];
+  const updateRows: Record<string, unknown>[] = [];
+
+  for (const ev of withIds) {
+    const crmPatch = buildCrmPatchFromPv(ev, venues, contacts);
+    if (linkClients) {
+      const contact = ev.contact_id ? contacts.get(ev.contact_id) : undefined;
+      const clientName = contactDisplayName(contact, ev.name);
+      crmPatch.client_id = await resolveClientId(adminClient, contact, clientName);
+    }
+    if (existingSet.has(ev.id)) {
+      updateRows.push(crmPatch);
+    } else {
+      insertRows.push({
+        ...crmPatch,
+        notes: ev.name ?? null,
+        commission_status: 'Pending',
+        cuisines_served: [],
+        facilitators: {},
+        admin_fee_applies_to: [],
+        client_revenue: typeof ev.amount === 'number' ? ev.amount / 100 : 0,
+      });
+    }
   }
-  const insertRow = {
-    ...crmPatch,
-    notes: ev.name ?? null,
-    commission_status: 'Pending',
-    cuisines_served: [],
-    facilitators: {},
-    admin_fee_applies_to: [],
-    client_revenue: typeof ev.amount === 'number' ? ev.amount / 100 : 0
-  };
-  const { error } = await adminClient.from('events').insert(insertRow);
-  if (error) throw error;
-  return 'inserted';
+
+  let inserted = 0;
+  let updated = 0;
+
+  if (insertRows.length) {
+    const { error } = await adminClient.from('events').insert(insertRows);
+    if (error) throw error;
+    inserted = insertRows.length;
+  }
+
+  if (updateRows.length) {
+    const { error } = await adminClient
+      .from('events')
+      .upsert(updateRows, { onConflict: 'perfect_venue_id' });
+    if (error) throw error;
+    updated = updateRows.length;
+  }
+
+  return { inserted, updated, skipped };
+}
+
+export async function upsertEventFromPv(adminClient, ev, venues, contacts, options = {}) {
+  const result = await upsertEventsBatch(adminClient, [ev], venues, contacts, options);
+  if (result.skipped) return 'skipped';
+  if (result.inserted) return 'inserted';
+  if (result.updated) return 'updated';
+  return 'skipped';
 }
 async function fetchEventsPage(accessToken, venueId, mode, page, dateFrom, dateTo) {
   const query: Record<string, string> = {
@@ -476,7 +534,7 @@ async function expireStaleSyncRuns(adminClient) {
 }
 
 async function assertNoActiveSync(adminClient) {
-  const freshSince = new Date(Date.now() - SYNC_ACTIVE_HEARTBEAT_MS).toISOString();
+  const freshSince = new Date(Date.now() - SYNC_STALE_MS).toISOString();
   const { data: active, error } = await adminClient
     .from('perfect_venue_sync_runs')
     .select('id, started_at, heartbeat_at')
@@ -501,7 +559,7 @@ async function loadRunningRun(adminClient, runId: string) {
 }
 
 function runHeartbeatIsFresh(run: { heartbeat_at?: string | null; started_at?: string | null }) {
-  const freshSince = Date.now() - SYNC_ACTIVE_HEARTBEAT_MS;
+  const freshSince = Date.now() - SYNC_STALE_MS;
   const last = run.heartbeat_at ?? run.started_at;
   if (!last) return false;
   return new Date(last).getTime() >= freshSince;
@@ -701,28 +759,11 @@ export async function syncPerfectVenueEvents(
       const { events, hasMore } = pageResult;
       checkpoint.events_fetched += events.length;
 
-      for (const ev of events) {
-        if (Date.now() >= chunkDeadline) {
-          await saveCheckpoint(adminClient, checkpoint);
-          await heartbeatRun(adminClient, runId, checkpoint.inserted, checkpoint.updated);
-          returnedPartial = true;
-          return {
-            inserted: checkpoint.inserted,
-            updated: checkpoint.updated,
-            events_fetched: checkpoint.events_fetched,
-            venues: venuesCount,
-            run_id: runId,
-            partial: true,
-            continue: true,
-            background: true,
-          };
-        }
-        const result = await upsertEventFromPv(adminClient, ev, venueMap, contacts, {
-          linkClients: false,
-        });
-        if (result === 'inserted') checkpoint.inserted += 1;
-        if (result === 'updated') checkpoint.updated += 1;
-      }
+      const batch = await upsertEventsBatch(adminClient, events, venueMap, contacts, {
+        linkClients: false,
+      });
+      checkpoint.inserted += batch.inserted;
+      checkpoint.updated += batch.updated;
 
       await heartbeatRun(adminClient, runId, checkpoint.inserted, checkpoint.updated);
 
@@ -805,7 +846,23 @@ export async function startScheduledIncrementalIfIdle(
   }
   return syncPerfectVenueEvents(adminClient, 'incremental', { trigger: 'cron', actorId: null }, { continue: false });
 }
+function checkpointProgressFromRow(row) {
+  const cp = parseCheckpoint(row?.sync_checkpoint);
+  if (!cp) return null;
+  return {
+    run_id: cp.run_id,
+    mode: cp.mode,
+    venue_index: cp.venue_index,
+    total_venues: cp.venue_ids.length,
+    events_fetched: cp.events_fetched,
+    inserted: cp.inserted,
+    updated: cp.updated,
+  };
+}
+
 export async function toPublicStatus(adminClient, row) {
+  const checkpoint_progress = checkpointProgressFromRow(row);
+  const sync_in_progress = checkpoint_progress != null;
   const envConfigured = Boolean(Deno.env.get('PERFECT_VENUE_CLIENT_ID')?.trim() && Deno.env.get('PERFECT_VENUE_CLIENT_SECRET')?.trim());
   const dbClientId = row?.client_id?.trim() || '';
   const hasDbSecret = Boolean(row?.encrypted_client_secret?.trim());
@@ -834,7 +891,9 @@ export async function toPublicStatus(adminClient, row) {
       last_full_sync_at: null,
       last_synced_updated_at: null,
       last_sync_error: null,
-      last_sync_stats: null
+      last_sync_stats: null,
+      sync_in_progress: false,
+      checkpoint_progress: null,
     };
   }
   return {
@@ -850,7 +909,9 @@ export async function toPublicStatus(adminClient, row) {
     last_full_sync_at: row.last_full_sync_at ?? null,
     last_synced_updated_at: row.last_synced_updated_at,
     last_sync_error: row.last_sync_error ?? null,
-    last_sync_stats: row.last_sync_stats ?? null
+    last_sync_stats: row.last_sync_stats ?? null,
+    sync_in_progress,
+    checkpoint_progress,
   };
 }
 export async function savePvCredentials(adminClient, clientId, clientSecret, userId) {

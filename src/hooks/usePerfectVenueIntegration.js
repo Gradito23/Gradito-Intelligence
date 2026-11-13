@@ -34,11 +34,14 @@ export async function invokePerfectVenueIntegration(body) {
   return data;
 }
 
-export function usePerfectVenueIntegration({ enabled = true } = {}) {
+export function usePerfectVenueIntegration({ enabled = true, pollWhileSyncing = false } = {}) {
   return useQuery({
     queryKey: PERFECT_VENUE_QUERY_KEY,
     queryFn: () => invokePerfectVenueIntegration({ action: 'get_status' }),
     enabled,
+    refetchInterval: pollWhileSyncing
+      ? (query) => (query.state.data?.sync_in_progress ? 5000 : false)
+      : undefined,
   });
 }
 
@@ -92,10 +95,10 @@ export function formatPerfectVenueSyncToast(result) {
   const inserted = result?.inserted ?? 0;
   const updated = result?.updated ?? 0;
   const fetched = result?.events_fetched ?? inserted + updated;
-  if (result?.backgroundCompleting || result?.partial) {
+  if (result?.started || result?.backgroundCompleting || result?.partial) {
     return (
       `Sync started: ${inserted} inserted, ${updated} updated so far (${fetched} fetched). ` +
-      'Finishing in the background (~2 min ticks)—watch Events → Sync history. ' +
+      'Finishing in the background (~1 min per tick)—watch Events → Sync history. ' +
       'Filter Source = Perfect Venue on Events.'
     );
   }
@@ -107,39 +110,15 @@ export function formatPerfectVenueSyncToast(result) {
 }
 
 export function perfectVenueSyncToastTitle(result) {
-  if (result?.backgroundCompleting || result?.partial) return 'Sync started';
+  if (result?.started || result?.backgroundCompleting || result?.partial) return 'Sync started';
   return 'Sync complete';
-}
-
-const PV_SYNC_MAX_CONTINUE = 3;
-const PV_SYNC_CONTINUE_DELAY_MS = 400;
-
-async function runPerfectVenueSyncWithContinue(mode) {
-  let continueSync = false;
-  let aggregated = null;
-  for (let attempt = 0; attempt < PV_SYNC_MAX_CONTINUE; attempt++) {
-    if (attempt > 0) {
-      await new Promise((r) => setTimeout(r, PV_SYNC_CONTINUE_DELAY_MS));
-    }
-    const result = await invokePerfectVenueIntegration({
-      action: 'sync_events',
-      mode,
-      continue: continueSync,
-    });
-    aggregated = result;
-    if (!result.partial || !result.continue) break;
-    continueSync = true;
-  }
-  if (aggregated?.partial && aggregated?.continue) {
-    return { ...aggregated, backgroundCompleting: true };
-  }
-  return aggregated;
 }
 
 export function usePerfectVenueSync() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (mode = 'incremental') => runPerfectVenueSyncWithContinue(mode),
+    mutationFn: (mode = 'incremental') =>
+      invokePerfectVenueIntegration({ action: 'sync_events', mode, continue: false }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_SYNC_RUNS_KEY });

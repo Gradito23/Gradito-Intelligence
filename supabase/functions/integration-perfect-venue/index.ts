@@ -266,7 +266,7 @@ Deno.serve(async (req) => {
         if (!outcome.ok) {
           return jsonResponse({ error: outcome.error }, outcome.httpStatus ?? 400);
         }
-        return jsonResponse({ ok: true, ...outcome.result });
+        return jsonResponse({ ok: true, started: true, ...outcome.result });
       }
 
       case 'sync_events_tick': {
