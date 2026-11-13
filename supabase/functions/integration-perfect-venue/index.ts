@@ -16,6 +16,7 @@ import {
   savePvCredentials,
   storeTokens,
   syncPerfectVenueEvents,
+  SyncInProgressError,
   toPublicStatus,
 } from '../_shared/perfectVenue.ts';
 
@@ -50,12 +51,15 @@ async function runPerfectVenueSync(
     const result = await syncPerfectVenueEvents(client, mode, ctx);
     return { ok: true as const, result };
   } catch (err) {
+    if (err instanceof SyncInProgressError) {
+      return { ok: false as const, error: err.message, httpStatus: 409 as const };
+    }
     const message = err instanceof Error ? err.message : 'Sync failed';
     await client
       .from('integration_perfect_venue_connections')
       .update({ last_sync_error: message, last_sync_at: new Date().toISOString() })
       .eq('id', 1);
-    return { ok: false as const, error: message };
+    return { ok: false as const, error: message, httpStatus: 400 as const };
   }
 }
 
@@ -78,7 +82,9 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'Unauthorized' }, 401);
       }
       const outcome = await runIncrementalSync(adminClient, { trigger: 'cron', actorId: null });
-      if (!outcome.ok) return jsonResponse({ error: outcome.error }, 400);
+      if (!outcome.ok) {
+        return jsonResponse({ error: outcome.error }, outcome.httpStatus ?? 400);
+      }
       return jsonResponse({ ok: true, ...outcome.result });
     }
 
@@ -228,7 +234,9 @@ Deno.serve(async (req) => {
         const outcome = mode === 'incremental'
           ? await runIncrementalSync(client, ctx)
           : await runPerfectVenueSync(client, 'full', ctx);
-        if (!outcome.ok) return jsonResponse({ error: outcome.error }, 400);
+        if (!outcome.ok) {
+          return jsonResponse({ error: outcome.error }, outcome.httpStatus ?? 400);
+        }
         return jsonResponse({ ok: true, ...outcome.result });
       }
 

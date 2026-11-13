@@ -32,3 +32,17 @@ Gradito syncs Perfect Venue events with an edge function action `sync_events_sch
 ## Manual runs
 
 Use **Sync Perfect Venue** on the Events page (admins, incremental — same sync logic as cron, logged as `manual` in Sync history), **Sync now (incremental)** or **Full sync** on the Perfect Venue integration page (`trigger: manual` in sync history).
+
+## Stale sync runs (one-time cleanup)
+
+If sync history rows stay `running` with no finish time (older edge timeouts), mark them failed in the SQL editor:
+
+```sql
+UPDATE perfect_venue_sync_runs
+SET status = 'failed',
+    finished_at = COALESCE(finished_at, now()),
+    error_message = COALESCE(error_message, 'Marked failed: stale running')
+WHERE status = 'running';
+```
+
+Then run **Full sync** once from Integrations → Perfect Venue. New runs auto-expire stale `running` rows after 15 minutes and block overlapping syncs.

@@ -8,6 +8,13 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 
+const STALE_RUNNING_MS = 10 * 60 * 1000;
+
+function isStaleRunningRun(run) {
+  if (run.status !== 'running' || !run.started_at) return false;
+  return Date.now() - new Date(run.started_at).getTime() > STALE_RUNNING_MS;
+}
+
 export default function PerfectVenueSyncHistory() {
   const { data, isLoading, isError, error } = usePerfectVenueSyncRuns(true);
   const runs = data?.runs ?? [];
@@ -52,7 +59,9 @@ export default function PerfectVenueSyncHistory() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {runs.map((run) => (
+          {runs.map((run) => {
+            const stale = isStaleRunningRun(run);
+            return (
             <TableRow key={run.id}>
               <TableCell className="text-xs whitespace-nowrap">
                 {run.started_at ? format(new Date(run.started_at), 'PPp') : '—'}
@@ -72,10 +81,12 @@ export default function PerfectVenueSyncHistory() {
                       ? 'border-emerald-300 text-emerald-800'
                       : run.status === 'failed'
                         ? 'border-red-300 text-red-800'
-                        : ''
+                        : stale
+                          ? 'border-amber-300 text-amber-900'
+                          : ''
                   }`}
                 >
-                  {run.status}
+                  {stale ? 'running (stale)' : run.status}
                 </Badge>
               </TableCell>
               <TableCell className="text-right tabular-nums">{run.inserted ?? 0}</TableCell>
@@ -84,7 +95,8 @@ export default function PerfectVenueSyncHistory() {
                 {run.error_message || '—'}
               </TableCell>
             </TableRow>
-          ))}
+            );
+          })}
         </TableBody>
       </Table>
     </Card>

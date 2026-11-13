@@ -13,6 +13,7 @@ import { Calendar, DollarSign, TrendingUp, Users, Plus, CalendarPlus, RefreshCw,
 import {
   usePerfectVenueIntegration,
   usePerfectVenueSync,
+  formatPerfectVenueSyncToast,
 } from '@/hooks/usePerfectVenueIntegration';
 import {
   Tooltip,
@@ -53,7 +54,7 @@ export default function Events() {
       const result = await pvSyncMutation.mutateAsync('incremental');
       toast({
         title: 'Sync complete',
-        description: `${result.inserted ?? 0} inserted, ${result.updated ?? 0} updated`,
+        description: formatPerfectVenueSyncToast(result),
       });
     } catch (err) {
       toast({ title: 'Sync failed', description: err.message, variant: 'destructive' });
