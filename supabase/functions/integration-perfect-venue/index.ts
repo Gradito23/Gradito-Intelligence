@@ -157,19 +157,30 @@ Deno.serve(async (req) => {
           userId: user.id,
         });
 
-        const venues = await fetchVenues(tokens.access_token);
-        await client
-          .from('integration_perfect_venue_connections')
-          .update({
-            venue_ids: venues.map((v) => v.id),
-            venues,
-            updated_by: user.id,
-          })
-          .eq('id', 1);
+        let venues: Awaited<ReturnType<typeof fetchVenues>> = [];
+        let venuesFetchWarning: string | undefined;
+        try {
+          venues = await fetchVenues(tokens.access_token);
+        } catch (err) {
+          venuesFetchWarning = err instanceof Error ? err.message : 'Failed to fetch venues';
+          console.warn('integration-perfect-venue exchange_code venues:', venuesFetchWarning);
+        }
+
+        if (venues.length > 0) {
+          await client
+            .from('integration_perfect_venue_connections')
+            .update({
+              venue_ids: venues.map((v) => v.id),
+              venues,
+              updated_by: user.id,
+            })
+            .eq('id', 1);
+        }
 
         return jsonResponse({
           connected: true,
           venue_count: venues.length,
+          ...(venuesFetchWarning ? { venues_fetch_warning: venuesFetchWarning } : {}),
         });
       }
 
