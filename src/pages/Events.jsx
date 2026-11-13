@@ -139,7 +139,7 @@ export default function Events() {
   });
   const pipelineSource = filterSource === 'all' ? 'all' : filterSource;
   const { data: pipelineStats } = useEventPipelineStats({ eventSource: pipelineSource });
-  const { data: ledgerSummary } = useEventLedgerStats();
+  const { data: ledgerSummary, isError: ledgerSummaryError } = useEventLedgerStats();
 
   const ledgerEvents = ledgerData?.rows ?? [];
   const totalCount = ledgerData?.totalCount ?? 0;
@@ -147,11 +147,12 @@ export default function Events() {
   const pageEnd = Math.min(page * pageSize, totalCount);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
+  const statsUnavailable = ledgerSummaryError;
   const totalPayouts = eventChefs.reduce((s, ec) => s + (ec.fee || 0) + (ec.travel_fee_applied || 0), 0);
-  const totalRevenue = ledgerSummary?.totalRevenue ?? 0;
-  const margin = totalRevenue - totalPayouts;
-  const ytdCount = ledgerSummary?.ytdCount ?? 0;
-  const repeatRate = ledgerSummary?.repeatRate ?? 0;
+  const totalRevenue = statsUnavailable ? null : (ledgerSummary?.totalRevenue ?? 0);
+  const margin = totalRevenue != null ? totalRevenue - totalPayouts : null;
+  const ytdCount = statsUnavailable ? null : (ledgerSummary?.ytdCount ?? 0);
+  const repeatRate = statsUnavailable ? null : (ledgerSummary?.repeatRate ?? 0);
 
   const activeChefIds = new Set(eventChefs.map(ec => ec.chef_id));
   const idleCount = chefs.length - activeChefIds.size;
@@ -171,10 +172,31 @@ export default function Events() {
   const eventsLedger = (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard title="Events YTD" value={ytdCount} icon={Calendar} />
-        <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} subtitle={`Margin: ${formatCurrency(margin)}`} icon={TrendingUp} />
+        <StatCard
+          title="Events YTD"
+          value={ytdCount == null ? '—' : ytdCount}
+          subtitle={statsUnavailable ? 'Stats unavailable' : undefined}
+          icon={Calendar}
+        />
+        <StatCard
+          title="Total Revenue"
+          value={totalRevenue == null ? '—' : formatCurrency(totalRevenue)}
+          subtitle={
+            statsUnavailable
+              ? 'Stats unavailable'
+              : margin != null
+                ? `Margin: ${formatCurrency(margin)}`
+                : undefined
+          }
+          icon={TrendingUp}
+        />
         <StatCard title="Total Payouts" value={formatCurrency(totalPayouts)} icon={DollarSign} accent />
-        <StatCard title="Repeat-Client Rate" value={`${repeatRate}%`} subtitle={`${idleCount} idle chefs`} icon={Users} />
+        <StatCard
+          title="Repeat-Client Rate"
+          value={repeatRate == null ? '—' : `${repeatRate}%`}
+          subtitle={statsUnavailable ? 'Stats unavailable' : `${idleCount} idle chefs`}
+          icon={Users}
+        />
       </div>
 
       <div className="flex flex-wrap gap-2 items-center">

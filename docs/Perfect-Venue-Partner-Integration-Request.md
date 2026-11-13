@@ -93,7 +93,7 @@ One **`read`** permission covers reading venues, events, and contacts. With that
 | `name` | Event name |
 | `status` | Event status (lead, confirmed, completed, etc.) |
 | `start_time` / `end_time` | Event start and end time |
-| `start_date` / `end_date` | Older date fields (still returned; new work uses start/end time) |
+| `start_date` / `end_date` | Older date fields (still returned; Gradito uses `start_time`, then `start_date`, then end fields for `date`) |
 | `group_size` | Guest / group size |
 | `source` | Where the event came from |
 | `campaign` | Campaign name (if set) |
