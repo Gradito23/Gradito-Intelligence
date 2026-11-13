@@ -123,6 +123,9 @@ export function usePerfectVenueSync() {
       queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_SYNC_RUNS_KEY });
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['events-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['events-pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['events-ledger-summary'] });
     },
   });
 }

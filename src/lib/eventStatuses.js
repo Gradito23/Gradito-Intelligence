@@ -1,3 +1,14 @@
+/** Open pipeline stages (matches Perfect Venue “Active Events”). */
+export const ACTIVE_PIPELINE_STATUSES = [
+  'Lead',
+  'Qualified',
+  'Proposal Sent',
+  'Confirmed',
+  'Balance Due',
+];
+
+export const ARCHIVE_STATUSES = ['Cancelled', 'Completed'];
+
 /** Gradito event status labels (aligned with Perfect Venue pipeline mapping). */
 export const EVENT_STATUS_OPTIONS = [
   'Lead',

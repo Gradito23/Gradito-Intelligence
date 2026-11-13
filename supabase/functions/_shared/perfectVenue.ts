@@ -255,11 +255,258 @@ export async function fetchVenues(accessToken) {
   if (Array.isArray(data)) return data;
   return data.venues ?? [];
 }
-function mapServiceArea(venueName) {
+function isKnownServiceArea(name) {
+  if (!name?.trim()) return false;
+  const lower = name.trim().toLowerCase();
+  return GRADITO_SERVICE_AREAS.some(
+    (a) => a.toLowerCase() === lower || lower.includes(a.toLowerCase()) || a.toLowerCase().includes(lower),
+  );
+}
+
+function mapServiceAreaFromVenueName(venueName) {
   if (!venueName?.trim()) return null;
   const lower = venueName.trim().toLowerCase();
-  const match = GRADITO_SERVICE_AREAS.find((a)=>a.toLowerCase() === lower || lower.includes(a.toLowerCase()) || a.toLowerCase().includes(lower));
-  return match ?? venueName.trim();
+  const match = GRADITO_SERVICE_AREAS.find(
+    (a) => a.toLowerCase() === lower || lower.includes(a.toLowerCase()) || a.toLowerCase().includes(lower),
+  );
+  return match ?? null;
+}
+
+/** Five-digit ZIP prefix (3 chars) → Gradito service market */
+const ZIP_PREFIX_TO_SERVICE_AREA: Record<string, string> = {
+  '100': 'Manhattan',
+  '101': 'Manhattan',
+  '102': 'Manhattan',
+  '103': 'Manhattan',
+  '104': 'Manhattan',
+  '112': 'Brooklyn',
+  '070': 'New Jersey',
+  '071': 'New Jersey',
+  '072': 'New Jersey',
+  '073': 'New Jersey',
+  '074': 'New Jersey',
+  '075': 'New Jersey',
+  '076': 'New Jersey',
+  '077': 'New Jersey',
+  '078': 'New Jersey',
+  '079': 'New Jersey',
+  '331': 'Miami',
+  '332': 'Miami',
+  '333': 'Miami',
+  '334': 'Palm Beach',
+  '335': 'Palm Beach',
+  '900': 'Los Angeles',
+  '901': 'Los Angeles',
+  '902': 'Los Angeles',
+  '903': 'Los Angeles',
+  '904': 'Los Angeles',
+  '905': 'Los Angeles',
+  '906': 'Los Angeles',
+  '907': 'Los Angeles',
+  '908': 'Los Angeles',
+  '910': 'Los Angeles',
+  '911': 'Los Angeles',
+  '912': 'Los Angeles',
+  '913': 'Los Angeles',
+  '914': 'Los Angeles',
+  '915': 'Los Angeles',
+  '916': 'Los Angeles',
+  '917': 'Los Angeles',
+  '918': 'Los Angeles',
+  '919': 'Los Angeles',
+  '920': 'San Diego',
+  '921': 'San Diego',
+  '922': 'San Diego',
+  '923': 'San Diego',
+  '924': 'San Diego',
+  '925': 'San Diego',
+  '926': 'San Diego',
+  '927': 'San Diego',
+  '928': 'San Diego',
+  '191': 'Philadelphia',
+  '190': 'Philadelphia',
+  '200': 'Washington DC',
+  '201': 'Washington DC',
+  '202': 'Washington DC',
+  '203': 'Washington DC',
+  '204': 'Washington DC',
+  '205': 'Washington DC',
+  '940': 'San Francisco',
+  '941': 'San Francisco',
+  '942': 'San Francisco',
+  '943': 'San Francisco',
+  '944': 'San Francisco',
+  '945': 'San Francisco',
+  '946': 'San Francisco',
+  '947': 'San Francisco',
+  '948': 'San Francisco',
+  '949': 'San Francisco',
+  '950': 'San Francisco',
+  '951': 'San Francisco',
+  '952': 'San Francisco',
+  '953': 'San Francisco',
+  '954': 'San Francisco',
+  '955': 'San Francisco',
+  '956': 'San Francisco',
+  '957': 'San Francisco',
+  '958': 'San Francisco',
+  '959': 'San Francisco',
+  '372': 'Nashville',
+  '981': 'Seattle',
+  '980': 'Seattle',
+  '891': 'Las Vegas',
+  '752': 'Dallas',
+  '750': 'Dallas',
+  '751': 'Dallas',
+  '753': 'Dallas',
+  '606': 'Chicago',
+  '607': 'Chicago',
+  '608': 'Chicago',
+  '021': 'Boston',
+  '022': 'Boston',
+  '787': 'Austin',
+  '786': 'Austin',
+  '770': 'Houston',
+  '771': 'Houston',
+  '772': 'Houston',
+  '773': 'Houston',
+  '774': 'Houston',
+  '775': 'Houston',
+  '802': 'Denver',
+  '800': 'Denver',
+  '801': 'Denver',
+  '303': 'Atlanta',
+  '300': 'Atlanta',
+  '301': 'Atlanta',
+  '302': 'Atlanta',
+  '701': 'New Orleans',
+  '700': 'New Orleans',
+  '972': 'Portland',
+  '970': 'Portland',
+  '971': 'Portland',
+  '816': 'Aspen',
+  '105': 'Westchester',
+  '106': 'Westchester',
+  '107': 'Westchester',
+  '108': 'Westchester',
+  '109': 'Westchester',
+  '068': 'Westchester, Putnam & Fairfield',
+  '069': 'Westchester, Putnam & Fairfield',
+  '110': 'Long Island',
+  '111': 'Long Island',
+  '115': 'Long Island',
+  '117': 'Long Island',
+  '118': 'Long Island',
+  '119': 'Long Island',
+  '012': 'The Berkshires',
+  '013': 'The Berkshires',
+};
+
+function normalizeZip(value) {
+  if (value == null) return null;
+  const s = String(value).trim();
+  const m = s.match(/\b(\d{5})\b/);
+  return m ? m[1] : null;
+}
+
+function serviceAreaFromZip(zip) {
+  if (!zip || zip.length < 3) return null;
+  const prefix = zip.slice(0, 3);
+  const area = ZIP_PREFIX_TO_SERVICE_AREA[prefix];
+  return area && GRADITO_SERVICE_AREAS.includes(area) ? area : null;
+}
+
+function extractZipFromPvEvent(ev) {
+  const direct = [ev.zip, ev.zip_code, ev.postal_code, ev.postal];
+  for (const v of direct) {
+    const z = normalizeZip(v);
+    if (z) return z;
+  }
+  const addr = ev.event_address ?? ev.address ?? ev.location;
+  if (addr && typeof addr === 'object') {
+    const a = addr as Record<string, unknown>;
+    const z = normalizeZip(a.zip ?? a.postal_code ?? a.postal ?? a.zip_code);
+    if (z) return z;
+    const line = [a.line1, a.line_1, a.street, a.street_1].filter(Boolean).join(' ');
+    const fromLine = normalizeZip(line) || (typeof line === 'string' ? line.match(/\b(\d{5})\b/)?.[1] : null);
+    if (fromLine) return fromLine;
+  }
+  if (typeof addr === 'string') {
+    const z = normalizeZip(addr);
+    if (z) return z;
+  }
+  const custom = ev.custom_field_values ?? ev.custom_fields ?? ev.answers ?? ev.form_answers;
+  if (Array.isArray(custom)) {
+    for (const item of custom) {
+      const label = String(item?.label ?? item?.name ?? item?.key ?? item?.field_name ?? '').toLowerCase();
+      const val = item?.value ?? item?.answer ?? item?.text;
+      if (label.includes('zip')) {
+        const z = normalizeZip(val);
+        if (z) return z;
+      }
+      if (typeof val === 'string') {
+        const m = val.match(/\bZip:\s*(\d{5})\b/i) || val.match(/\b(\d{5})\b/);
+        if (m) return m[1];
+      }
+    }
+  }
+  for (const key of ['notes', 'description', 'event_address']) {
+    const s = ev[key];
+    if (typeof s === 'string') {
+      const m = s.match(/\bZip:\s*(\d{5})\b/i) || s.match(/\b(\d{5})(?:-\d{4})?\b/);
+      if (m) return m[1];
+    }
+  }
+  return null;
+}
+
+function resolveServiceAreaFromPv(ev, venue) {
+  const fromVenue = mapServiceAreaFromVenueName(venue?.name);
+  if (fromVenue) return fromVenue;
+  const zip = extractZipFromPvEvent(ev);
+  if (zip) {
+    const fromZip = serviceAreaFromZip(zip);
+    if (fromZip) return fromZip;
+  }
+  const fallback = venue?.name?.trim();
+  if (fallback && isKnownServiceArea(fallback)) return fallback;
+  return null;
+}
+
+export function pvAmountToRevenue(amount) {
+  return typeof amount === 'number' && Number.isFinite(amount) ? amount / 100 : 0;
+}
+
+function datePartFromPvValue(value) {
+  if (value == null) return null;
+  if (typeof value === 'string') {
+    const d = value.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  }
+  return null;
+}
+
+export function eventDateFromPv(ev) {
+  const candidates = [ev.start_time, ev.start_date, ev.end_time, ev.end_date, ev.date];
+  for (const c of candidates) {
+    const d = datePartFromPvValue(c);
+    if (d) return d;
+  }
+  return null;
+}
+
+function resolveEventTypeFromPv(ev) {
+  const raw = ev.event_type;
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  const spaces = ev.spaces;
+  if (Array.isArray(spaces) && spaces.length) {
+    const first = spaces[0];
+    if (typeof first === 'string' && first.trim()) return first.trim();
+    if (first && typeof first === 'object' && typeof first.name === 'string' && first.name.trim()) {
+      return first.name.trim();
+    }
+  }
+  return null;
 }
 export function mapPvStatus(status) {
   if (!status) return null;
@@ -275,12 +522,8 @@ export function mapPvStatus(status) {
   };
   return map[key] ?? status;
 }
-function eventDate(startTime) {
-  if (!startTime) return null;
-  const d = startTime.slice(0, 10);
-  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
-}
 function buildPvMetadata(ev) {
+  const zip = extractZipFromPvEvent(ev);
   return {
     name: ev.name,
     source: ev.source,
@@ -289,9 +532,12 @@ function buildPvMetadata(ev) {
     owner_id: ev.owner_id,
     start_time: ev.start_time,
     end_time: ev.end_time,
+    start_date: ev.start_date ?? null,
+    end_date: ev.end_date ?? null,
     amount: ev.amount,
     contact_id: ev.contact_id,
     venue_id: ev.venue_id,
+    zip,
     updated_at: ev.updated_at
   };
 }
@@ -363,18 +609,19 @@ function buildCrmPatchFromPv(ev, venues, contacts) {
     perfect_venue_id: ev.id,
     event_source: 'perfect_venue',
     pv_venue_id: ev.venue_id ?? null,
-    date: eventDate(ev.start_time),
-    service_area: mapServiceArea(venue?.name),
+    date: eventDateFromPv(ev),
+    service_area: resolveServiceAreaFromPv(ev, venue),
     client_id: null as string | null,
     client_name: clientName,
-    event_type: ev.event_type ?? null,
+    event_type: resolveEventTypeFromPv(ev),
     guest_count: ev.group_size ?? null,
     status: mapPvStatus(ev.status),
+    client_revenue: pvAmountToRevenue(ev.amount),
     pv_metadata: buildPvMetadata(ev),
   };
 }
 
-/** Batch upsert one API page: select existing, bulk insert new, bulk upsert patches (preserves notes/revenue on update). */
+/** Batch upsert one API page: select existing, bulk insert new, bulk upsert CRM fields from PV (including date and revenue). */
 export async function upsertEventsBatch(
   adminClient,
   events,
@@ -398,7 +645,7 @@ export async function upsertEventsBatch(
     .from('events')
     .select('perfect_venue_id')
     .in('perfect_venue_id', pvIds);
-  if (selectError) throw selectError;
+  if (selectError) throw new Error(selectError.message || 'Failed to query existing events');
 
   const existingSet = new Set((existingRows ?? []).map((r) => r.perfect_venue_id));
 
@@ -422,7 +669,6 @@ export async function upsertEventsBatch(
         cuisines_served: [],
         facilitators: {},
         admin_fee_applies_to: [],
-        client_revenue: typeof ev.amount === 'number' ? ev.amount / 100 : 0,
       });
     }
   }
@@ -432,7 +678,7 @@ export async function upsertEventsBatch(
 
   if (insertRows.length) {
     const { error } = await adminClient.from('events').insert(insertRows);
-    if (error) throw error;
+    if (error) throw new Error(error.message || 'Failed to insert Perfect Venue events');
     inserted = insertRows.length;
   }
 
@@ -440,7 +686,7 @@ export async function upsertEventsBatch(
     const { error } = await adminClient
       .from('events')
       .upsert(updateRows, { onConflict: 'perfect_venue_id' });
-    if (error) throw error;
+    if (error) throw new Error(error.message || 'Failed to upsert Perfect Venue events');
     updated = updateRows.length;
   }
 
