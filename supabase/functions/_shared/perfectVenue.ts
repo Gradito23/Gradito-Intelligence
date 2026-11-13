@@ -212,7 +212,7 @@ export async function storeTokens(adminClient, accessToken, refreshToken, extras
   if (error) throw error;
 }
 export async function fetchVenues(accessToken) {
-  const data = await pvApiGet('/venues');
+  const data = await pvApiGet(accessToken, '/venues');
   if (Array.isArray(data)) return data;
   return data.venues ?? [];
 }
