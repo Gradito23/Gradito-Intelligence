@@ -3,6 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency } from '@/hooks/useAppData';
 import { TrendingUp, TrendingDown } from 'lucide-react';
+import { EVENT_SOURCE_LABELS } from '@/lib/eventStatuses';
 
 function SummaryRow({ label, value, valueClass, sub }) {
   return (
@@ -56,6 +57,19 @@ export default function EventSummary({ pnl, comm, teamMembers, event, assignment
   return (
     <Card className={`p-4 space-y-1 ${isProfit ? 'bg-emerald-50/50 border-emerald-200' : 'bg-red-50/50 border-red-200'}`}>
       {/* PV ID prominent identifier */}
+      <div className="flex flex-wrap items-center gap-2 mb-2 pb-2 border-b border-border/40">
+        {event?.event_source && (
+          <Badge variant="outline" className="text-xs">
+            {EVENT_SOURCE_LABELS[event.event_source] || event.event_source}
+          </Badge>
+        )}
+        {event?.event_source === 'perfect_venue' && (
+          <span className="text-xs text-muted-foreground">Synced from Perfect Venue</span>
+        )}
+        {event?.pv_venue_id && event?.service_area && (
+          <span className="text-xs text-muted-foreground">Venue: {event.service_area}</span>
+        )}
+      </div>
       {event?.perfect_venue_id && (
         <div className="flex items-center gap-2 mb-2 pb-2 border-b border-border/40">
           <span className="text-xs text-muted-foreground uppercase tracking-wider font-medium">PV ID</span>

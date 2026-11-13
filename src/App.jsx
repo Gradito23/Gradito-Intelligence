@@ -47,6 +47,8 @@ const UserGuide = lazy(() => import('@/pages/admin/UserGuide'));
 const ChefSalaryCalculator = lazy(() => import('@/pages/admin/ChefSalaryCalculator'));
 const TechnicalDocument = lazy(() => import('@/pages/admin/TechnicalDocument'));
 const IntegrationsDocument = lazy(() => import('@/pages/admin/IntegrationsDocument'));
+const PerfectVenueIntegration = lazy(() => import('@/pages/admin/PerfectVenueIntegration'));
+const PerfectVenueOAuthCallback = lazy(() => import('@/pages/PerfectVenueOAuthCallback'));
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -113,6 +115,7 @@ function AuthenticatedApp() {
           <Route path="/legal/contractor-terms" element={<ContractorTerms />} />
           <Route path="/legal/contractor-nda" element={<ContractorNda />} />
           <Route path="/guide/:token" element={<GuideRedirect />} />
+          <Route path="/oauth/perfect-venue/callback" element={<PerfectVenueOAuthCallback />} />
 
           <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
             <Route element={<AppLayout />}>
@@ -271,6 +274,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
                         <GoogleSSOIntegration />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="integrations/perfect-venue"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
+                        <PerfectVenueIntegration />
                       </PermissionRoute>
                     )}
                   />

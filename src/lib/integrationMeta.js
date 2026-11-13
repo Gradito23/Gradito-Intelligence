@@ -1,4 +1,4 @@
-import { Bot, Mail } from 'lucide-react';
+import { Bot, Calendar, Mail } from 'lucide-react';
 import GoogleIcon from '@/components/GoogleIcon';
 import { getGoogleSSOStatus } from '@/lib/googleSsoSetupMeta';
 
@@ -13,6 +13,20 @@ export const INTEGRATION_CATEGORIES = [
         description: 'Configure Google sign-in via Supabase Auth.',
         path: '/admin/integrations/google-sso',
         icon: GoogleIcon,
+        status: 'active',
+      },
+    ],
+  },
+  {
+    id: 'crm',
+    label: 'CRM',
+    integrations: [
+      {
+        id: 'perfect_venue',
+        label: 'Perfect Venue',
+        description: 'OAuth sync for events from Perfect Venue.',
+        path: '/admin/integrations/perfect-venue',
+        icon: Calendar,
         status: 'active',
       },
     ],
@@ -88,4 +102,12 @@ export function getOpenAIIntegrationStatus(openaiData) {
 export function getGoogleSSOIntegrationStatus(googleSsoData) {
   if (!googleSsoData) return getGoogleSSOStatus(null);
   return getGoogleSSOStatus(googleSsoData.enabled);
+}
+
+export function getPerfectVenueIntegrationStatus(pvData) {
+  if (!pvData) return 'Loading…';
+  if (!pvData.client_configured) return 'Credentials not set';
+  if (!pvData.connected) return 'Not connected';
+  if (pvData.last_sync_error) return `Connected · Sync error`;
+  return `Connected · ${pvData.venue_ids?.length ?? 0} venue(s)`;
 }

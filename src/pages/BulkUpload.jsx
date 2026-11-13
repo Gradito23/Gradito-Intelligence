@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { base44 } from '@/api/base44Client';
 import { useQueryClient } from '@tanstack/react-query';
 import * as XLSX from 'xlsx';
+import { isPerfectVenueApiUuid } from '@/lib/pvUuid';
 
 import StepIndicator from '@/components/bulkupload/StepIndicator';
 import UploadStep from '@/components/bulkupload/UploadStep';
@@ -129,6 +130,10 @@ async function commitEvents(dryRunResult) {
       clientId = client.id;
     }
 
+    const pvId = draft.booking_id && isPerfectVenueApiUuid(draft.booking_id)
+      ? draft.booking_id.trim()
+      : undefined;
+
     const event = await base44.entities.Event.create({
       date: draft.date,
       service_area: draft.service_area,
@@ -141,6 +146,8 @@ async function commitEvents(dryRunResult) {
       client_revenue: draft.client_revenue || undefined,
       status: draft.status || 'Confirmed',
       notes: draft.notes || undefined,
+      event_source: 'bulk_import',
+      perfect_venue_id: pvId,
     });
 
     if (!event?.id) {
@@ -204,6 +211,7 @@ async function commitInvoices(drafts, teamMembers = []) {
 
     const event = await base44.entities.Event.create({
       perfect_venue_id:      draft.perfect_venue_id || undefined,
+      event_source:          'invoice_import',
       date: draft.date,
       service_area: draft.service_area,
       client_id: clientId || undefined,
