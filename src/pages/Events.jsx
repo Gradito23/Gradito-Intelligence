@@ -14,6 +14,7 @@ import {
   usePerfectVenueIntegration,
   usePerfectVenueSync,
   formatPerfectVenueSyncToast,
+  perfectVenueSyncToastTitle,
 } from '@/hooks/usePerfectVenueIntegration';
 import {
   Tooltip,
@@ -43,7 +44,7 @@ export default function Events() {
   const [filterType, setFilterType] = useState('all');
   const [filterSource, setFilterSource] = useState('all');
 
-  const { data: pvStatus } = usePerfectVenueIntegration({ enabled: isAdmin });
+  const { data: pvStatus } = usePerfectVenueIntegration({ enabled: isAdmin, pollWhileSyncing: isAdmin });
   const pvSyncMutation = usePerfectVenueSync();
   const pvConnected = !!pvStatus?.connected;
   const pvSyncDisabled = !pvConnected || pvSyncMutation.isPending;
@@ -53,7 +54,7 @@ export default function Events() {
     try {
       const result = await pvSyncMutation.mutateAsync('incremental');
       toast({
-        title: 'Sync complete',
+        title: perfectVenueSyncToastTitle(result),
         description: formatPerfectVenueSyncToast(result),
       });
     } catch (err) {

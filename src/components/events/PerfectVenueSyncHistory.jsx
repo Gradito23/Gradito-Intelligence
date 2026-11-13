@@ -1,22 +1,73 @@
 import React from 'react';
 import { format } from 'date-fns';
 import { Loader2 } from 'lucide-react';
-import { usePerfectVenueSyncRuns } from '@/hooks/usePerfectVenueIntegration';
+import { usePerfectVenueIntegration, usePerfectVenueSyncRuns } from '@/hooks/usePerfectVenueIntegration';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 
-const STALE_RUNNING_MS = 10 * 60 * 1000;
+const STALE_RUNNING_MS = 3 * 60 * 1000;
 
 function isStaleRunningRun(run) {
-  if (run.status !== 'running' || !run.started_at) return false;
-  return Date.now() - new Date(run.started_at).getTime() > STALE_RUNNING_MS;
+  if (run.status !== 'running') return false;
+  const ref = run.heartbeat_at || run.started_at;
+  if (!ref) return false;
+  return Date.now() - new Date(ref).getTime() > STALE_RUNNING_MS;
+}
+
+function SyncInProgressBanner({ progress }) {
+  if (!progress) return null;
+  const venueNum = Math.min(progress.venue_index + 1, progress.total_venues || 1);
+  const total = progress.total_venues || 0;
+  return (
+    <Card className="p-4 border-amber-200 bg-amber-50/80 dark:border-amber-900 dark:bg-amber-950/30">
+      <p className="text-sm font-medium text-amber-950 dark:text-amber-100">
+        Sync in progress
+        {' '}
+        <span className="font-normal text-amber-900/90 dark:text-amber-200/90">
+          (
+          {progress.mode}
+          )
+          :
+          {' '}
+          venue
+          {' '}
+          {venueNum}
+          /
+          {total}
+          ,
+          {' '}
+          {progress.events_fetched ?? 0}
+          {' '}
+          fetched,
+          {' '}
+          {progress.inserted ?? 0}
+          {' '}
+          in,
+          {' '}
+          {progress.updated ?? 0}
+          {' '}
+          updated
+        </span>
+      </p>
+      <p className="text-xs text-amber-900/70 dark:text-amber-300/80 mt-1">
+        Background ticks run about every minute until this job finishes.
+      </p>
+    </Card>
+  );
 }
 
 export default function PerfectVenueSyncHistory() {
-  const { data, isLoading, isError, error } = usePerfectVenueSyncRuns(true);
+  const { data: status } = usePerfectVenueIntegration({ enabled: true, pollWhileSyncing: true });
+  const { data, isLoading, isError, error } = usePerfectVenueSyncRuns(true, {
+    refetchInterval: (query) => {
+      const runs = query.state.data?.runs ?? [];
+      const hasRunning = runs.some((r) => r.status === 'running');
+      return hasRunning ? 5000 : false;
+    },
+  });
   const runs = data?.runs ?? [];
 
   if (isLoading) {
@@ -44,7 +95,9 @@ export default function PerfectVenueSyncHistory() {
   }
 
   return (
-    <Card>
+    <div className="space-y-4">
+      <SyncInProgressBanner progress={status?.sync_in_progress ? status.checkpoint_progress : null} />
+      <Card>
       <Table>
         <TableHeader>
           <TableRow>
@@ -100,5 +153,6 @@ export default function PerfectVenueSyncHistory() {
         </TableBody>
       </Table>
     </Card>
+    </div>
   );
 }
