@@ -14,6 +14,7 @@ import {
   usePerfectVenueIntegration,
   usePerfectVenueSync,
   formatPerfectVenueSyncToast,
+  perfectVenueSyncToastTitle,
 } from '@/hooks/usePerfectVenueIntegration';
 import {
   Tooltip,
@@ -53,7 +54,7 @@ export default function Events() {
     try {
       const result = await pvSyncMutation.mutateAsync('incremental');
       toast({
-        title: 'Sync complete',
+        title: perfectVenueSyncToastTitle(result),
         description: formatPerfectVenueSyncToast(result),
       });
     } catch (err) {

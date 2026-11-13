@@ -10,8 +10,6 @@ const SYNC_STALE_MS = 5 * 60 * 1000;
 const SYNC_ACTIVE_HEARTBEAT_MS = 3 * 60 * 1000;
 const SYNC_CHUNK_BUDGET_MS = 45 * 1000;
 const MAX_EVENT_PAGES_PER_VENUE = 100;
-const SYNC_MAX_SERVER_CONTINUE = 40;
-
 export type PvSyncCheckpoint = {
   run_id: string;
   mode: 'full' | 'incremental';
@@ -34,12 +32,14 @@ export type PvSyncResult = {
   run_id: string;
   partial?: boolean;
   continue?: boolean;
+  background?: boolean;
+  idle?: boolean;
 };
 
 export class SyncInProgressError extends Error {
   readonly httpStatus = 409;
-  constructor() {
-    super('Sync already in progress');
+  constructor(message = 'Sync already in progress') {
+    super(message);
     this.name = 'SyncInProgressError';
   }
 }
@@ -493,11 +493,30 @@ async function assertNoActiveSync(adminClient) {
 async function loadRunningRun(adminClient, runId: string) {
   const { data, error } = await adminClient
     .from('perfect_venue_sync_runs')
-    .select('id, status, mode')
+    .select('id, status, mode, started_at, heartbeat_at')
     .eq('id', runId)
     .maybeSingle();
   if (error) throw new Error(error.message || 'Failed to load sync run');
   return data;
+}
+
+function runHeartbeatIsFresh(run: { heartbeat_at?: string | null; started_at?: string | null }) {
+  const freshSince = Date.now() - SYNC_ACTIVE_HEARTBEAT_MS;
+  const last = run.heartbeat_at ?? run.started_at;
+  if (!last) return false;
+  return new Date(last).getTime() >= freshSince;
+}
+
+async function expireRunById(adminClient, runId: string, errorMessage: string) {
+  await adminClient
+    .from('perfect_venue_sync_runs')
+    .update({
+      finished_at: new Date().toISOString(),
+      status: 'failed',
+      error_message: errorMessage,
+    })
+    .eq('id', runId);
+  await clearCheckpoint(adminClient);
 }
 
 export async function listSyncRuns(adminClient, limit = 50) {
@@ -526,7 +545,8 @@ export async function syncPerfectVenueEvents(
 
   await expireStaleSyncRuns(adminClient);
 
-  const existingCheckpoint = parseCheckpoint(row.sync_checkpoint);
+  let rowAfterExpire = await loadConnection(adminClient);
+  const existingCheckpoint = parseCheckpoint(rowAfterExpire?.sync_checkpoint);
   const wantContinue = options.continue === true;
 
   let checkpoint: PvSyncCheckpoint | null = null;
@@ -535,14 +555,23 @@ export async function syncPerfectVenueEvents(
 
   if (existingCheckpoint) {
     const run = await loadRunningRun(adminClient, existingCheckpoint.run_id);
-    if (run?.status === 'running' && wantContinue) {
-      if (existingCheckpoint.mode !== mode) {
-        throw new Error(`Cannot continue ${existingCheckpoint.mode} sync as ${mode}`);
+    if (run?.status === 'running') {
+      if (wantContinue) {
+        if (existingCheckpoint.mode !== mode) {
+          throw new Error(`Cannot continue ${existingCheckpoint.mode} sync as ${mode}`);
+        }
+        checkpoint = existingCheckpoint;
+        runId = existingCheckpoint.run_id;
+        resume = true;
+      } else if (runHeartbeatIsFresh(run)) {
+        throw new SyncInProgressError(
+          'Sync in progress and completing in the background. Wait for the next automatic tick or check Sync history.',
+        );
+      } else {
+        await expireRunById(adminClient, existingCheckpoint.run_id, 'Stale sync replaced by new request');
+        await clearCheckpoint(adminClient);
       }
-      checkpoint = existingCheckpoint;
-      runId = existingCheckpoint.run_id;
-      resume = true;
-    } else if (run?.status !== 'running') {
+    } else {
       await clearCheckpoint(adminClient);
     }
   }
@@ -637,6 +666,7 @@ export async function syncPerfectVenueEvents(
           run_id: runId,
           partial: true,
           continue: true,
+          background: true,
         };
       }
 
@@ -684,6 +714,7 @@ export async function syncPerfectVenueEvents(
             run_id: runId,
             partial: true,
             continue: true,
+            background: true,
           };
         }
         const result = await upsertEventFromPv(adminClient, ev, venueMap, contacts, {
@@ -748,21 +779,31 @@ export async function syncPerfectVenueEvents(
   }
 }
 
-/** Run chunked sync until complete (for cron / server-side continue). */
-export async function syncPerfectVenueEventsUntilComplete(
+export type PvSyncTickResult = PvSyncResult | { idle: true };
+
+/** Process one chunk for an in-flight checkpoint (cron tick). */
+export async function syncPerfectVenueEventsTick(adminClient): Promise<PvSyncTickResult> {
+  const row = await loadConnection(adminClient);
+  if (!row?.connected) throw new Error('Perfect Venue is not connected');
+  await expireStaleSyncRuns(adminClient);
+  const fresh = await loadConnection(adminClient);
+  const cp = parseCheckpoint(fresh?.sync_checkpoint);
+  if (!cp) return { idle: true };
+  return syncPerfectVenueEvents(adminClient, cp.mode, { trigger: 'cron', actorId: null }, { continue: true });
+}
+
+/** Daily cron: start incremental sync only when no checkpoint is active (one chunk). */
+export async function startScheduledIncrementalIfIdle(
   adminClient,
-  mode: 'full' | 'incremental',
-  runContext: SyncRunContext = { trigger: 'manual' },
-  maxChunks = SYNC_MAX_SERVER_CONTINUE,
-): Promise<PvSyncResult> {
-  let continueChunk = false;
-  let last: PvSyncResult | null = null;
-  for (let i = 0; i < maxChunks; i++) {
-    last = await syncPerfectVenueEvents(adminClient, mode, runContext, { continue: continueChunk });
-    if (!last.partial) return last;
-    continueChunk = true;
+): Promise<PvSyncResult | { skipped: true; reason: string }> {
+  const row = await loadConnection(adminClient);
+  if (!row?.connected) throw new Error('Perfect Venue is not connected');
+  await expireStaleSyncRuns(adminClient);
+  const fresh = await loadConnection(adminClient);
+  if (parseCheckpoint(fresh?.sync_checkpoint)) {
+    return { skipped: true, reason: 'checkpoint_in_progress' };
   }
-  throw new Error('Sync exceeded maximum chunks; call again to continue from checkpoint');
+  return syncPerfectVenueEvents(adminClient, 'incremental', { trigger: 'cron', actorId: null }, { continue: false });
 }
 export async function toPublicStatus(adminClient, row) {
   const envConfigured = Boolean(Deno.env.get('PERFECT_VENUE_CLIENT_ID')?.trim() && Deno.env.get('PERFECT_VENUE_CLIENT_SECRET')?.trim());

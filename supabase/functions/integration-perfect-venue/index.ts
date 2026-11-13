@@ -15,8 +15,9 @@ import {
   revokeToken,
   savePvCredentials,
   storeTokens,
+  startScheduledIncrementalIfIdle,
   syncPerfectVenueEvents,
-  syncPerfectVenueEventsUntilComplete,
+  syncPerfectVenueEventsTick,
   SyncInProgressError,
   toPublicStatus,
 } from '../_shared/perfectVenue.ts';
@@ -36,7 +37,7 @@ function validateCronSecret(req: Request): boolean {
 
 type PvSyncRunContext = { trigger: 'cron' | 'manual'; actorId: string | null };
 
-type PvSyncInvokeOptions = { continue?: boolean; untilComplete?: boolean };
+type PvSyncInvokeOptions = { continue?: boolean };
 
 async function runIncrementalSync(
   client: ReturnType<typeof createServiceClient>,
@@ -54,9 +55,7 @@ async function runPerfectVenueSync(
 ) {
   try {
     const syncOpts = { continue: opts.continue === true };
-    const result = opts.untilComplete
-      ? await syncPerfectVenueEventsUntilComplete(client, mode, ctx)
-      : await syncPerfectVenueEvents(client, mode, ctx, syncOpts);
+    const result = await syncPerfectVenueEvents(client, mode, ctx, syncOpts);
     return { ok: true as const, result };
   } catch (err) {
     if (err instanceof SyncInProgressError) {
@@ -89,13 +88,31 @@ Deno.serve(async (req) => {
       if (!validateCronSecret(req)) {
         return jsonResponse({ error: 'Unauthorized' }, 401);
       }
-      const outcome = await runIncrementalSync(adminClient, { trigger: 'cron', actorId: null }, {
-        untilComplete: true,
-      });
-      if (!outcome.ok) {
-        return jsonResponse({ error: outcome.error }, outcome.httpStatus ?? 400);
+      try {
+        const result = await startScheduledIncrementalIfIdle(adminClient);
+        return jsonResponse({ ok: true, ...result });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Scheduled sync failed';
+        console.error('integration-perfect-venue sync_events_scheduled:', message);
+        return jsonResponse({ error: message }, 400);
       }
-      return jsonResponse({ ok: true, ...outcome.result });
+    }
+
+    if (action === 'sync_events_tick') {
+      if (!validateCronSecret(req)) {
+        return jsonResponse({ error: 'Unauthorized' }, 401);
+      }
+      try {
+        const result = await syncPerfectVenueEventsTick(adminClient);
+        if ('idle' in result && result.idle) {
+          return jsonResponse({ ok: true, idle: true });
+        }
+        return jsonResponse({ ok: true, ...result });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Sync tick failed';
+        console.error('integration-perfect-venue sync_events_tick:', message);
+        return jsonResponse({ error: message }, 400);
+      }
     }
 
     const authResult = await requireAdmin(req);
@@ -250,6 +267,19 @@ Deno.serve(async (req) => {
           return jsonResponse({ error: outcome.error }, outcome.httpStatus ?? 400);
         }
         return jsonResponse({ ok: true, ...outcome.result });
+      }
+
+      case 'sync_events_tick': {
+        try {
+          const result = await syncPerfectVenueEventsTick(client);
+          if ('idle' in result && result.idle) {
+            return jsonResponse({ ok: true, idle: true });
+          }
+          return jsonResponse({ ok: true, ...result });
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Sync tick failed';
+          return jsonResponse({ error: message }, 400);
+        }
       }
 
       default:

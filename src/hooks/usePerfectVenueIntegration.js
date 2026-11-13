@@ -92,6 +92,13 @@ export function formatPerfectVenueSyncToast(result) {
   const inserted = result?.inserted ?? 0;
   const updated = result?.updated ?? 0;
   const fetched = result?.events_fetched ?? inserted + updated;
+  if (result?.backgroundCompleting || result?.partial) {
+    return (
+      `Sync started: ${inserted} inserted, ${updated} updated so far (${fetched} fetched). ` +
+      'Finishing in the background (~2 min ticks)—watch Events → Sync history. ' +
+      'Filter Source = Perfect Venue on Events.'
+    );
+  }
   const parts = [
     `${inserted} inserted, ${updated} updated`,
     fetched !== inserted + updated ? `(${fetched} fetched from Perfect Venue)` : `(${fetched} fetched)`,
@@ -99,7 +106,12 @@ export function formatPerfectVenueSyncToast(result) {
   return `${parts.join(' ')}. Events totals include all sources—filter Source = Perfect Venue on the Events page.`;
 }
 
-const PV_SYNC_MAX_CONTINUE = 50;
+export function perfectVenueSyncToastTitle(result) {
+  if (result?.backgroundCompleting || result?.partial) return 'Sync started';
+  return 'Sync complete';
+}
+
+const PV_SYNC_MAX_CONTINUE = 3;
 const PV_SYNC_CONTINUE_DELAY_MS = 400;
 
 async function runPerfectVenueSyncWithContinue(mode) {
@@ -119,7 +131,7 @@ async function runPerfectVenueSyncWithContinue(mode) {
     continueSync = true;
   }
   if (aggregated?.partial && aggregated?.continue) {
-    throw new Error('Sync is still in progress; try again in a moment.');
+    return { ...aggregated, backgroundCompleting: true };
   }
   return aggregated;
 }
