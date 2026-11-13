@@ -1,12 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useEvents, useEventChefs, useClients, useChefs, formatCurrency } from '@/hooks/useAppData';
+import { useEventChefs, useClients, useChefs, formatCurrency } from '@/hooks/useAppData';
+import {
+  useEventsLedger,
+  useEventPipelineStats,
+  useEventLedgerStats,
+  invalidateEventsLedger,
+} from '@/hooks/useEventsLedger';
 import { useQueryClient } from '@tanstack/react-query';
 import StatCard from '@/components/ui/StatCard';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import EventDetailPanel from '@/components/events/EventDetailPanel';
 import CreateEventModal from '@/components/events/CreateEventModal';
 import { Calendar, DollarSign, TrendingUp, Users, Plus, CalendarPlus, RefreshCw, Loader2 } from 'lucide-react';
@@ -23,22 +30,43 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { SERVICE_AREAS } from '@/lib/constants';
-import { EVENT_SOURCE_LABELS, EVENT_STATUS_COLORS, EVENT_STATUS_OPTIONS } from '@/lib/eventStatuses';
+import {
+  ACTIVE_PIPELINE_STATUSES,
+  EVENT_SOURCE_LABELS,
+  EVENT_STATUS_COLORS,
+  EVENT_STATUS_OPTIONS,
+} from '@/lib/eventStatuses';
 import { toast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/AuthContext';
 import PerfectVenueSyncHistory from '@/components/events/PerfectVenueSyncHistory';
 
+function formatEventDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime()) || d.getFullYear() < 1971) return '—';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+const LEDGER_VIEWS = [
+  { id: 'active', label: 'Active pipeline' },
+  { id: 'all', label: 'All events' },
+  { id: 'archive', label: 'Archive' },
+];
+
 export default function Events() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
   const queryClient = useQueryClient();
-  const { data: events } = useEvents();
   const { data: eventChefs } = useEventChefs();
   const { data: clients } = useClients();
   const { data: chefs } = useChefs();
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showCreateEvent, setShowCreateEvent] = useState(false);
+  const [ledgerView, setLedgerView] = useState('active');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [searchInput, setSearchInput] = useState('');
   const [filterArea, setFilterArea] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterType, setFilterType] = useState('all');
@@ -91,32 +119,39 @@ export default function Events() {
     </TooltipProvider>
   );
 
-  const filteredEvents = useMemo(() => {
-    return events.filter(e => {
-      if (filterArea !== 'all' && e.service_area !== filterArea) return false;
-      if (filterStatus !== 'all' && e.status !== filterStatus) return false;
-      if (filterType !== 'all' && e.event_type !== filterType) return false;
-      if (filterSource !== 'all' && (e.event_source || 'manual') !== filterSource) return false;
-      return true;
-    }).sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [events, filterArea, filterStatus, filterType, filterSource]);
+  const ledgerFilters = {
+    service_area: filterArea,
+    status: filterStatus,
+    event_type: filterType,
+    event_source: filterSource,
+  };
 
-  const now = new Date();
-  const ytdEvents = events.filter(e => new Date(e.date).getFullYear() === now.getFullYear());
-  const totalPayouts = eventChefs.reduce((s, ec) => s + (ec.fee || 0) + (ec.travel_fee_applied || 0), 0);
-  const totalRevenue = events.reduce((s, e) => s + (e.client_revenue || 0), 0);
-  const margin = totalRevenue - totalPayouts;
+  useEffect(() => {
+    setPage(1);
+  }, [ledgerView, filterArea, filterStatus, filterType, filterSource, searchInput, pageSize]);
 
-  const clientCounts = {};
-  events.forEach((e) => {
-    const key = e.client_id
-      || (e.client_name ? `name:${String(e.client_name).trim().toLowerCase().replace(/\s+/g, ' ')}` : null);
-    if (!key) return;
-    clientCounts[key] = (clientCounts[key] || 0) + 1;
+  const { data: ledgerData, isLoading: ledgerLoading, isError: ledgerError } = useEventsLedger({
+    view: ledgerView,
+    page,
+    pageSize,
+    filters: ledgerFilters,
+    search: searchInput,
   });
-  const repeatRate = Object.keys(clientCounts).length > 0
-    ? Math.round((Object.values(clientCounts).filter(c => c > 1).length / Object.keys(clientCounts).length) * 100)
-    : 0;
+  const pipelineSource = filterSource === 'all' ? 'all' : filterSource;
+  const { data: pipelineStats } = useEventPipelineStats({ eventSource: pipelineSource });
+  const { data: ledgerSummary } = useEventLedgerStats();
+
+  const ledgerEvents = ledgerData?.rows ?? [];
+  const totalCount = ledgerData?.totalCount ?? 0;
+  const pageStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd = Math.min(page * pageSize, totalCount);
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
+
+  const totalPayouts = eventChefs.reduce((s, ec) => s + (ec.fee || 0) + (ec.travel_fee_applied || 0), 0);
+  const totalRevenue = ledgerSummary?.totalRevenue ?? 0;
+  const margin = totalRevenue - totalPayouts;
+  const ytdCount = ledgerSummary?.ytdCount ?? 0;
+  const repeatRate = ledgerSummary?.repeatRate ?? 0;
 
   const activeChefIds = new Set(eventChefs.map(ec => ec.chef_id));
   const idleCount = chefs.length - activeChefIds.size;
@@ -129,20 +164,68 @@ export default function Events() {
       actor: 'Team', action: 'Updated', entity_type: 'Event', entity_label: event.client_name,
       summary: `Changed status of ${event.client_name} event to ${newStatus}`,
     });
-    queryClient.invalidateQueries({ queryKey: ['events'] });
+    invalidateEventsLedger(queryClient);
     toast({ title: `Event status → ${newStatus}` });
   };
 
   const eventsLedger = (
     <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard title="Events YTD" value={ytdEvents.length} icon={Calendar} />
+        <StatCard title="Events YTD" value={ytdCount} icon={Calendar} />
         <StatCard title="Total Revenue" value={formatCurrency(totalRevenue)} subtitle={`Margin: ${formatCurrency(margin)}`} icon={TrendingUp} />
         <StatCard title="Total Payouts" value={formatCurrency(totalPayouts)} icon={DollarSign} accent />
         <StatCard title="Repeat-Client Rate" value={`${repeatRate}%`} subtitle={`${idleCount} idle chefs`} icon={Users} />
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2 items-center">
+        {LEDGER_VIEWS.map((v) => (
+          <Button
+            key={v.id}
+            type="button"
+            size="sm"
+            variant={ledgerView === v.id ? 'default' : 'outline'}
+            className={ledgerView === v.id ? 'bg-navy hover:bg-navy/90 text-white' : ''}
+            onClick={() => setLedgerView(v.id)}
+          >
+            {v.label}
+            {v.id === 'active' && pipelineStats?.activeTotal != null && (
+              <span className="ml-1.5 opacity-80">({pipelineStats.activeTotal})</span>
+            )}
+            {v.id === 'archive' && pipelineStats?.archiveTotal != null && (
+              <span className="ml-1.5 opacity-80">({pipelineStats.archiveTotal})</span>
+            )}
+            {v.id === 'all' && pipelineStats?.allTotal != null && (
+              <span className="ml-1.5 opacity-80">({pipelineStats.allTotal})</span>
+            )}
+          </Button>
+        ))}
+      </div>
+
+      {pipelineStats?.byStatus && (
+        <div className="flex flex-wrap gap-2">
+          {ACTIVE_PIPELINE_STATUSES.map((status) => (
+            <Badge
+              key={status}
+              variant="outline"
+              className={`text-xs font-normal ${EVENT_STATUS_COLORS[status] || ''}`}
+            >
+              {status}
+              {' '}
+              <span className="font-semibold ml-1 tabular-nums">
+                {pipelineStats.byStatus[status] ?? 0}
+              </span>
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-3 items-center">
+        <Input
+          className="max-w-xs"
+          placeholder="Search client or event name…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+        />
         <Select value={filterArea} onValueChange={setFilterArea}>
           <SelectTrigger className="w-36"><SelectValue placeholder="Area" /></SelectTrigger>
           <SelectContent>
@@ -180,8 +263,24 @@ export default function Events() {
         </Select>
       </div>
 
-      {filteredEvents.length > 0 ? (
+      {ledgerError && (
+        <p className="text-sm text-destructive">Failed to load events. Try again or adjust filters.</p>
+      )}
+
+      {ledgerLoading && ledgerEvents.length === 0 ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : null}
+
+      {!ledgerLoading && ledgerEvents.length > 0 ? (
         <Card className="overflow-hidden">
+          <p className="text-xs text-muted-foreground px-3 py-2 border-b">
+            {ledgerView === 'active' && 'Active pipeline — matches open Perfect Venue stages.'}
+            {ledgerView === 'all' && `Full ledger — ${totalCount.toLocaleString()} events matching filters.`}
+            {ledgerView === 'archive' && 'Cancelled and completed events.'}
+            {searchInput.trim() && ` Search: “${searchInput.trim()}”.`}
+          </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -196,13 +295,13 @@ export default function Events() {
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.map(event => (
+                {ledgerEvents.map(event => (
                   <tr
                     key={event.id}
                     className="border-b hover:bg-secondary/30 cursor-pointer transition-colors group"
                     onClick={() => setSelectedEvent(event)}
                   >
-                    <td className="p-3 whitespace-nowrap">{new Date(event.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                    <td className="p-3 whitespace-nowrap">{formatEventDate(event.date)}</td>
                     <td className="p-3 font-medium">
                       <span>{event.client_name || '—'}</span>
                       {event.event_source && event.event_source !== 'manual' && (
@@ -233,17 +332,80 @@ export default function Events() {
               </tbody>
             </table>
           </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-3 border-t text-sm">
+            <span className="text-muted-foreground">
+              Showing
+              {' '}
+              {pageStart.toLocaleString()}
+              –
+              {pageEnd.toLocaleString()}
+              {' '}
+              of
+              {' '}
+              {totalCount.toLocaleString()}
+            </span>
+            <div className="flex items-center gap-2">
+              <Select
+                value={String(pageSize)}
+                onValueChange={(val) => setPageSize(Number(val))}
+              >
+                <SelectTrigger className="w-24 h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25 / page</SelectItem>
+                  <SelectItem value="50">50 / page</SelectItem>
+                  <SelectItem value="100">100 / page</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page <= 1 || ledgerLoading}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                Page
+                {' '}
+                {page}
+                {' '}
+                /
+                {' '}
+                {totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={page >= totalPages || ledgerLoading}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </Card>
-      ) : (
+      ) : !ledgerLoading && ledgerEvents.length === 0 ? (
         <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
           <CalendarPlus size={40} className="mx-auto mb-3 text-muted-foreground opacity-40" />
-          <p className="font-heading text-lg font-semibold mb-1">No events yet</p>
-          <p className="text-muted-foreground text-sm mb-4">Log your first event to start tracking performance</p>
-          <Button onClick={() => setShowCreateEvent(true)} className="bg-gold hover:bg-gold/80 text-white">
-            <Plus size={16} className="mr-2" /> Log an event
-          </Button>
+          <p className="font-heading text-lg font-semibold mb-1">
+            {searchInput.trim() || filterStatus !== 'all' || ledgerView !== 'all'
+              ? 'No matching events'
+              : 'No events yet'}
+          </p>
+          <p className="text-muted-foreground text-sm mb-4">
+            {searchInput.trim()
+              ? 'Try a different search or switch to All events.'
+              : 'Log your first event or adjust filters.'}
+          </p>
+          {!searchInput.trim() && (
+            <Button onClick={() => setShowCreateEvent(true)} className="bg-gold hover:bg-gold/80 text-white">
+              <Plus size={16} className="mr-2" /> Log an event
+            </Button>
+          )}
         </div>
-      )}
+      ) : null}
     </>
   );
 
