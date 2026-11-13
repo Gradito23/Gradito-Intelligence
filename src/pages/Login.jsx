@@ -12,6 +12,13 @@ import ConfirmDialog from "@/components/ui/confirm-dialog";
 import GoogleIcon from "@/components/GoogleIcon";
 import { fetchGoogleSsoEnabled } from "@/lib/googleSsoSetupMeta";
 
+/** Post-login redirect: same-origin relative paths only (open-redirect safe). */
+function safeLoginNext(next) {
+  if (!next || typeof next !== 'string') return null;
+  if (!next.startsWith('/') || next.startsWith('//')) return null;
+  return next;
+}
+
 function getOAuthErrorFromUrl() {
   const params = new URLSearchParams(window.location.search);
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
@@ -67,7 +74,7 @@ export default function Login() {
         return;
       }
       const params = new URLSearchParams(window.location.search);
-      const next = params.get("next");
+      const next = safeLoginNext(params.get('next'));
       window.location.href = next || getDefaultLandingPath(hasPermission);
     }
   }, [isAuthenticated, isLoadingAuth, user, hasPermission]);
@@ -94,8 +101,9 @@ export default function Login() {
       return;
     }
     const params = new URLSearchParams(window.location.search);
-    const next = params.get("next") || getDefaultLandingPath(hasPermission);
-    const redirectTo = !params.get("next")
+    const rawNext = params.get('next');
+    const next = safeLoginNext(rawNext) || getDefaultLandingPath(hasPermission);
+    const redirectTo = !rawNext
       ? `${window.location.origin}/login`
       : `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
     const { error: oauthError } = await supabase.auth.signInWithOAuth({

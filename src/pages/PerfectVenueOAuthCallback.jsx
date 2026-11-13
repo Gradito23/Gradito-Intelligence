@@ -1,9 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { usePerfectVenueExchangeCode } from '@/hooks/usePerfectVenueIntegration';
 import { toast } from '@/components/ui/use-toast';
-import AdminRoute from '@/components/AdminRoute';
+import { useAuth } from '@/lib/AuthContext';
+import { getDefaultLandingPath } from '@/lib/permissionMeta';
+
+function CenteredShell({ children }) {
+  return (
+    <div className="fixed inset-0 flex flex-col items-center justify-center gap-3 px-4 bg-background">
+      {children}
+    </div>
+  );
+}
 
 function CallbackBody() {
   const [searchParams] = useSearchParams();
@@ -43,27 +52,62 @@ function CallbackBody() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[40vh] gap-4 px-4 text-center">
-        <p className="text-destructive text-sm">{error}</p>
-        <a href="/admin/integrations/perfect-venue" className="text-sm text-navy underline">
+      <CenteredShell>
+        <p className="text-destructive text-sm text-center max-w-md">{error}</p>
+        <Link to="/admin/integrations/perfect-venue" className="text-sm text-navy underline">
           Back to Perfect Venue settings
-        </a>
-      </div>
+        </Link>
+      </CenteredShell>
     );
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[40vh] gap-3">
+    <CenteredShell>
       <Loader2 className="h-8 w-8 animate-spin text-navy" />
       <p className="text-sm text-muted-foreground">Completing Perfect Venue connection…</p>
-    </div>
+    </CenteredShell>
   );
 }
 
 export default function PerfectVenueOAuthCallback() {
-  return (
-    <AdminRoute>
-      <CallbackBody />
-    </AdminRoute>
-  );
+  const { user, isAuthenticated, isLoadingAuth, authChecked, hasPermission } = useAuth();
+  const location = useLocation();
+
+  if (isLoadingAuth || !authChecked) {
+    return (
+      <CenteredShell>
+        <div className="w-8 h-8 border-4 border-border border-t-gold rounded-full animate-spin" />
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      </CenteredShell>
+    );
+  }
+
+  if (!isAuthenticated) {
+    const returnTo = `${location.pathname}${location.search}`;
+    return (
+      <Navigate
+        to={`/login?next=${encodeURIComponent(returnTo)}`}
+        replace
+      />
+    );
+  }
+
+  if (user?.needsPasswordSetup) {
+    return <Navigate to="/accept-invite" replace />;
+  }
+
+  if (!hasPermission('admin_panel', 'access')) {
+    return (
+      <CenteredShell>
+        <p className="text-sm text-muted-foreground text-center max-w-md">
+          Admin access is required to connect Perfect Venue.
+        </p>
+        <Link to={getDefaultLandingPath(hasPermission)} className="text-sm text-navy underline">
+          Back to app
+        </Link>
+      </CenteredShell>
+    );
+  }
+
+  return <CallbackBody />;
 }
