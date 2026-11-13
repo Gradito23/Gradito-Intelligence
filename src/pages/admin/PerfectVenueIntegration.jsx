@@ -187,8 +187,9 @@ export default function PerfectVenueIntegration() {
               <span className="block mt-1 text-destructive">{data.last_sync_error}</span>
             )}
             <span className="block mt-2 text-muted-foreground">
-              Full sync backfills all venues from Perfect Venue. Incremental syncs only events changed since the last
-              successful sync (PV <code className="text-xs">updated_at</code>).
+              Full sync backfills all venues from Perfect Venue (may run in several short steps). Incremental syncs only
+              events changed since the last successful sync (PV <code className="text-xs">updated_at</code>). Sync history
+              shows live In/Up while a run is in progress.
             </span>
           </CardDescription>
         </CardHeader>

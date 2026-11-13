@@ -8,15 +8,23 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 
-const STALE_RUNNING_MS = 10 * 60 * 1000;
+const STALE_RUNNING_MS = 5 * 60 * 1000;
 
 function isStaleRunningRun(run) {
-  if (run.status !== 'running' || !run.started_at) return false;
-  return Date.now() - new Date(run.started_at).getTime() > STALE_RUNNING_MS;
+  if (run.status !== 'running') return false;
+  const ref = run.heartbeat_at || run.started_at;
+  if (!ref) return false;
+  return Date.now() - new Date(ref).getTime() > STALE_RUNNING_MS;
 }
 
 export default function PerfectVenueSyncHistory() {
-  const { data, isLoading, isError, error } = usePerfectVenueSyncRuns(true);
+  const { data, isLoading, isError, error } = usePerfectVenueSyncRuns(true, {
+    refetchInterval: (query) => {
+      const runs = query.state.data?.runs ?? [];
+      const hasRunning = runs.some((r) => r.status === 'running');
+      return hasRunning ? 5000 : false;
+    },
+  });
   const runs = data?.runs ?? [];
 
   if (isLoading) {

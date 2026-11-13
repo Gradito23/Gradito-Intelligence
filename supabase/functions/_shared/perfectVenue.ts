@@ -6,9 +6,35 @@ export const PV_OAUTH_REVOKE = 'https://api.perfectvenue.com/oauth/revoke';
 export const PV_OAUTH_SCOPES = 'public read contacts_read users_read';
 export const PV_SYNC_OVERLAP_MS = 5 * 60 * 1000;
 export const PV_API_VERSION = '2026-11-01';
-const SYNC_STALE_MS = 15 * 60 * 1000;
-const SYNC_ACTIVE_WINDOW_MS = 15 * 60 * 1000;
+const SYNC_STALE_MS = 5 * 60 * 1000;
+const SYNC_ACTIVE_HEARTBEAT_MS = 3 * 60 * 1000;
+const SYNC_CHUNK_BUDGET_MS = 45 * 1000;
 const MAX_EVENT_PAGES_PER_VENUE = 100;
+const SYNC_MAX_SERVER_CONTINUE = 40;
+
+export type PvSyncCheckpoint = {
+  run_id: string;
+  mode: 'full' | 'incremental';
+  venue_ids: string[];
+  venues: { id: string; name?: string }[];
+  venue_index: number;
+  event_page: number;
+  date_from: string | null;
+  date_to: string;
+  inserted: number;
+  updated: number;
+  events_fetched: number;
+};
+
+export type PvSyncResult = {
+  inserted: number;
+  updated: number;
+  events_fetched: number;
+  venues: number;
+  run_id: string;
+  partial?: boolean;
+  continue?: boolean;
+};
 
 export class SyncInProgressError extends Error {
   readonly httpStatus = 409;
@@ -370,94 +396,209 @@ export async function upsertEventFromPv(adminClient, ev, venues, contacts, optio
   if (error) throw error;
   return 'inserted';
 }
-async function listEventsForVenue(accessToken, venueId, mode, dateFrom, dateTo) {
-  const all = [];
-  for (let page = 1; page <= MAX_EVENT_PAGES_PER_VENUE; page++) {
-    const query = {
-      venue_id: venueId,
-      page: String(page),
-      per_page: '100',
-    };
-    if (mode === 'incremental' && dateFrom) {
-      query.date_field = 'updated_at';
-      query.date_from = dateFrom;
-      query.date_to = dateTo;
-    }
-    const data = await pvApiGet(accessToken, '/events', query);
-    const events = data.events ?? (Array.isArray(data) ? data : []);
-    all.push(...events);
-    if (events.length === 0) break;
-    const totalPages = data.meta?.total_pages;
-    if (events.length < 100) break;
-    if (totalPages != null && page >= totalPages) break;
-    if (totalPages == null && page >= 50) {
-      console.warn(
-        `listEventsForVenue: venue ${venueId} stopping at page ${page} without total_pages`,
-      );
-      break;
-    }
+async function fetchEventsPage(accessToken, venueId, mode, page, dateFrom, dateTo) {
+  const query: Record<string, string> = {
+    venue_id: venueId,
+    page: String(page),
+    per_page: '100',
+  };
+  if (mode === 'incremental' && dateFrom) {
+    query.date_field = 'updated_at';
+    query.date_from = dateFrom;
+    query.date_to = dateTo;
   }
-  return all;
+  const data = await pvApiGet(accessToken, '/events', query);
+  const events = data.events ?? (Array.isArray(data) ? data : []);
+  if (events.length === 0) return { events: [], hasMore: false };
+  const totalPages = data.meta?.total_pages;
+  let hasMore = events.length >= 100;
+  if (totalPages != null) hasMore = page < totalPages;
+  else if (page >= 50) {
+    console.warn(`fetchEventsPage: venue ${venueId} stopping at page ${page} without total_pages`);
+    hasMore = false;
+  }
+  if (events.length < 100) hasMore = false;
+  if (page >= MAX_EVENT_PAGES_PER_VENUE) hasMore = false;
+  return { events, hasMore };
+}
+
+function parseCheckpoint(raw: unknown): PvSyncCheckpoint | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const c = raw as PvSyncCheckpoint;
+  if (!c.run_id || !c.mode || !Array.isArray(c.venue_ids)) return null;
+  return c;
+}
+
+async function saveCheckpoint(adminClient, checkpoint: PvSyncCheckpoint) {
+  const { error } = await adminClient
+    .from('integration_perfect_venue_connections')
+    .update({ sync_checkpoint: checkpoint })
+    .eq('id', 1);
+  if (error) throw new Error(error.message || 'Failed to save sync checkpoint');
+}
+
+async function clearCheckpoint(adminClient) {
+  await adminClient.from('integration_perfect_venue_connections').update({ sync_checkpoint: null }).eq('id', 1);
+}
+
+async function heartbeatRun(adminClient, runId: string, inserted: number, updated: number) {
+  await adminClient
+    .from('perfect_venue_sync_runs')
+    .update({
+      inserted,
+      updated,
+      heartbeat_at: new Date().toISOString(),
+    })
+    .eq('id', runId);
 }
 
 async function expireStaleSyncRuns(adminClient) {
   const staleBefore = new Date(Date.now() - SYNC_STALE_MS).toISOString();
+  const { data: running, error: selectError } = await adminClient
+    .from('perfect_venue_sync_runs')
+    .select('id, started_at, heartbeat_at')
+    .eq('status', 'running');
+  if (selectError) return;
+  const staleIds = (running ?? []).filter((r) => {
+    const last = r.heartbeat_at ?? r.started_at;
+    return last && last < staleBefore;
+  }).map((r) => r.id);
+  if (!staleIds.length) return;
   await adminClient
     .from('perfect_venue_sync_runs')
     .update({
       finished_at: new Date().toISOString(),
       status: 'failed',
-      error_message: 'Timed out or interrupted',
+      error_message: 'Timed out or interrupted (stale heartbeat)',
     })
-    .eq('status', 'running')
-    .lt('started_at', staleBefore);
+    .in('id', staleIds);
+  await clearCheckpoint(adminClient);
 }
 
 async function assertNoActiveSync(adminClient) {
-  const activeSince = new Date(Date.now() - SYNC_ACTIVE_WINDOW_MS).toISOString();
+  const freshSince = new Date(Date.now() - SYNC_ACTIVE_HEARTBEAT_MS).toISOString();
   const { data: active, error } = await adminClient
     .from('perfect_venue_sync_runs')
-    .select('id')
+    .select('id, started_at, heartbeat_at')
     .eq('status', 'running')
-    .gte('started_at', activeSince)
-    .limit(1);
+    .limit(5);
   if (error) throw new Error(error.message || 'Failed to check sync status');
-  if (active?.length) throw new SyncInProgressError();
+  const fresh = (active ?? []).filter((r) => {
+    const last = r.heartbeat_at ?? r.started_at;
+    return last && last >= freshSince;
+  });
+  if (fresh.length) throw new SyncInProgressError();
 }
+
+async function loadRunningRun(adminClient, runId: string) {
+  const { data, error } = await adminClient
+    .from('perfect_venue_sync_runs')
+    .select('id, status, mode')
+    .eq('id', runId)
+    .maybeSingle();
+  if (error) throw new Error(error.message || 'Failed to load sync run');
+  return data;
+}
+
 export async function listSyncRuns(adminClient, limit = 50) {
-  const { data, error } = await adminClient.from('perfect_venue_sync_runs').select('id, started_at, finished_at, sync_trigger, mode, status, inserted, updated, error_message, actor_id').order('started_at', {
-    ascending: false
-  }).limit(limit);
+  const { data, error } = await adminClient
+    .from('perfect_venue_sync_runs')
+    .select(
+      'id, started_at, finished_at, sync_trigger, mode, status, inserted, updated, error_message, actor_id, heartbeat_at',
+    )
+    .order('started_at', { ascending: false })
+    .limit(limit);
   if (error) throw error;
   return data ?? [];
 }
-export async function syncPerfectVenueEvents(adminClient, mode, runContext = {
-  trigger: 'manual',
-}) {
+
+type SyncRunContext = { trigger: 'cron' | 'manual'; actorId?: string | null };
+type SyncOptions = { continue?: boolean };
+
+export async function syncPerfectVenueEvents(
+  adminClient,
+  mode: 'full' | 'incremental',
+  runContext: SyncRunContext = { trigger: 'manual' },
+  options: SyncOptions = {},
+): Promise<PvSyncResult> {
   const row = await loadConnection(adminClient);
   if (!row?.connected) throw new Error('Perfect Venue is not connected');
 
   await expireStaleSyncRuns(adminClient);
-  await assertNoActiveSync(adminClient);
 
-  const { data: runRow, error: runInsertError } = await adminClient
-    .from('perfect_venue_sync_runs')
-    .insert({
-      sync_trigger: runContext.trigger,
+  const existingCheckpoint = parseCheckpoint(row.sync_checkpoint);
+  const wantContinue = options.continue === true;
+
+  let checkpoint: PvSyncCheckpoint | null = null;
+  let runId: string;
+  let resume = false;
+
+  if (existingCheckpoint) {
+    const run = await loadRunningRun(adminClient, existingCheckpoint.run_id);
+    if (run?.status === 'running' && wantContinue) {
+      if (existingCheckpoint.mode !== mode) {
+        throw new Error(`Cannot continue ${existingCheckpoint.mode} sync as ${mode}`);
+      }
+      checkpoint = existingCheckpoint;
+      runId = existingCheckpoint.run_id;
+      resume = true;
+    } else if (run?.status !== 'running') {
+      await clearCheckpoint(adminClient);
+    }
+  }
+
+  if (!resume) {
+    await assertNoActiveSync(adminClient);
+    const { data: runRow, error: runInsertError } = await adminClient
+      .from('perfect_venue_sync_runs')
+      .insert({
+        sync_trigger: runContext.trigger,
+        mode,
+        status: 'running',
+        actor_id: runContext.actorId ?? null,
+        heartbeat_at: new Date().toISOString(),
+      })
+      .select('id')
+      .single();
+    if (runInsertError) throw new Error(runInsertError.message || 'Failed to start sync run');
+    runId = runRow.id;
+
+    let accessToken = await resolveAccessToken(adminClient, row);
+    const venues = await fetchVenues(accessToken);
+    const venueIds = venues.map((v) => v.id);
+    const now = new Date();
+    const dateTo = now.toISOString();
+    let dateFrom: string | null = null;
+    if (mode === 'incremental' && row.last_synced_updated_at) {
+      const fromMs = new Date(row.last_synced_updated_at).getTime() - PV_SYNC_OVERLAP_MS;
+      dateFrom = new Date(fromMs).toISOString();
+    }
+    checkpoint = {
+      run_id: runId,
       mode,
-      status: 'running',
-      actor_id: runContext.actorId ?? null,
-    })
-    .select('id')
-    .single();
-  if (runInsertError) throw new Error(runInsertError.message || 'Failed to start sync run');
-  const runId = runRow.id;
+      venue_ids: venueIds,
+      venues: venues.map((v) => ({ id: v.id, name: v.name })),
+      venue_index: 0,
+      event_page: 1,
+      date_from: dateFrom,
+      date_to: dateTo,
+      inserted: 0,
+      updated: 0,
+      events_fetched: 0,
+    };
+    await saveCheckpoint(adminClient, checkpoint);
+    await heartbeatRun(adminClient, runId, 0, 0);
+  }
+
+  if (!checkpoint) throw new Error('Sync checkpoint missing');
 
   let runFinalized = false;
-  let inserted = 0;
-  let updated = 0;
-  let eventsFetched = 0;
-  let venuesCount = 0;
+  let returnedPartial = false;
+  const contacts = new Map();
+  const venueMap = buildVenueMap(
+    checkpoint.venues.map((v) => ({ id: v.id, name: v.name })),
+  );
+  const venuesCount = checkpoint.venue_ids.length;
 
   const finalizeRun = async (
     status: 'success' | 'failed',
@@ -470,89 +611,158 @@ export async function syncPerfectVenueEvents(adminClient, mode, runContext = {
       .update({
         finished_at: new Date().toISOString(),
         status,
-        inserted: extra.inserted ?? inserted,
-        updated: extra.updated ?? updated,
+        inserted: extra.inserted ?? checkpoint!.inserted,
+        updated: extra.updated ?? checkpoint!.updated,
         error_message: extra.error_message ?? null,
       })
       .eq('id', runId);
   };
 
+  const chunkDeadline = Date.now() + SYNC_CHUNK_BUDGET_MS;
+
   try {
-    let accessToken = await resolveAccessToken(adminClient, row);
-    const venues = await fetchVenues(accessToken);
-    const venueIds = venues.map((v) => v.id);
-    const venueMap = buildVenueMap(venues);
-    venuesCount = venues.length;
-    const contacts = new Map();
+    let connectionRow = row;
+    let accessToken = await resolveAccessToken(adminClient, connectionRow);
 
-    const now = new Date();
-    const dateTo = now.toISOString();
-    let dateFrom = null;
-    if (mode === 'incremental' && row.last_synced_updated_at) {
-      const fromMs = new Date(row.last_synced_updated_at).getTime() - PV_SYNC_OVERLAP_MS;
-      dateFrom = new Date(fromMs).toISOString();
-    }
+    while (checkpoint.venue_index < checkpoint.venue_ids.length) {
+      if (Date.now() >= chunkDeadline) {
+        await saveCheckpoint(adminClient, checkpoint);
+        await heartbeatRun(adminClient, runId, checkpoint.inserted, checkpoint.updated);
+        returnedPartial = true;
+        return {
+          inserted: checkpoint.inserted,
+          updated: checkpoint.updated,
+          events_fetched: checkpoint.events_fetched,
+          venues: venuesCount,
+          run_id: runId,
+          partial: true,
+          continue: true,
+        };
+      }
 
-    for (const venueId of venueIds) {
-      let events;
+      const venueId = checkpoint.venue_ids[checkpoint.venue_index];
+      let pageResult;
       try {
-        events = await listEventsForVenue(accessToken, venueId, mode, dateFrom, dateTo);
+        pageResult = await fetchEventsPage(
+          accessToken,
+          venueId,
+          checkpoint.mode,
+          checkpoint.event_page,
+          checkpoint.date_from,
+          checkpoint.date_to,
+        );
       } catch (err) {
         if (err instanceof Error && err.message.includes('401')) {
-          accessToken = await resolveAccessToken(adminClient, row);
-          events = await listEventsForVenue(accessToken, venueId, mode, dateFrom, dateTo);
+          connectionRow = (await loadConnection(adminClient)) ?? connectionRow;
+          accessToken = await resolveAccessToken(adminClient, connectionRow);
+          pageResult = await fetchEventsPage(
+            accessToken,
+            venueId,
+            checkpoint.mode,
+            checkpoint.event_page,
+            checkpoint.date_from,
+            checkpoint.date_to,
+          );
         } else {
           throw err;
         }
       }
-      eventsFetched += events.length;
+
+      const { events, hasMore } = pageResult;
+      checkpoint.events_fetched += events.length;
+
       for (const ev of events) {
+        if (Date.now() >= chunkDeadline) {
+          await saveCheckpoint(adminClient, checkpoint);
+          await heartbeatRun(adminClient, runId, checkpoint.inserted, checkpoint.updated);
+          returnedPartial = true;
+          return {
+            inserted: checkpoint.inserted,
+            updated: checkpoint.updated,
+            events_fetched: checkpoint.events_fetched,
+            venues: venuesCount,
+            run_id: runId,
+            partial: true,
+            continue: true,
+          };
+        }
         const result = await upsertEventFromPv(adminClient, ev, venueMap, contacts, {
           linkClients: false,
         });
-        if (result === 'inserted') inserted += 1;
-        if (result === 'updated') updated += 1;
+        if (result === 'inserted') checkpoint.inserted += 1;
+        if (result === 'updated') checkpoint.updated += 1;
       }
+
+      await heartbeatRun(adminClient, runId, checkpoint.inserted, checkpoint.updated);
+
+      if (hasMore) {
+        checkpoint.event_page += 1;
+      } else {
+        checkpoint.venue_index += 1;
+        checkpoint.event_page = 1;
+      }
+      await saveCheckpoint(adminClient, checkpoint);
     }
 
+    const completedAt = new Date().toISOString();
     const stats = {
-      inserted,
-      updated,
-      events_fetched: eventsFetched,
-      mode,
-      at: now.toISOString(),
+      inserted: checkpoint.inserted,
+      updated: checkpoint.updated,
+      events_fetched: checkpoint.events_fetched,
+      mode: checkpoint.mode,
+      at: completedAt,
     };
-    const patch = {
-      venue_ids: venueIds,
-      venues,
-      last_sync_at: now.toISOString(),
+    const patch: Record<string, unknown> = {
+      venue_ids: checkpoint.venue_ids,
+      venues: checkpoint.venues,
+      last_sync_at: completedAt,
       last_sync_error: null,
       last_sync_stats: stats,
-      last_synced_updated_at: now.toISOString(),
+      last_synced_updated_at: completedAt,
+      sync_checkpoint: null,
     };
-    if (mode === 'full') patch.last_full_sync_at = now.toISOString();
+    if (checkpoint.mode === 'full') patch.last_full_sync_at = completedAt;
     await adminClient.from('integration_perfect_venue_connections').update(patch).eq('id', 1);
 
     await finalizeRun('success');
     return {
-      inserted,
-      updated,
-      events_fetched: eventsFetched,
+      inserted: checkpoint.inserted,
+      updated: checkpoint.updated,
+      events_fetched: checkpoint.events_fetched,
       venues: venuesCount,
       run_id: runId,
     };
   } catch (err) {
     if (err instanceof SyncInProgressError) throw err;
     const message = err instanceof Error ? err.message : 'Sync failed';
+    await clearCheckpoint(adminClient);
     await finalizeRun('failed', { error_message: message });
     throw err instanceof Error ? err : new Error(message);
   } finally {
-    if (!runFinalized) {
+    if (!runFinalized && !returnedPartial) {
       await finalizeRun('failed', {
         error_message: 'Timed out or interrupted before completion',
       });
+      await clearCheckpoint(adminClient);
     }
   }
+}
+
+/** Run chunked sync until complete (for cron / server-side continue). */
+export async function syncPerfectVenueEventsUntilComplete(
+  adminClient,
+  mode: 'full' | 'incremental',
+  runContext: SyncRunContext = { trigger: 'manual' },
+  maxChunks = SYNC_MAX_SERVER_CONTINUE,
+): Promise<PvSyncResult> {
+  let continueChunk = false;
+  let last: PvSyncResult | null = null;
+  for (let i = 0; i < maxChunks; i++) {
+    last = await syncPerfectVenueEvents(adminClient, mode, runContext, { continue: continueChunk });
+    if (!last.partial) return last;
+    continueChunk = true;
+  }
+  throw new Error('Sync exceeded maximum chunks; call again to continue from checkpoint');
 }
 export async function toPublicStatus(adminClient, row) {
   const envConfigured = Boolean(Deno.env.get('PERFECT_VENUE_CLIENT_ID')?.trim() && Deno.env.get('PERFECT_VENUE_CLIENT_SECRET')?.trim());

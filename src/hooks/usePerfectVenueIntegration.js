@@ -42,11 +42,12 @@ export function usePerfectVenueIntegration({ enabled = true } = {}) {
   });
 }
 
-export function usePerfectVenueSyncRuns(enabled = true) {
+export function usePerfectVenueSyncRuns(enabled = true, queryOptions = {}) {
   return useQuery({
     queryKey: PERFECT_VENUE_SYNC_RUNS_KEY,
     queryFn: () => invokePerfectVenueIntegration({ action: 'list_sync_runs', limit: 50 }),
     enabled,
+    ...queryOptions,
   });
 }
 
@@ -98,10 +99,35 @@ export function formatPerfectVenueSyncToast(result) {
   return `${parts.join(' ')}. Events totals include all sources—filter Source = Perfect Venue on the Events page.`;
 }
 
+const PV_SYNC_MAX_CONTINUE = 50;
+const PV_SYNC_CONTINUE_DELAY_MS = 400;
+
+async function runPerfectVenueSyncWithContinue(mode) {
+  let continueSync = false;
+  let aggregated = null;
+  for (let attempt = 0; attempt < PV_SYNC_MAX_CONTINUE; attempt++) {
+    if (attempt > 0) {
+      await new Promise((r) => setTimeout(r, PV_SYNC_CONTINUE_DELAY_MS));
+    }
+    const result = await invokePerfectVenueIntegration({
+      action: 'sync_events',
+      mode,
+      continue: continueSync,
+    });
+    aggregated = result;
+    if (!result.partial || !result.continue) break;
+    continueSync = true;
+  }
+  if (aggregated?.partial && aggregated?.continue) {
+    throw new Error('Sync is still in progress; try again in a moment.');
+  }
+  return aggregated;
+}
+
 export function usePerfectVenueSync() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (mode = 'incremental') => invokePerfectVenueIntegration({ action: 'sync_events', mode }),
+    mutationFn: (mode = 'incremental') => runPerfectVenueSyncWithContinue(mode),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_QUERY_KEY });
       queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_SYNC_RUNS_KEY });

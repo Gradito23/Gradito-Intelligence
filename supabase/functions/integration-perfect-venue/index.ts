@@ -16,6 +16,7 @@ import {
   savePvCredentials,
   storeTokens,
   syncPerfectVenueEvents,
+  syncPerfectVenueEventsUntilComplete,
   SyncInProgressError,
   toPublicStatus,
 } from '../_shared/perfectVenue.ts';
@@ -35,20 +36,27 @@ function validateCronSecret(req: Request): boolean {
 
 type PvSyncRunContext = { trigger: 'cron' | 'manual'; actorId: string | null };
 
+type PvSyncInvokeOptions = { continue?: boolean; untilComplete?: boolean };
+
 async function runIncrementalSync(
   client: ReturnType<typeof createServiceClient>,
   ctx: PvSyncRunContext,
+  opts?: PvSyncInvokeOptions,
 ) {
-  return runPerfectVenueSync(client, 'incremental', ctx);
+  return runPerfectVenueSync(client, 'incremental', ctx, opts);
 }
 
 async function runPerfectVenueSync(
   client: ReturnType<typeof createServiceClient>,
   mode: 'incremental' | 'full',
   ctx: PvSyncRunContext,
+  opts: PvSyncInvokeOptions = {},
 ) {
   try {
-    const result = await syncPerfectVenueEvents(client, mode, ctx);
+    const syncOpts = { continue: opts.continue === true };
+    const result = opts.untilComplete
+      ? await syncPerfectVenueEventsUntilComplete(client, mode, ctx)
+      : await syncPerfectVenueEvents(client, mode, ctx, syncOpts);
     return { ok: true as const, result };
   } catch (err) {
     if (err instanceof SyncInProgressError) {
@@ -81,7 +89,9 @@ Deno.serve(async (req) => {
       if (!validateCronSecret(req)) {
         return jsonResponse({ error: 'Unauthorized' }, 401);
       }
-      const outcome = await runIncrementalSync(adminClient, { trigger: 'cron', actorId: null });
+      const outcome = await runIncrementalSync(adminClient, { trigger: 'cron', actorId: null }, {
+        untilComplete: true,
+      });
       if (!outcome.ok) {
         return jsonResponse({ error: outcome.error }, outcome.httpStatus ?? 400);
       }
@@ -230,10 +240,12 @@ Deno.serve(async (req) => {
 
       case 'sync_events': {
         const mode = body.mode === 'full' ? 'full' : 'incremental';
+        const continueSync = body.continue === true;
         const ctx: PvSyncRunContext = { trigger: 'manual', actorId: user.id };
+        const syncOpts = { continue: continueSync };
         const outcome = mode === 'incremental'
-          ? await runIncrementalSync(client, ctx)
-          : await runPerfectVenueSync(client, 'full', ctx);
+          ? await runIncrementalSync(client, ctx, syncOpts)
+          : await runPerfectVenueSync(client, 'full', ctx, syncOpts);
         if (!outcome.ok) {
           return jsonResponse({ error: outcome.error }, outcome.httpStatus ?? 400);
         }
