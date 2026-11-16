@@ -27,6 +27,7 @@ import {
 import MultiFileUpload from '@/components/intake/MultiFileUpload';
 import { toast } from '@/components/ui/use-toast';
 import ConfirmDialog from '@/components/ui/confirm-dialog';
+import ChefQuoMessages from '@/components/chefs/ChefQuoMessages';
 
 const OPPORTUNITY_CHIP_OPTIONS = [
   ...OPPORTUNITY_PRIVATE_DINING,
@@ -164,7 +165,9 @@ function BlackoutDateAdder({ onAdd }) {
   );
 }
 
-export default function ChefDetailPanel({ chef, kpis, events, eventChefs, clients, open, onClose, onCreateEvent }) {
+export default function ChefDetailPanel({
+  chef, kpis, events, eventChefs, clients, open, onClose, onCreateEvent, eventId = null,
+}) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState(null);
   const [dirty, setDirty] = useState(false);
@@ -371,9 +374,10 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
           </TooltipProvider>
 
         <Tabs defaultValue="overview" className="flex-1 px-4 pt-4 flex flex-col">
-          <TabsList className="w-full grid grid-cols-3 mb-4 shrink-0">
+          <TabsList className="w-full grid grid-cols-4 mb-4 shrink-0">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="events">Events ({chefEvents.length})</TabsTrigger>
+            <TabsTrigger value="messages">Messages</TabsTrigger>
             <TabsTrigger value="earnings">Earnings</TabsTrigger>
           </TabsList>
 
@@ -852,6 +856,10 @@ export default function ChefDetailPanel({ chef, kpis, events, eventChefs, client
                   </Card>
                 );
               })}
+            </TabsContent>
+
+            <TabsContent value="messages" className="space-y-4 mt-0">
+              {chef && <ChefQuoMessages chef={chef} eventId={eventId} />}
             </TabsContent>
 
             <TabsContent value="earnings" className="space-y-4 mt-0">

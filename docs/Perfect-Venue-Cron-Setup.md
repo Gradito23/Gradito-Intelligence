@@ -69,11 +69,35 @@ Stale runs with no heartbeat for **3 minutes** are also failed automatically on 
 - **Database → Cron** (or `select * from cron.job where jobname like 'pv-%'`): jobs present and active.
 - Edge logs: `sync_events_tick` **200** responses about once per minute **while** a job is running; no **546**.
 
+### Verify tick HTTP (pg_net)
+
+Vault secrets must exist and `pv_cron_secret` must match edge env `PERFECT_VENUE_CRON_SECRET` (Bearer value only in Vault; migration adds the `Bearer ` prefix).
+
+```sql
+SELECT name FROM vault.secrets WHERE name IN ('pv_edge_url', 'pv_cron_secret');
+
+SELECT id, status_code, LEFT(content::text, 500) AS body, created
+FROM net._http_response
+ORDER BY created DESC
+LIMIT 10;
+```
+
+- **401** on tick → cron secret mismatch.
+- **400** with `Perfect Venue API … (401)` → expired access token; edge now refreshes proactively (`access_token_expires_at` migration). Reconnect OAuth if refresh token is dead.
+- While a sync runs, an open **Events** tab also calls `sync_events_tick` every ~45s (admin session fallback).
+
 ## Deploy
 
 ```bash
-npx supabase db push
 npx supabase functions deploy integration-perfect-venue --project-ref enftlfmjakfcgaapzesx --yes
+```
+
+If `db push` cannot run on an existing remote project, apply token-expiry columns in SQL Editor:
+
+```sql
+ALTER TABLE public.integration_perfect_venue_connections
+  ADD COLUMN IF NOT EXISTS access_token_expires_at timestamptz,
+  ADD COLUMN IF NOT EXISTS refresh_token_expires_at timestamptz;
 ```
 
 Then run the Vault `create_secret` statements if this is a new environment.

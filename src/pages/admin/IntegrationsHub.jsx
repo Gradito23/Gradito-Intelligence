@@ -5,12 +5,14 @@ import { useEmailIntegration } from '@/hooks/useEmailIntegration';
 import { useGoogleSSOIntegration } from '@/hooks/useGoogleSSOIntegration';
 import { useOpenAIIntegration } from '@/hooks/useOpenAIIntegration';
 import { usePerfectVenueIntegration } from '@/hooks/usePerfectVenueIntegration';
+import { useQuoIntegration } from '@/hooks/useQuoIntegration';
 import {
   INTEGRATION_CATEGORIES,
   getEmailIntegrationStatus,
   getGoogleSSOIntegrationStatus,
   getOpenAIIntegrationStatus,
   getPerfectVenueIntegrationStatus,
+  getQuoIntegrationStatus,
 } from '@/lib/integrationMeta';
 
 export default function IntegrationsHub() {
@@ -18,6 +20,7 @@ export default function IntegrationsHub() {
   const { data: openaiData } = useOpenAIIntegration();
   const { data: googleSsoData } = useGoogleSSOIntegration();
   const { data: perfectVenueData } = usePerfectVenueIntegration();
+  const { data: quoData } = useQuoIntegration();
 
   const getStatusText = (integration) => {
     if (integration.id === 'email') {
@@ -31,6 +34,9 @@ export default function IntegrationsHub() {
     }
     if (integration.id === 'perfect_venue') {
       return getPerfectVenueIntegrationStatus(perfectVenueData);
+    }
+    if (integration.id === 'quo') {
+      return getQuoIntegrationStatus(quoData);
     }
     return null;
   };

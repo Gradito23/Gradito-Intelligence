@@ -30,3 +30,9 @@ verify_jwt = false
 
 [functions.integration-perfect-venue]
 verify_jwt = false
+
+[functions.quo-webhook-messages]
+verify_jwt = false
+
+[functions.quo-webhook-transcripts]
+verify_jwt = false

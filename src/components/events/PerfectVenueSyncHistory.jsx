@@ -1,9 +1,15 @@
 import React from 'react';
 import { format } from 'date-fns';
-import { Loader2 } from 'lucide-react';
-import { usePerfectVenueIntegration, usePerfectVenueSyncRuns } from '@/hooks/usePerfectVenueIntegration';
+import { Loader2, RefreshCw } from 'lucide-react';
+import {
+  usePerfectVenueIntegration,
+  usePerfectVenueSyncRuns,
+  usePerfectVenueSyncTick,
+} from '@/hooks/usePerfectVenueIntegration';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { toast } from '@/components/ui/use-toast';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -53,14 +59,19 @@ function SyncInProgressBanner({ progress }) {
         </span>
       </p>
       <p className="text-xs text-amber-900/70 dark:text-amber-300/80 mt-1">
-        Background ticks run about every minute until this job finishes.
+        Finishing via pg_cron ticks and this browser session (~every 45s) until the job completes.
       </p>
     </Card>
   );
 }
 
 export default function PerfectVenueSyncHistory() {
-  const { data: status } = usePerfectVenueIntegration({ enabled: true, pollWhileSyncing: true });
+  const tickMutation = usePerfectVenueSyncTick();
+  const { data: status } = usePerfectVenueIntegration({
+    enabled: true,
+    pollWhileSyncing: true,
+    driveBackgroundTicks: true,
+  });
   const { data, isLoading, isError, error } = usePerfectVenueSyncRuns(true, {
     refetchInterval: (query) => {
       const runs = query.state.data?.runs ?? [];
@@ -69,6 +80,22 @@ export default function PerfectVenueSyncHistory() {
     },
   });
   const runs = data?.runs ?? [];
+  const hasStaleRunning = runs.some((r) => isStaleRunningRun(r));
+  const canResume = hasStaleRunning || status?.sync_in_progress;
+
+  const handleResumeSync = async () => {
+    try {
+      const result = await tickMutation.mutateAsync();
+      toast({
+        title: result?.idle ? 'No sync in progress' : 'Sync resumed',
+        description: result?.idle
+          ? 'Checkpoint was already cleared.'
+          : 'Processing next chunk…',
+      });
+    } catch (err) {
+      toast({ title: 'Resume failed', description: err.message, variant: 'destructive' });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -97,6 +124,22 @@ export default function PerfectVenueSyncHistory() {
   return (
     <div className="space-y-4">
       <SyncInProgressBanner progress={status?.sync_in_progress ? status.checkpoint_progress : null} />
+      {canResume && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={tickMutation.isPending}
+          onClick={handleResumeSync}
+        >
+          {tickMutation.isPending ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Resume sync
+        </Button>
+      )}
       <Card>
       <Table>
         <TableHeader>

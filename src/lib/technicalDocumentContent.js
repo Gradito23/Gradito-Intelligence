@@ -53,6 +53,8 @@ export const TECHNICAL_DOC_SECTIONS = [
     bullets: [
       'integration-email — Resend and custom SMTP configuration, send/test, encrypted secret storage.',
       'integration-openai — OpenAI API key management, model sync, and LLM invocation for product features.',
+      'integration-quo — Quo API key, connection/A2P test, staff SMS to chefs.',
+      'quo-webhook-messages / quo-webhook-transcripts — Inbound SMS and call transcripts into quo_communication_events.',
       'integration-smtp — SMTP-related helpers used by the email integration stack.',
       'onboarding-guide-email — Sends the Chef & FOH onboarding guide after intake; open/click tracking.',
       'manage-users — Admin user lifecycle (invites, role assignment) with service-role access.',

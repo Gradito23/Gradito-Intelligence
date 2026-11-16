@@ -48,6 +48,7 @@ const ChefSalaryCalculator = lazy(() => import('@/pages/admin/ChefSalaryCalculat
 const TechnicalDocument = lazy(() => import('@/pages/admin/TechnicalDocument'));
 const IntegrationsDocument = lazy(() => import('@/pages/admin/IntegrationsDocument'));
 const PerfectVenueIntegration = lazy(() => import('@/pages/admin/PerfectVenueIntegration'));
+const QuoIntegration = lazy(() => import('@/pages/admin/QuoIntegration'));
 const PerfectVenueOAuthCallback = lazy(() => import('@/pages/PerfectVenueOAuthCallback'));
 
 const PUBLIC_PATHS = new Set([
@@ -282,6 +283,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
                         <PerfectVenueIntegration />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="integrations/quo"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
+                        <QuoIntegration />
                       </PermissionRoute>
                     )}
                   />
