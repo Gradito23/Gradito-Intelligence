@@ -10,6 +10,7 @@ export type SendEmailParams = {
   subject: string;
   html: string;
   emailType?: string;
+  prospectId?: string | null;
 };
 
 export async function getActiveProvider(
@@ -61,6 +62,7 @@ export async function logEmail(
     status: 'sent' | 'failed';
     error_message?: string | null;
     subject?: string | null;
+    prospect_id?: string | null;
   },
 ) {
   const { error } = await adminClient.from('email_logs').insert(entry);
@@ -72,6 +74,8 @@ export async function sendEmail(
   params: SendEmailParams,
 ): Promise<{ provider: EmailProvider; messageId?: string }> {
   const emailType = params.emailType ?? 'notification';
+  const prospectId = params.prospectId ?? null;
+  const logBase = { prospect_id: prospectId };
   const provider = await getActiveProvider(adminClient);
 
   if (provider === 'resend') {
@@ -79,6 +83,7 @@ export async function sendEmail(
     if (!settings?.enabled || !settings.api_key?.trim() || !settings.from_email?.trim()) {
       const err = 'Resend is not configured or enabled';
       await logEmail(adminClient, {
+        ...logBase,
         email_type: emailType,
         recipient: params.to,
         provider: 'resend',
@@ -92,6 +97,7 @@ export async function sendEmail(
     try {
       const result = await sendResendEmail(settings, params);
       await logEmail(adminClient, {
+        ...logBase,
         email_type: emailType,
         recipient: params.to,
         provider: 'resend',
@@ -102,6 +108,7 @@ export async function sendEmail(
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Send failed';
       await logEmail(adminClient, {
+        ...logBase,
         email_type: emailType,
         recipient: params.to,
         provider: 'resend',
@@ -117,6 +124,7 @@ export async function sendEmail(
   if (!config) {
     const err = 'No active Custom SMTP configuration';
     await logEmail(adminClient, {
+      ...logBase,
       email_type: emailType,
       recipient: params.to,
       provider: 'custom_smtp',
@@ -130,6 +138,7 @@ export async function sendEmail(
   try {
     await sendCustomSmtpEmail(config, params);
     await logEmail(adminClient, {
+      ...logBase,
       email_type: emailType,
       recipient: params.to,
       provider: 'custom_smtp',
@@ -141,6 +150,7 @@ export async function sendEmail(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Send failed';
     await logEmail(adminClient, {
+      ...logBase,
       email_type: emailType,
       recipient: params.to,
       provider: 'custom_smtp',

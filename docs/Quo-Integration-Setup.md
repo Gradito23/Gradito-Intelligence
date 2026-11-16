@@ -61,6 +61,19 @@ Migration: `20261117100000_chef_invite_prospects.sql`. Deploy `chef-intake-submi
 - Public intake runs through `chef-intake-submit`: blocks if email/phone matches a live chef; links `prospect_id` when matched.
 - Approving an intake request **updates** an existing chef when email/phone (or `prospect.chef_id`) matches — it does not create a duplicate row.
 
+## Intake invite email (prospects)
+
+Migration: `20261117200000_prospect_invite_email.sql`. Redeploy `integration-email`.
+
+- SendGrid is configured as **Custom SMTP** under **Admin → Integrations → Email** (active provider).
+- **Invite by Message → Email** tab calls `integration-email` `send_intake_invite` (authenticated ops users).
+- Sends use `email_type: chef_intake_invite` and set `email_logs.prospect_id`; prospect column `intake_invite_email_last_sent_at` is updated when `mark_intake_invite: true`.
+- **History** tab merges `quo_communication_events` (SMS) and `email_logs` for the selected prospect.
+
+```bash
+npx supabase functions deploy integration-email integration-quo chef-intake-submit --project-ref <ref> --yes
+```
+
 ## API reference
 
 - [Quo API introduction](https://www.quo.com/docs/2026-03-30/introduction.md)

@@ -12,4 +12,16 @@ export const QuoCommunicationRepository = {
     if (error) throw error;
     return data ?? [];
   },
+
+  async listByProspectId(prospectId, { limit = 100 } = {}) {
+    const { data, error } = await supabase
+      .from('quo_communication_events')
+      .select('*')
+      .eq('prospect_id', prospectId)
+      .order('occurred_at', { ascending: false })
+      .limit(limit);
+
+    if (error) throw error;
+    return data ?? [];
+  },
 };
