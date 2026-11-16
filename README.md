@@ -78,6 +78,7 @@ npm run lint
 - Auth and role permissions live in Supabase (`profiles`, `app_roles`, `role_permissions`).
 - File uploads use the `uploads` / `avatars` storage buckets.
 - LLM features (Chef Match, invoice parse) use the `integration-openai` edge function; configure the API key under **Admin → Integrations → OpenAI**.
+- Chef SMS and Quo webhooks use `integration-quo`, `quo-webhook-messages`, and `quo-webhook-transcripts`; configure under **Admin → Integrations → Quo** and `docs/Quo-Integration-Setup.md`.
 - Integration secrets (OpenAI, Resend, SMTP) are encrypted at rest with a platform DEK wrapped by `PLATFORM_KEK` (Edge Function secret). Set once after deploy:
 
 ```bash

@@ -166,12 +166,14 @@ export async function packSecret(adminClient, plaintext) {
     return {
       openai: false,
       resend: false,
-      smtp: 0
+      quo: false,
+      smtp: 0,
     };
   }
   await ensureAppDek(adminClient);
   let openai = false;
   let resend = false;
+  let quo = false;
   let smtp = 0;
   const { data: openaiRow } = await adminClient.from('integration_openai_settings').select('api_key, encrypted_api_key, api_key_iv').eq('id', 1).maybeSingle();
   if (openaiRow?.api_key?.trim() && !openaiRow.encrypted_api_key?.trim()) {
@@ -183,6 +185,17 @@ export async function packSecret(adminClient, plaintext) {
       api_key: ''
     }).eq('id', 1);
     openai = true;
+  }
+  const { data: quoRow } = await adminClient.from('integration_quo_settings').select('api_key, encrypted_api_key, api_key_iv').eq('id', 1).maybeSingle();
+  if (quoRow?.api_key?.trim() && !quoRow.encrypted_api_key?.trim()) {
+    const packed = await packSecret(adminClient, quoRow.api_key);
+    await adminClient.from('integration_quo_settings').update({
+      encrypted_api_key: packed.encrypted,
+      api_key_iv: packed.iv,
+      dek_version: packed.dekVersion,
+      api_key: '',
+    }).eq('id', 1);
+    quo = true;
   }
   const { data: resendRow } = await adminClient.from('integration_resend_settings').select('api_key, encrypted_api_key, api_key_iv').eq('id', 1).maybeSingle();
   if (resendRow?.api_key?.trim() && !resendRow.encrypted_api_key?.trim()) {
@@ -211,6 +224,7 @@ export async function packSecret(adminClient, plaintext) {
   return {
     openai,
     resend,
-    smtp
+    quo,
+    smtp,
   };
 }

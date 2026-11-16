@@ -1,4 +1,4 @@
-import { Bot, Cloud, Mail, Server } from 'lucide-react';
+import { Bot, Cloud, Mail, MessageSquare, Server } from 'lucide-react';
 import GoogleIcon from '@/components/GoogleIcon';
 
 export const INTEGRATION_DOC_CATEGORIES = [
@@ -72,6 +72,22 @@ export const INTEGRATIONS_DOC_CARDS = [
       'integration-email edge function when SMTP is selected',
     ],
     configurePath: '/admin/integrations/email',
+  },
+  {
+    id: 'quo',
+    title: 'Quo',
+    vendor: 'Quo',
+    category: 'communications',
+    icon: MessageSquare,
+    status: 'active',
+    purpose:
+      'Business SMS and call transcript webhooks. Staff message chefs from the chef profile; inbound replies and transcripts land in quo_communication_events for tracking and AI analysis.',
+    usedIn: [
+      'Admin → Integrations → Quo (API key, test connection / A2P)',
+      'Chef detail → Messages tab',
+      'quo-webhook-messages and quo-webhook-transcripts edge functions',
+    ],
+    configurePath: '/admin/integrations/quo',
   },
   {
     id: 'openai',

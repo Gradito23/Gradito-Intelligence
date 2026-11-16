@@ -1,4 +1,4 @@
-import { Bot, Calendar, Mail } from 'lucide-react';
+import { Bot, Calendar, Mail, MessageSquare } from 'lucide-react';
 import GoogleIcon from '@/components/GoogleIcon';
 import { getGoogleSSOStatus } from '@/lib/googleSsoSetupMeta';
 
@@ -41,6 +41,14 @@ export const INTEGRATION_CATEGORIES = [
         description: 'Resend API or Custom SMTP for app emails and notifications.',
         path: '/admin/integrations/email',
         icon: Mail,
+        status: 'active',
+      },
+      {
+        id: 'quo',
+        label: 'Quo',
+        description: 'SMS and call transcripts for chef communication.',
+        path: '/admin/integrations/quo',
+        icon: MessageSquare,
         status: 'active',
       },
     ],
@@ -110,4 +118,11 @@ export function getPerfectVenueIntegrationStatus(pvData) {
   if (!pvData.connected) return 'Not connected';
   if (pvData.last_sync_error) return `Connected · Sync error`;
   return `Connected · ${pvData.venue_ids?.length ?? 0} venue(s)`;
+}
+
+export function getQuoIntegrationStatus(quoData) {
+  if (!quoData) return 'Loading…';
+  if (!quoData.configured) return 'Not configured';
+  if (!quoData.enabled) return 'Configured · Disabled';
+  return quoData.last_test_summary ? 'Connected · Tested' : 'Connected';
 }
