@@ -1,4 +1,16 @@
 export const CHEF_INTAKE_INVITE_TEMPLATE_KEY = 'gradito_chef_intake_invite_template_v1';
+export const CHEF_INTAKE_INVITE_EMAIL_SUBJECT_KEY = 'gradito_chef_intake_invite_email_subject_v1';
+export const CHEF_INTAKE_INVITE_EMAIL_BODY_KEY = 'gradito_chef_intake_invite_email_body_v1';
+
+export const DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT = "You're invited to join Gradito";
+
+export const DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY = `Hi {{first_name}},
+
+You're invited to join the Gradito chef roster. Please complete your talent profile:
+
+{{intake_link}}
+
+— Gradito Team`;
 
 /** Public intake form URL (SMS, copy link, templates — never localhost). */
 export const PUBLIC_INTAKE_URL = 'https://ai.gradito.com/intake';
@@ -56,14 +68,29 @@ export function chefHasPhone(row) {
   return phone.length >= 7;
 }
 
-/** @returns {'joined' | 'invited' | 'not_invited' | 'no_phone'} */
+export function chefHasEmail(row) {
+  const e = row?.email?.trim() || '';
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+}
+
+export function isProspectJoined(prospect) {
+  if (!prospect || prospect.archived) return false;
+  return Boolean(prospect.chef_id || prospect.status === 'joined' || prospect.intake_submitted_at);
+}
+
+/** @returns {'joined' | 'invited' | 'not_invited' | 'no_phone' | 'no_email'} */
 export function deriveProspectInviteStatus(prospect) {
   if (!prospect || prospect.archived) return 'not_invited';
-  if (prospect.chef_id || prospect.status === 'joined' || prospect.intake_submitted_at) {
-    return 'joined';
-  }
-  if (!chefHasPhone(prospect)) return 'no_phone';
-  if (prospect.intake_invite_last_sent_at || prospect.status === 'invited') return 'invited';
+  if (isProspectJoined(prospect)) return 'joined';
+  const invited = prospect.intake_invite_last_sent_at
+    || prospect.intake_invite_email_last_sent_at
+    || prospect.status === 'invited';
+  if (invited) return 'invited';
+  const hasPhone = chefHasPhone(prospect);
+  const hasEmail = chefHasEmail(prospect);
+  if (!hasPhone && !hasEmail) return 'not_invited';
+  if (!hasPhone && hasEmail) return 'no_phone';
+  if (hasPhone && !hasEmail) return 'no_email';
   return 'not_invited';
 }
 
@@ -76,8 +103,21 @@ export function deriveChefInviteStatus(chef, options = {}) {
   return 'not_invited';
 }
 
+export function canSendProspectSms(prospect) {
+  return !isProspectJoined(prospect) && chefHasPhone(prospect);
+}
+
+/** @deprecated use canSendProspectSms */
 export function canSendProspectInvite(prospect) {
-  return deriveProspectInviteStatus(prospect) !== 'joined' && chefHasPhone(prospect);
+  return canSendProspectSms(prospect);
+}
+
+export function canSendProspectEmail(prospect) {
+  return !isProspectJoined(prospect) && chefHasEmail(prospect);
+}
+
+export function canSelectProspectForInvite(prospect) {
+  return canSendProspectSms(prospect) || canSendProspectEmail(prospect);
 }
 
 export function inviteStatusLabel(status) {
@@ -88,6 +128,8 @@ export function inviteStatusLabel(status) {
       return 'Invited';
     case 'no_phone':
       return 'No phone';
+    case 'no_email':
+      return 'No email';
     default:
       return 'Not invited';
   }
@@ -108,6 +150,76 @@ export function loadStoredInviteTemplate() {
 export function saveStoredInviteTemplate(template) {
   try {
     localStorage.setItem(CHEF_INTAKE_INVITE_TEMPLATE_KEY, template);
+  } catch {
+    // ignore
+  }
+}
+
+function applyInviteVars(template, person) {
+  const intakeLink = getIntakeLink();
+  const first = person?.first_name?.trim() || 'there';
+  const last = person?.last_name?.trim() || '';
+  return String(template || '')
+    .replace(/\{\{\s*first_name\s*\}\}/gi, first)
+    .replace(/\{\{\s*last_name\s*\}\}/gi, last)
+    .replace(/\{\{\s*intake_link\s*\}\}/gi, intakeLink);
+}
+
+export function plainInviteTextToHtml(text) {
+  const escaped = String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  const link = getIntakeLink();
+  const linkified = escaped.replace(
+    link.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+    `<a href="${link}">${link}</a>`,
+  );
+  return linkified.replace(/\n/g, '<br>\n');
+}
+
+export function renderChefInviteEmailSubject(subjectTemplate, person) {
+  return applyInviteVars(subjectTemplate || DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT, person);
+}
+
+export function renderChefInviteEmailPlain(bodyTemplate, person) {
+  return applyInviteVars(bodyTemplate || DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY, person);
+}
+
+export function renderChefInviteEmailHtml(bodyTemplate, person) {
+  const plain = renderChefInviteEmailPlain(bodyTemplate, person);
+  return plainInviteTextToHtml(plain);
+}
+
+export function loadStoredInviteEmailSubject() {
+  try {
+    return localStorage.getItem(CHEF_INTAKE_INVITE_EMAIL_SUBJECT_KEY)
+      || DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT;
+  } catch {
+    return DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT;
+  }
+}
+
+export function saveStoredInviteEmailSubject(subject) {
+  try {
+    localStorage.setItem(CHEF_INTAKE_INVITE_EMAIL_SUBJECT_KEY, subject);
+  } catch {
+    // ignore
+  }
+}
+
+export function loadStoredInviteEmailBody() {
+  try {
+    return localStorage.getItem(CHEF_INTAKE_INVITE_EMAIL_BODY_KEY)
+      || DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY;
+  } catch {
+    return DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY;
+  }
+}
+
+export function saveStoredInviteEmailBody(body) {
+  try {
+    localStorage.setItem(CHEF_INTAKE_INVITE_EMAIL_BODY_KEY, body);
   } catch {
     // ignore
   }

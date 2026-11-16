@@ -4,6 +4,7 @@ import {
   isValidEmail,
   jsonResponse,
   requireAdmin,
+  requireAuth,
   SECRET_MASK,
 } from '../_shared/auth.ts';
 import {
@@ -12,7 +13,13 @@ import {
   packSecret,
   resolveSecret,
 } from '../_shared/crypto.ts';
-import { buildEmailAnalytics, logEmail, sendEmail } from '../_shared/email.ts';
+import {
+  buildEmailAnalytics,
+  getActiveProvider,
+  loadActiveCustomSmtpConfig,
+  logEmail,
+  sendEmail,
+} from '../_shared/email.ts';
 import { renderTestEmail } from '../_shared/emailTemplates.ts';
 import {
   loadResendSettings,
@@ -575,6 +582,101 @@ async function handleTestCustomSmtp(
   }
 }
 
+async function handleGetStatus(adminClient: ReturnType<typeof createServiceClient>) {
+  const provider = await getActiveProvider(adminClient);
+  if (provider === 'resend') {
+    const settings = await loadResendSettings(adminClient);
+    const configured = Boolean(settings?.api_key?.trim() && settings?.from_email?.trim());
+    const enabled = Boolean(settings?.enabled && configured);
+    return jsonResponse({
+      active_provider: 'resend',
+      configured,
+      enabled,
+    });
+  }
+  const smtp = await loadActiveCustomSmtpConfig(adminClient);
+  const configured = Boolean(smtp?.smtp_host && smtp?.from_email);
+  return jsonResponse({
+    active_provider: 'custom_smtp',
+    configured,
+    enabled: Boolean(configured),
+  });
+}
+
+async function handleSendIntakeInvite(
+  body: Record<string, unknown>,
+  adminClient: ReturnType<typeof createServiceClient>,
+) {
+  const prospectId = typeof body.prospect_id === 'string' ? body.prospect_id.trim() : '';
+  const subject = typeof body.subject === 'string' ? body.subject.trim() : '';
+  const html = typeof body.html === 'string' ? body.html : '';
+  const markIntakeInvite = body.mark_intake_invite === true;
+
+  if (!prospectId) return jsonResponse({ error: 'prospect_id is required' }, 400);
+  if (!subject) return jsonResponse({ error: 'subject is required' }, 400);
+  if (!html) return jsonResponse({ error: 'html is required' }, 400);
+
+  const { data: prospect, error: prospectError } = await adminClient
+    .from('chef_invite_prospects')
+    .select('id, email, archived, status')
+    .eq('id', prospectId)
+    .maybeSingle();
+
+  if (prospectError) throw prospectError;
+  if (!prospect || prospect.archived) {
+    return jsonResponse({ error: 'Invite prospect not found' }, 404);
+  }
+  if (prospect.status === 'joined') {
+    return jsonResponse({ error: 'Prospect has already joined' }, 400);
+  }
+
+  const to = typeof prospect.email === 'string' ? prospect.email.trim() : '';
+  if (!to || !isValidEmail(to)) {
+    return jsonResponse({ error: 'Prospect has no valid email' }, 400);
+  }
+
+  const result = await sendEmail(adminClient, {
+    to,
+    subject,
+    html,
+    emailType: 'chef_intake_invite',
+    prospectId,
+  });
+
+  if (markIntakeInvite) {
+    const now = new Date().toISOString();
+    await adminClient
+      .from('chef_invite_prospects')
+      .update({
+        intake_invite_email_last_sent_at: now,
+        status: 'invited',
+      })
+      .eq('id', prospectId);
+  }
+
+  return jsonResponse({ ok: true, ...result });
+}
+
+async function handleListLogsForProspect(
+  body: Record<string, unknown>,
+  adminClient: ReturnType<typeof createServiceClient>,
+) {
+  const prospectId = typeof body.prospect_id === 'string' ? body.prospect_id.trim() : '';
+  if (!prospectId) return jsonResponse({ error: 'prospect_id is required' }, 400);
+
+  const limit = Math.min(Math.max(Number(body.limit) || 50, 1), 200);
+
+  const { data, error } = await adminClient
+    .from('email_logs')
+    .select('id, email_type, recipient, provider, status, error_message, subject, created_at')
+    .eq('prospect_id', prospectId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return jsonResponse({ logs: data ?? [] });
+}
+
 async function handleListLogs(
   body: Record<string, unknown>,
   adminClient: ReturnType<typeof createServiceClient>,
@@ -602,12 +704,29 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Method not allowed' }, 405);
     }
 
+    const body = await req.json().catch(() => ({}));
+    const action = typeof body.action === 'string' ? body.action : 'get';
+
+    const authRequiredOps = new Set(['get_status', 'send_intake_invite', 'list_logs_for_prospect']);
+    if (authRequiredOps.has(action)) {
+      const auth = await requireAuth(req);
+      if (auth.error) return auth.error;
+      const { adminClient } = auth;
+      switch (action) {
+        case 'get_status':
+          return handleGetStatus(adminClient);
+        case 'send_intake_invite':
+          return handleSendIntakeInvite(body, adminClient);
+        case 'list_logs_for_prospect':
+          return handleListLogsForProspect(body, adminClient);
+        default:
+          return jsonResponse({ error: 'Unknown action' }, 400);
+      }
+    }
+
     const auth = await requireAdmin(req);
     if (auth.error) return auth.error;
     const { user, adminClient } = auth;
-
-    const body = await req.json();
-    const action = body.action;
 
     switch (action) {
       case 'get':

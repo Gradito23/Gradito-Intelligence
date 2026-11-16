@@ -3,6 +3,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/api/supabaseClient';
 
 export const EMAIL_INTEGRATION_QUERY_KEY = ['integration-email'];
+export const EMAIL_STATUS_QUERY_KEY = ['integration-email', 'status'];
 
 async function parseFunctionError(error) {
   if (error instanceof FunctionsHttpError) {
@@ -121,6 +122,42 @@ export function useTestCustomSmtp() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: EMAIL_INTEGRATION_QUERY_KEY });
     },
+  });
+}
+
+export function useEmailIntegrationStatus() {
+  return useQuery({
+    queryKey: EMAIL_STATUS_QUERY_KEY,
+    queryFn: () => invokeEmailIntegration({ action: 'get_status' }),
+    staleTime: 60_000,
+  });
+}
+
+export function useSendIntakeInviteEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => invokeEmailIntegration({ action: 'send_intake_invite', ...payload }),
+    onSuccess: (_data, variables) => {
+      if (variables?.prospect_id) {
+        queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] });
+        queryClient.invalidateQueries({
+          queryKey: ['prospect-email-logs', variables.prospect_id],
+        });
+      }
+    },
+  });
+}
+
+export function useProspectEmailLogs(prospectId) {
+  return useQuery({
+    queryKey: ['prospect-email-logs', prospectId],
+    queryFn: () => invokeEmailIntegration({
+      action: 'list_logs_for_prospect',
+      prospect_id: prospectId,
+      limit: 100,
+    }).then((r) => r.logs ?? []),
+    enabled: Boolean(prospectId),
+    initialData: [],
   });
 }
 
