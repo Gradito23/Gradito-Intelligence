@@ -9,6 +9,7 @@ import {
   ActivityLogRepository,
   ChefRepository,
   ChefIntakeRequestRepository,
+  ChefInviteProspectRepository,
   OnboardingGuideRepository,
   OnboardingGuideDeliveryRepository,
   ClientRepository,
@@ -159,6 +160,7 @@ export const base44 = {
   entities: {
     Chef: entityFromRepo(ChefRepository),
     ChefIntakeRequest: entityFromRepo(ChefIntakeRequestRepository),
+    ChefInviteProspect: entityFromRepo(ChefInviteProspectRepository),
     Event: entityFromRepo(EventRepository),
     Client: entityFromRepo(ClientRepository),
     EventChef: entityFromRepo(EventChefRepository),

@@ -78,6 +78,12 @@ export function useSendQuoMessage() {
       if (variables?.chef_id) {
         queryClient.invalidateQueries({ queryKey: ['quo-communication-events', variables.chef_id] });
       }
+      if (variables?.prospect_id) {
+        queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] });
+      }
+      if (variables?.mark_intake_invite) {
+        queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] });
+      }
     },
   });
 }
