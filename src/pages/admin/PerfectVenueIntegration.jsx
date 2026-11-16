@@ -181,20 +181,37 @@ export default function PerfectVenueIntegration() {
             {data?.connected
               ? `Connected · scopes: ${data.scopes || '—'}`
               : 'Not connected — authorize with a Perfect Venue user who can access your venues.'}
+            {data?.needs_reconnect && (
+              <span className="block mt-2 text-destructive font-medium">
+                Session expired — use Connect again to renew API access before syncing.
+              </span>
+            )}
+            {data?.last_sync_error && !data?.needs_reconnect && (
+              <span className="block mt-2 text-amber-800 dark:text-amber-200 text-xs">
+                Last sync error: {data.last_sync_error}
+              </span>
+            )}
             {data?.last_sync_at && (
               <span className="block mt-1">Last sync: {format(new Date(data.last_sync_at), 'PPp')}</span>
             )}
-            {data?.last_sync_error && (
-              <span className="block mt-1 text-destructive">{data.last_sync_error}</span>
-            )}
             <span className="block mt-2 text-muted-foreground">
-              Sync runs in short steps: your click starts the job; a scheduled tick every ~2 minutes finishes it in the
-              background (no need to keep this tab open). Full sync backfills all PV events; incremental uses{' '}
+              Sync runs in short steps: your click starts the job; pg_cron and this app tick every ~45s–1m while Events is
+              open. Full sync backfills all PV events; incremental uses{' '}
               <code className="text-xs">updated_at</code>. Watch Events → Sync history for live In/Up.
             </span>
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
+          {data?.needs_reconnect && (
+            <Button
+              type="button"
+              className="bg-navy hover:bg-navy/90 text-white"
+              onClick={handleConnect}
+              disabled={authorizeMutation.isPending}
+            >
+              {authorizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Reconnect Perfect Venue'}
+            </Button>
+          )}
           {!data?.connected ? (
             <Button onClick={handleConnect} disabled={authorizeMutation.isPending}>
               {authorizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Connect Perfect Venue'}

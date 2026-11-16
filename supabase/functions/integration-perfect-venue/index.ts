@@ -185,15 +185,17 @@ Deno.serve(async (req) => {
         }
 
         const tokens = await exchangeAuthorizationCode(client, code);
-        await storeTokens(client, tokens.access_token, tokens.refresh_token, {
+        await storeTokens(client, tokens.access_token, tokens.refresh_token ?? '', {
           scopes: tokens.scope ?? undefined,
           userId: user.id,
+          oauthToken: tokens,
         });
 
         let venues: Awaited<ReturnType<typeof fetchVenues>> = [];
         let venuesFetchWarning: string | undefined;
+        const rowAfterTokens = await loadConnection(client);
         try {
-          venues = await fetchVenues(tokens.access_token);
+          venues = rowAfterTokens ? await fetchVenues(client, rowAfterTokens) : [];
         } catch (err) {
           venuesFetchWarning = err instanceof Error ? err.message : 'Failed to fetch venues';
           console.warn('integration-perfect-venue exchange_code venues:', venuesFetchWarning);

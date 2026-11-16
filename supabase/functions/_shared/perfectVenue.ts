@@ -8,6 +8,39 @@ export const PV_SYNC_OVERLAP_MS = 5 * 60 * 1000;
 export const PV_API_VERSION = '2026-11-01';
 const SYNC_STALE_MS = 3 * 60 * 1000;
 const SYNC_CHUNK_BUDGET_MS = 20 * 1000;
+const TOKEN_REFRESH_SKEW_MS = 5 * 60 * 1000;
+const DEFAULT_ACCESS_TOKEN_TTL_SEC = 3600;
+
+type OAuthTokenPayload = {
+  access_token: string;
+  refresh_token?: string;
+  expires_in?: number;
+  refresh_expires_in?: number;
+};
+
+function expiresAtFromOAuthPayload(payload: OAuthTokenPayload): string {
+  const sec =
+    typeof payload.expires_in === 'number' && payload.expires_in > 0
+      ? payload.expires_in
+      : DEFAULT_ACCESS_TOKEN_TTL_SEC;
+  return new Date(Date.now() + sec * 1000).toISOString();
+}
+
+function refreshExpiresAtFromPayload(payload: OAuthTokenPayload): string | null {
+  const sec = payload.refresh_expires_in ?? (payload as { refresh_token_expires_in?: number }).refresh_token_expires_in;
+  if (typeof sec !== 'number' || sec <= 0) return null;
+  return new Date(Date.now() + sec * 1000).toISOString();
+}
+
+function accessTokenNeedsRefresh(row: { access_token_expires_at?: string | null }) {
+  const expiresAt = row.access_token_expires_at;
+  if (!expiresAt) return true;
+  return Date.now() >= new Date(expiresAt).getTime() - TOKEN_REFRESH_SKEW_MS;
+}
+
+function isPvApiUnauthorized(err: unknown): boolean {
+  return err instanceof Error && err.message.includes('(401)');
+}
 const MAX_EVENT_PAGES_PER_VENUE = 100;
 export type PvSyncCheckpoint = {
   run_id: string;
@@ -140,6 +173,25 @@ export async function pvApiGet(accessToken, path, query) {
   const payload = await response.json();
   return unwrapData(payload);
 }
+
+/** GET with proactive token resolution and one 401 → refresh → retry. */
+export async function pvApiGetWithAuth(
+  adminClient,
+  row: Awaited<ReturnType<typeof loadConnection>>,
+  path: string,
+  query?: Record<string, string>,
+) {
+  if (!row) throw new Error('Perfect Venue is not connected');
+  let token = await resolveAccessToken(adminClient, row);
+  try {
+    return await pvApiGet(token, path, query);
+  } catch (err) {
+    if (!isPvApiUnauthorized(err)) throw err;
+    token = await refreshAndStoreTokens(adminClient, row);
+    return await pvApiGet(token, path, query);
+  }
+}
+
 export async function buildAuthorizeUrl(adminClient, state) {
   const { clientId, redirectUri } = await getPvConfig(adminClient);
   const url = new URL(PV_OAUTH_AUTHORIZE);
@@ -216,42 +268,82 @@ export async function loadConnection(adminClient) {
     venues: Array.isArray(data.venues) ? data.venues : []
   };
 }
-export async function resolveAccessToken(adminClient, row) {
-  const accessToken = await resolveSecret(adminClient, {
-    encrypted: row.encrypted_access_token,
-    iv: row.access_token_iv
-  });
-  if (accessToken) return accessToken;
+export async function refreshAndStoreTokens(
+  adminClient,
+  row: NonNullable<Awaited<ReturnType<typeof loadConnection>>>,
+  oauthPayload?: OAuthTokenPayload,
+) {
   const refreshToken = await resolveSecret(adminClient, {
     encrypted: row.encrypted_refresh_token,
-    iv: row.refresh_token_iv
+    iv: row.refresh_token_iv,
   });
   if (!refreshToken) throw new Error('Perfect Venue is not connected');
-  const tokens = await refreshAccessToken(adminClient, refreshToken);
-  await storeTokens(adminClient, tokens.access_token, tokens.refresh_token);
+  const tokens = oauthPayload ?? (await refreshAccessToken(adminClient, refreshToken));
+  const nextRefresh = tokens.refresh_token ?? refreshToken;
+  await storeTokens(adminClient, tokens.access_token, nextRefresh, {
+    scopes: row.scopes ?? PV_OAUTH_SCOPES,
+    userId: row.updated_by ?? null,
+    oauthToken: tokens,
+    preserveConnectedAt: true,
+  });
   return tokens.access_token;
 }
-export async function storeTokens(adminClient, accessToken, refreshToken, extras) {
+
+export async function resolveAccessToken(adminClient, row) {
+  const refreshToken = await resolveSecret(adminClient, {
+    encrypted: row.encrypted_refresh_token,
+    iv: row.refresh_token_iv,
+  });
+  if (!refreshToken) throw new Error('Perfect Venue is not connected');
+
+  const accessToken = await resolveSecret(adminClient, {
+    encrypted: row.encrypted_access_token,
+    iv: row.access_token_iv,
+  });
+  if (accessToken && !accessTokenNeedsRefresh(row)) return accessToken;
+
+  return refreshAndStoreTokens(adminClient, row);
+}
+
+export async function storeTokens(adminClient, accessToken, refreshToken, extras?: {
+  scopes?: string;
+  userId?: string | null;
+  oauthToken?: OAuthTokenPayload;
+  preserveConnectedAt?: boolean;
+}) {
   const accessPacked = await packSecret(adminClient, accessToken);
   const refreshPacked = await packSecret(adminClient, refreshToken);
-  const { error } = await adminClient.from('integration_perfect_venue_connections').upsert({
+  const accessExpiresAt = extras?.oauthToken
+    ? expiresAtFromOAuthPayload(extras.oauthToken)
+    : new Date(Date.now() + DEFAULT_ACCESS_TOKEN_TTL_SEC * 1000).toISOString();
+  const refreshExpiresAt = extras?.oauthToken ? refreshExpiresAtFromPayload(extras.oauthToken) : null;
+
+  const patch: Record<string, unknown> = {
     id: 1,
     connected: true,
-    connected_at: new Date().toISOString(),
     scopes: extras?.scopes ?? PV_OAUTH_SCOPES,
     encrypted_access_token: accessPacked.encrypted,
     access_token_iv: accessPacked.iv,
     encrypted_refresh_token: refreshPacked.encrypted,
     refresh_token_iv: refreshPacked.iv,
     dek_version: accessPacked.dekVersion,
+    access_token_expires_at: accessExpiresAt,
+    refresh_token_expires_at: refreshExpiresAt,
     oauth_state: null,
     oauth_state_expires_at: null,
-    updated_by: extras?.userId ?? null
-  });
+    updated_by: extras?.userId ?? null,
+    last_sync_error: null,
+  };
+  if (!extras?.preserveConnectedAt) {
+    patch.connected_at = new Date().toISOString();
+  }
+
+  const { error } = await adminClient.from('integration_perfect_venue_connections').upsert(patch);
   if (error) throw error;
 }
-export async function fetchVenues(accessToken) {
-  const data = await pvApiGet(accessToken, '/venues');
+
+export async function fetchVenues(adminClient, row: NonNullable<Awaited<ReturnType<typeof loadConnection>>>) {
+  const data = await pvApiGetWithAuth(adminClient, row, '/venues');
   if (Array.isArray(data)) return data;
   return data.venues ?? [];
 }
@@ -700,7 +792,15 @@ export async function upsertEventFromPv(adminClient, ev, venues, contacts, optio
   if (result.updated) return 'updated';
   return 'skipped';
 }
-async function fetchEventsPage(accessToken, venueId, mode, page, dateFrom, dateTo) {
+async function fetchEventsPage(
+  adminClient,
+  row: NonNullable<Awaited<ReturnType<typeof loadConnection>>>,
+  venueId: string,
+  mode: 'full' | 'incremental',
+  page: number,
+  dateFrom: string | null,
+  dateTo: string,
+) {
   const query: Record<string, string> = {
     venue_id: venueId,
     page: String(page),
@@ -711,7 +811,7 @@ async function fetchEventsPage(accessToken, venueId, mode, page, dateFrom, dateT
     query.date_from = dateFrom;
     query.date_to = dateTo;
   }
-  const data = await pvApiGet(accessToken, '/events', query);
+  const data = await pvApiGetWithAuth(adminClient, row, '/events', query);
   const events = data.events ?? (Array.isArray(data) ? data : []);
   if (events.length === 0) return { events: [], hasMore: false };
   const totalPages = data.meta?.total_pages;
@@ -896,8 +996,9 @@ export async function syncPerfectVenueEvents(
     if (runInsertError) throw new Error(runInsertError.message || 'Failed to start sync run');
     runId = runRow.id;
 
-    let accessToken = await resolveAccessToken(adminClient, row);
-    const venues = await fetchVenues(accessToken);
+    await resolveAccessToken(adminClient, row);
+    const rowForVenues = (await loadConnection(adminClient)) ?? row;
+    const venues = await fetchVenues(adminClient, rowForVenues);
     const venueIds = venues.map((v) => v.id);
     const now = new Date();
     const dateTo = now.toISOString();
@@ -954,8 +1055,8 @@ export async function syncPerfectVenueEvents(
   const chunkDeadline = Date.now() + SYNC_CHUNK_BUDGET_MS;
 
   try {
-    let connectionRow = row;
-    let accessToken = await resolveAccessToken(adminClient, connectionRow);
+    let connectionRow = (await loadConnection(adminClient)) ?? row;
+    await resolveAccessToken(adminClient, connectionRow);
 
     while (checkpoint.venue_index < checkpoint.venue_ids.length) {
       if (Date.now() >= chunkDeadline) {
@@ -975,32 +1076,16 @@ export async function syncPerfectVenueEvents(
       }
 
       const venueId = checkpoint.venue_ids[checkpoint.venue_index];
-      let pageResult;
-      try {
-        pageResult = await fetchEventsPage(
-          accessToken,
-          venueId,
-          checkpoint.mode,
-          checkpoint.event_page,
-          checkpoint.date_from,
-          checkpoint.date_to,
-        );
-      } catch (err) {
-        if (err instanceof Error && err.message.includes('401')) {
-          connectionRow = (await loadConnection(adminClient)) ?? connectionRow;
-          accessToken = await resolveAccessToken(adminClient, connectionRow);
-          pageResult = await fetchEventsPage(
-            accessToken,
-            venueId,
-            checkpoint.mode,
-            checkpoint.event_page,
-            checkpoint.date_from,
-            checkpoint.date_to,
-          );
-        } else {
-          throw err;
-        }
-      }
+      connectionRow = (await loadConnection(adminClient)) ?? connectionRow;
+      const pageResult = await fetchEventsPage(
+        adminClient,
+        connectionRow,
+        venueId,
+        checkpoint.mode,
+        checkpoint.event_page,
+        checkpoint.date_from,
+        checkpoint.date_to,
+      );
 
       const { events, hasMore } = pageResult;
       checkpoint.events_fetched += events.length;
@@ -1087,8 +1172,13 @@ export async function startScheduledIncrementalIfIdle(
   if (!row?.connected) throw new Error('Perfect Venue is not connected');
   await expireStaleSyncRuns(adminClient);
   const fresh = await loadConnection(adminClient);
-  if (parseCheckpoint(fresh?.sync_checkpoint)) {
+  const cp = parseCheckpoint(fresh?.sync_checkpoint);
+  if (cp) {
+    console.info('pv-sync-daily skipped: checkpoint_in_progress', { run_id: cp.run_id });
     return { skipped: true, reason: 'checkpoint_in_progress' };
+  }
+  if (fresh) {
+    await resolveAccessToken(adminClient, fresh);
   }
   return syncPerfectVenueEvents(adminClient, 'incremental', { trigger: 'cron', actorId: null }, { continue: false });
 }
@@ -1123,6 +1213,14 @@ export async function toPublicStatus(adminClient, row) {
   } else if (envConfigured) {
     client_secret_masked = maskSecret(Deno.env.get('PERFECT_VENUE_CLIENT_SECRET') ?? 'set');
   }
+  const lastErr = row?.last_sync_error ?? '';
+  const needsReconnect =
+    typeof lastErr === 'string' &&
+    (/reconnect/i.test(lastErr) ||
+      /Refresh token failed/i.test(lastErr) ||
+      /Token expired/i.test(lastErr) ||
+      /\(401\)/.test(lastErr));
+
   if (!row?.connected) {
     return {
       connected: false,
@@ -1140,6 +1238,7 @@ export async function toPublicStatus(adminClient, row) {
       last_sync_stats: null,
       sync_in_progress: false,
       checkpoint_progress: null,
+      needs_reconnect: false,
     };
   }
   return {
@@ -1158,6 +1257,8 @@ export async function toPublicStatus(adminClient, row) {
     last_sync_stats: row.last_sync_stats ?? null,
     sync_in_progress,
     checkpoint_progress,
+    needs_reconnect: needsReconnect,
+    access_token_expires_at: row.access_token_expires_at ?? null,
   };
 }
 export async function savePvCredentials(adminClient, clientId, clientSecret, userId) {

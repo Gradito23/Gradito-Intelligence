@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { usePerfectVenueBackgroundSyncDriver } from '@/hooks/usePerfectVenueSyncDriver';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from '@/api/supabaseClient';
 
@@ -34,14 +35,40 @@ export async function invokePerfectVenueIntegration(body) {
   return data;
 }
 
-export function usePerfectVenueIntegration({ enabled = true, pollWhileSyncing = false } = {}) {
-  return useQuery({
+export function usePerfectVenueIntegration({
+  enabled = true,
+  pollWhileSyncing = false,
+  driveBackgroundTicks = false,
+} = {}) {
+  const query = useQuery({
     queryKey: PERFECT_VENUE_QUERY_KEY,
     queryFn: () => invokePerfectVenueIntegration({ action: 'get_status' }),
     enabled,
     refetchInterval: pollWhileSyncing
-      ? (query) => (query.state.data?.sync_in_progress ? 5000 : false)
+      ? (q) => (q.state.data?.sync_in_progress ? 5000 : false)
       : undefined,
+  });
+
+  usePerfectVenueBackgroundSyncDriver({
+    enabled: driveBackgroundTicks && enabled,
+    syncInProgress: !!query.data?.sync_in_progress,
+  });
+
+  return query;
+}
+
+export function usePerfectVenueSyncTick() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => invokePerfectVenueIntegration({ action: 'sync_events_tick' }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_QUERY_KEY });
+      queryClient.invalidateQueries({ queryKey: PERFECT_VENUE_SYNC_RUNS_KEY });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['events-ledger'] });
+      queryClient.invalidateQueries({ queryKey: ['events-pipeline-stats'] });
+      queryClient.invalidateQueries({ queryKey: ['events-ledger-summary'] });
+    },
   });
 }
 
