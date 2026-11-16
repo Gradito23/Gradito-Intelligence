@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -47,7 +49,6 @@ import {
   saveIntakeDraft,
 } from '@/lib/intakeDraftStorage';
 import { useOnboardingGuide } from '@/hooks/useOnboardingGuide';
-import { supabase } from '@/api/supabaseClient';
 import { Checkbox } from '@/components/ui/checkbox';
 import { CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
 
@@ -198,15 +199,32 @@ export default function ChefIntake() {
     const payload = buildIntakePayload(form);
 
     try {
-      await base44.entities.ChefIntakeRequest.create({
-        first_name: payload.first_name,
-        last_name: payload.last_name,
-        email: payload.email,
-        mobile: payload.mobile,
-        photo_url: payload.photo_url,
-        status: 'pending',
-        payload,
+      const { data, error } = await supabase.functions.invoke('chef-intake-submit', {
+        method: 'POST',
+        body: {
+          first_name: payload.first_name,
+          last_name: payload.last_name,
+          email: payload.email,
+          mobile: payload.mobile,
+          photo_url: payload.photo_url,
+          payload,
+        },
       });
+      if (error) {
+        let message = error.message || 'Submission failed';
+        if (error instanceof FunctionsHttpError) {
+          try {
+            const body = await error.context.json();
+            if (body?.error) message = body.error;
+          } catch {
+            // ignore
+          }
+        }
+        throw new Error(message);
+      }
+      if (data?.error) {
+        throw new Error(data.error);
+      }
       try {
         await base44.entities.ActivityLog.create({
           actor: 'Intake Form',

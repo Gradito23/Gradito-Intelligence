@@ -26,6 +26,7 @@ import {
 } from '@/lib/chefIntakeOptions';
 import MultiFileUpload from '@/components/intake/MultiFileUpload';
 import { toast } from '@/components/ui/use-toast';
+import { getIntakeLink } from '@/lib/chefInviteMessage';
 import ConfirmDialog from '@/components/ui/confirm-dialog';
 import ChefQuoMessages from '@/components/chefs/ChefQuoMessages';
 
@@ -251,7 +252,7 @@ export default function ChefDetailPanel({
   };
 
   const copyIntakeLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/intake`);
+    navigator.clipboard.writeText(getIntakeLink());
     toast({ title: 'Intake link copied!' });
   };
 

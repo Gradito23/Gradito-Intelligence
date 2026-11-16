@@ -179,27 +179,54 @@ async function handleSendMessage(
   }
 
   const chefId = typeof body.chef_id === 'string' ? body.chef_id.trim() : '';
+  const prospectId = typeof body.prospect_id === 'string' ? body.prospect_id.trim() : '';
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   const eventId = typeof body.event_id === 'string' ? body.event_id.trim() : null;
   const toOverride = typeof body.to === 'string' ? body.to.trim() : '';
+  const markIntakeInvite = body.mark_intake_invite === true;
 
-  if (!chefId) return jsonResponse({ error: 'chef_id is required' }, 400);
   if (!content) return jsonResponse({ error: 'content is required' }, 400);
-
-  const { data: chef, error: chefError } = await adminClient
-    .from('chefs')
-    .select('id, phone, mobile, archived')
-    .eq('id', chefId)
-    .maybeSingle();
-
-  if (chefError) throw chefError;
-  if (!chef || chef.archived) {
-    return jsonResponse({ error: 'Chef not found' }, 404);
+  if (markIntakeInvite && !prospectId) {
+    return jsonResponse({ error: 'prospect_id is required for intake invite SMS' }, 400);
+  }
+  if (!chefId && !prospectId) {
+    return jsonResponse({ error: 'chef_id or prospect_id is required' }, 400);
   }
 
-  const toE164 = normalizeE164(toOverride || chef.mobile || chef.phone);
+  let toE164: string | null = null;
+  if (prospectId) {
+    const { data: prospect, error: prospectError } = await adminClient
+      .from('chef_invite_prospects')
+      .select('id, phone, mobile, archived, status')
+      .eq('id', prospectId)
+      .maybeSingle();
+
+    if (prospectError) throw prospectError;
+    if (!prospect || prospect.archived) {
+      return jsonResponse({ error: 'Invite prospect not found' }, 404);
+    }
+    if (prospect.status === 'joined') {
+      return jsonResponse({ error: 'Prospect has already joined' }, 400);
+    }
+
+    toE164 = normalizeE164(toOverride || prospect.mobile || prospect.phone);
+  } else {
+    const { data: chef, error: chefError } = await adminClient
+      .from('chefs')
+      .select('id, phone, mobile, archived')
+      .eq('id', chefId)
+      .maybeSingle();
+
+    if (chefError) throw chefError;
+    if (!chef || chef.archived) {
+      return jsonResponse({ error: 'Chef not found' }, 404);
+    }
+
+    toE164 = normalizeE164(toOverride || chef.mobile || chef.phone);
+  }
+
   if (!toE164) {
-    return jsonResponse({ error: 'Chef has no valid phone or mobile number' }, 400);
+    return jsonResponse({ error: 'No valid phone or mobile number' }, 400);
   }
 
   const env = getQuoEnvConfig();
@@ -233,7 +260,8 @@ async function handleSendMessage(
   const { data: row, error: insertError } = await adminClient
     .from('quo_communication_events')
     .insert({
-      chef_id: chefId,
+      chef_id: chefId || null,
+      prospect_id: prospectId || null,
       event_id: eventId,
       channel: 'sms',
       direction: 'outbound',
@@ -249,6 +277,17 @@ async function handleSendMessage(
     .single();
 
   if (insertError) throw insertError;
+
+  if (markIntakeInvite && prospectId) {
+    const now = new Date().toISOString();
+    await adminClient
+      .from('chef_invite_prospects')
+      .update({
+        intake_invite_last_sent_at: now,
+        status: 'invited',
+      })
+      .eq('id', prospectId);
+  }
 
   return jsonResponse({
     ok: true,

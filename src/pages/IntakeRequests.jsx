@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { useChefIntakeRequests } from '@/hooks/useAppData';
+import { useChefs, useChefIntakeRequests, useChefInviteProspects } from '@/hooks/useAppData';
+import { chefPayloadFromIntakeRequest } from '@/lib/chefIntakeMerge';
+import { findChefByIdentity, findProspectByIdentity } from '@/lib/chefDedupe';
 import { useAuth } from '@/lib/AuthContext';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,72 +54,10 @@ function formatList(arr) {
   return arr.join(', ');
 }
 
-function chefPayloadFromRequest(req) {
-  const p = req.payload || {};
-  const maxGuest = p.max_guest_count ?? p.max_solo_guests ?? 12;
-  return {
-    first_name: req.first_name,
-    last_name: req.last_name,
-    preferred_name: p.preferred_name || undefined,
-    email: req.email || p.email || undefined,
-    mobile: req.mobile || p.mobile || undefined,
-    photo_url: req.photo_url || p.photo_url || undefined,
-    city: p.city || undefined,
-    state: p.state || undefined,
-    home_airport: p.home_airport || undefined,
-    has_vehicle: typeof p.has_vehicle === 'boolean' ? p.has_vehicle : undefined,
-    current_position: p.current_position || undefined,
-    current_company: p.current_company || undefined,
-    years_cooking: p.years_cooking ?? undefined,
-    awards: p.awards || undefined,
-    resume_url: p.resume_url || undefined,
-    menu_url: p.menu_url || undefined,
-    bio_url: p.bio_url || undefined,
-    roles_available: p.roles_available || 'Head',
-    travel_policy: p.travel_policy || 'Home only',
-    default_travel_fee: p.default_travel_fee ?? 0,
-    max_solo_guests: maxGuest,
-    max_guest_count: maxGuest,
-    commercial_kitchen_access: p.commercial_kitchen_access || undefined,
-    own_kitchen_max_guests: p.own_kitchen_max_guests ?? undefined,
-    starting_event_fee_usd: p.starting_event_fee_usd ?? undefined,
-    starting_fee_flexible: p.starting_fee_flexible || undefined,
-    expected_compensation_usd: p.expected_compensation_usd ?? undefined,
-    travel_distance: p.travel_distance || undefined,
-    has_passport: typeof p.has_passport === 'boolean' ? p.has_passport : undefined,
-    ideal_events_per_period: p.ideal_events_per_period ?? undefined,
-    preferred_event_days: p.preferred_event_days || [],
-    lead_time: p.lead_time || undefined,
-    opportunity_preferences: p.opportunity_preferences || [],
-    instagram_url: p.instagram_url || undefined,
-    tiktok_url: p.tiktok_url || undefined,
-    linkedin_url: p.linkedin_url || undefined,
-    youtube_url: p.youtube_url || undefined,
-    website_url: p.website_url || undefined,
-    newsletter_url: p.newsletter_url || undefined,
-    social_follower_band: p.social_follower_band || undefined,
-    media_history: p.media_history || undefined,
-    equipment_notes: p.equipment_notes || undefined,
-    signature_experiences: p.signature_experiences || undefined,
-    home_areas: p.home_areas || [],
-    cuisines: p.cuisines || [],
-    experience_types: p.experience_types || [],
-    dietary_specialties: p.dietary_specialties || [],
-    languages: p.languages || [],
-    blackout_holidays: p.blackout_holidays || [],
-    blackout_dates: p.blackout_dates || [],
-    availability_notes: p.availability_notes || undefined,
-    notes: p.notes || p.professional_bio || undefined,
-    talent_profile: p.talent_profile || {},
-    quality_rating: 3,
-    profile_status: 'Complete',
-    status: 'Active',
-    travel_fees: [],
-  };
-}
-
 export default function IntakeRequests() {
   const { data: requests = [], isLoading } = useChefIntakeRequests();
+  const { data: inviteProspects = [] } = useChefInviteProspects();
+  const { data: chefs = [] } = useChefs();
   const queryClient = useQueryClient();
   const { user, hasPermission } = useAuth();
   const canWrite = hasPermission('intake', 'write');
@@ -142,19 +82,55 @@ export default function IntakeRequests() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['chefIntakeRequests'] });
     queryClient.invalidateQueries({ queryKey: ['chefs'] });
+    queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] });
   };
 
   const handleApprove = async (req) => {
     if (!canWrite || req.status !== 'pending') return;
     setBusyId(req.id);
     try {
-      const chef = await base44.entities.Chef.create(chefPayloadFromRequest(req));
+      const payload = chefPayloadFromIntakeRequest(req);
+      const identity = { email: req.email || req.payload?.email, mobile: req.mobile || req.payload?.mobile };
+      const roster = chefs.length ? chefs : (queryClient.getQueryData(['chefs']) || []);
+      let chef = null;
+
+      if (req.prospect_id) {
+        const prospect = await base44.entities.ChefInviteProspect.get(req.prospect_id);
+        if (prospect?.chef_id) {
+          chef = await base44.entities.Chef.get(prospect.chef_id);
+        }
+      }
+
+      if (!chef) {
+        chef = findChefByIdentity(roster, identity);
+      }
+
+      if (chef?.id) {
+        await base44.entities.Chef.update(chef.id, payload);
+        chef = { ...chef, id: chef.id };
+      } else {
+        chef = await base44.entities.Chef.create(payload);
+      }
+
       await base44.entities.ChefIntakeRequest.update(req.id, {
         status: 'approved',
         chef_id: chef.id,
         reviewed_by: user?.id || null,
         reviewed_at: new Date().toISOString(),
       });
+
+      let prospectId = req.prospect_id;
+      if (!prospectId) {
+        const match = findProspectByIdentity(inviteProspects, identity);
+        prospectId = match?.id;
+      }
+      if (prospectId) {
+        await base44.entities.ChefInviteProspect.update(prospectId, {
+          chef_id: chef.id,
+          status: 'joined',
+          intake_request_id: req.id,
+        });
+      }
       try {
         await base44.entities.ActivityLog.create({
           actor: user?.display_name || user?.email || 'Ops',

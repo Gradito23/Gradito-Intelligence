@@ -73,6 +73,14 @@ export function useChefIntakeRequests() {
   });
 }
 
+export function useChefInviteProspects() {
+  return useQuery({
+    queryKey: ['chefInviteProspects'],
+    queryFn: () => base44.entities.ChefInviteProspect.list('-created_date', 500),
+    initialData: [],
+  });
+}
+
 export function useTeamMembers() {
   return useQuery({
     queryKey: ['teamMembers'],

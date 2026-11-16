@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Users, Star, AlertCircle, Globe, Coffee, Search, X, Plus, UserPlus, Link } from 'lucide-react';
 import { CUISINES, SERVICE_AREAS } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
+import { getIntakeLink } from '@/lib/chefInviteMessage';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 // Quick-add chef dialog (minimal fields, rest via intake form)
@@ -134,7 +135,7 @@ export default function Chefs() {
           <p className="text-muted-foreground mt-1">Your complete chef roster and intelligence</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => { navigator.clipboard.writeText(`${window.location.origin}/intake`); toast({ title: 'Intake link copied' }); }}>
+          <Button variant="outline" onClick={() => { navigator.clipboard.writeText(getIntakeLink()); toast({ title: 'Intake link copied' }); }}>
             <Link size={16} className="mr-2" /> Copy Intake Link
           </Button>
           <Button onClick={() => setShowAddChef(true)} className="bg-navy hover:bg-navy/90 text-white">

@@ -50,7 +50,16 @@ Phone number id and webhook URLs are not shown in the admin UI.
 
 ## Chef messaging
 
-**Chefs → detail panel → Messages** lists `quo_communication_events` for that chef and sends outbound SMS via `integration-quo` (`send_message`).
+**Chefs → detail panel → Messages** lists `quo_communication_events` for that chef and sends outbound SMS via `integration-quo` (`send_message` with `chef_id`).
+
+## Intake invite SMS (prospects)
+
+Migration: `20261117100000_chef_invite_prospects.sql`. Deploy `chef-intake-submit` for public `/intake` submissions.
+
+- **Invite by Message** uses `chef_invite_prospects` (not the live chef roster).
+- Send intake SMS with `send_message` + `prospect_id` + `mark_intake_invite: true` (updates prospect `intake_invite_last_sent_at`).
+- Public intake runs through `chef-intake-submit`: blocks if email/phone matches a live chef; links `prospect_id` when matched.
+- Approving an intake request **updates** an existing chef when email/phone (or `prospect.chef_id`) matches — it does not create a duplicate row.
 
 ## API reference
 

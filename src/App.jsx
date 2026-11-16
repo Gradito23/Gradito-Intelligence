@@ -23,6 +23,7 @@ const GuideRedirect = lazy(() => import('@/pages/GuideRedirect'));
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Chefs = lazy(() => import('@/pages/Chefs'));
+const ChefInviteByMessage = lazy(() => import('@/pages/ChefInviteByMessage'));
 const IntakeRequests = lazy(() => import('@/pages/IntakeRequests'));
 const Events = lazy(() => import('@/pages/Events'));
 const ChefMatch = lazy(() => import('@/pages/ChefMatch'));
@@ -141,6 +142,14 @@ function AuthenticatedApp() {
                 element={(
                   <PermissionRoute permission={{ resource: 'chefs', action: 'read' }}>
                     <Chefs />
+                  </PermissionRoute>
+                )}
+              />
+              <Route
+                path="/invite-by-message"
+                element={(
+                  <PermissionRoute permission={{ resource: 'chefs', action: 'write' }}>
+                    <ChefInviteByMessage />
                   </PermissionRoute>
                 )}
               />
