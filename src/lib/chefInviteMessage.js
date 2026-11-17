@@ -1,27 +1,20 @@
-export const CHEF_INTAKE_INVITE_TEMPLATE_KEY = 'gradito_chef_intake_invite_template_v1';
+export const CHEF_INTAKE_INVITE_TEMPLATE_KEY = 'gradito_chef_intake_invite_template_v3';
 export const CHEF_INTAKE_INVITE_EMAIL_SUBJECT_KEY = 'gradito_chef_intake_invite_email_subject_v1';
-export const CHEF_INTAKE_INVITE_EMAIL_BODY_KEY = 'gradito_chef_intake_invite_email_body_v1';
+export const CHEF_INTAKE_INVITE_EMAIL_BODY_KEY = 'gradito_chef_intake_invite_email_body_v2';
+
+/** Fallback when prospect/chef has no city (matches prior hardcoded copy). */
+export const DEFAULT_INVITE_CITY = 'Miami';
 
 export const DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT = "You're invited to join Gradito";
 
-export const DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY = `Hi {{first_name}},
+export const DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY = `Gradito: Hi {{first_name}}, it's Sean! We'd love to have you on our private chef roster for paid events in {{city}}: {{intake_link}}
 
-You're invited to join the Gradito chef roster. Please complete your talent profile:
-
-{{intake_link}}
-
-— Gradito Team`;
+Reply STOP to opt out.`;
 
 /** Public intake form URL (SMS, copy link, templates — never localhost). */
 export const PUBLIC_INTAKE_URL = 'https://ai.gradito.com/intake';
 
-export const DEFAULT_CHEF_INTAKE_INVITE_TEMPLATE = `Hi {{first_name}},
-
-You're invited to join the Gradito chef roster. Please complete your talent profile:
-
-{{intake_link}}
-
-— Gradito Team`;
+export const DEFAULT_CHEF_INTAKE_INVITE_TEMPLATE = `Gradito: Hi {{first_name}}, it's Sean! We'd love to have you on our private chef roster for paid events in {{city}}: {{intake_link}} Reply STOP to opt out.`;
 
 export function buildIntakeJoinedLookup(requests) {
   const chefIds = new Set();
@@ -53,14 +46,8 @@ export function getIntakeLink() {
   return PUBLIC_INTAKE_URL;
 }
 
-export function renderChefInviteTemplate(template, chef) {
-  const intakeLink = getIntakeLink();
-  const first = chef?.first_name?.trim() || 'there';
-  const last = chef?.last_name?.trim() || '';
-  return String(template || DEFAULT_CHEF_INTAKE_INVITE_TEMPLATE)
-    .replace(/\{\{\s*first_name\s*\}\}/gi, first)
-    .replace(/\{\{\s*last_name\s*\}\}/gi, last)
-    .replace(/\{\{\s*intake_link\s*\}\}/gi, intakeLink);
+export function renderChefInviteTemplate(template, person) {
+  return applyInviteVars(template || DEFAULT_CHEF_INTAKE_INVITE_TEMPLATE, person);
 }
 
 export function chefHasPhone(row) {
@@ -76,6 +63,10 @@ export function chefHasEmail(row) {
 export function isProspectJoined(prospect) {
   if (!prospect || prospect.archived) return false;
   return Boolean(prospect.chef_id || prospect.status === 'joined' || prospect.intake_submitted_at);
+}
+
+export function hasGraditoMessagingOptIn(row) {
+  return row?.gradito_messaging_opt_in !== false;
 }
 
 /** @returns {'joined' | 'invited' | 'not_invited' | 'no_phone' | 'no_email'} */
@@ -104,7 +95,7 @@ export function deriveChefInviteStatus(chef, options = {}) {
 }
 
 export function canSendProspectSms(prospect) {
-  return !isProspectJoined(prospect) && chefHasPhone(prospect);
+  return !isProspectJoined(prospect) && chefHasPhone(prospect) && hasGraditoMessagingOptIn(prospect);
 }
 
 /** @deprecated use canSendProspectSms */
@@ -113,7 +104,7 @@ export function canSendProspectInvite(prospect) {
 }
 
 export function canSendProspectEmail(prospect) {
-  return !isProspectJoined(prospect) && chefHasEmail(prospect);
+  return !isProspectJoined(prospect) && chefHasEmail(prospect) && hasGraditoMessagingOptIn(prospect);
 }
 
 export function canSelectProspectForInvite(prospect) {
@@ -159,9 +150,11 @@ function applyInviteVars(template, person) {
   const intakeLink = getIntakeLink();
   const first = person?.first_name?.trim() || 'there';
   const last = person?.last_name?.trim() || '';
+  const city = person?.city?.trim() || DEFAULT_INVITE_CITY;
   return String(template || '')
     .replace(/\{\{\s*first_name\s*\}\}/gi, first)
     .replace(/\{\{\s*last_name\s*\}\}/gi, last)
+    .replace(/\{\{\s*city\s*\}\}/gi, city)
     .replace(/\{\{\s*intake_link\s*\}\}/gi, intakeLink);
 }
 

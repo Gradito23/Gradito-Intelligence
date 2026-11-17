@@ -802,6 +802,18 @@ export default function ChefIntake() {
                 .
               </span>
             </label>
+
+            <label className="flex items-start gap-3 cursor-pointer">
+              <Checkbox
+                checked={form.gradito_messaging_opt_in !== false}
+                onCheckedChange={(checked) => set('gradito_messaging_opt_in', checked === true)}
+                className="mt-0.5"
+              />
+              <span className="text-sm leading-relaxed text-muted-foreground">
+                I agree to receive messages from Gradito about roster opportunities and intake
+                (SMS and email).
+              </span>
+            </label>
           </div>
         </Section>
 

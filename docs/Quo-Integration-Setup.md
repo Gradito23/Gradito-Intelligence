@@ -61,6 +61,17 @@ Migration: `20261117100000_chef_invite_prospects.sql`. Deploy `chef-intake-submi
 - Public intake runs through `chef-intake-submit`: blocks if email/phone matches a live chef; links `prospect_id` when matched.
 - Approving an intake request **updates** an existing chef when email/phone (or `prospect.chef_id`) matches — it does not create a duplicate row.
 
+## Messaging opt-in and STOP
+
+Migration: `20261117300000_gradito_messaging_opt_in.sql`.
+
+- Chefs and invite prospects have `gradito_messaging_opt_in` (default true) and `gradito_messaging_opt_out_at`.
+- Public intake includes an optional messaging checkbox (default on); approve writes opt-in to the chef row.
+- Inbound Quo SMS with body `STOP` (and `STOPALL`, `UNSUBSCRIBE`, etc.) opts out matching chefs/prospects by phone.
+- `integration-quo` and `integration-email` `send_intake_invite` reject sends when opted out.
+
+Redeploy `quo-webhook-messages` after changes to `quoWebhook.ts` / `quo.ts`.
+
 ## Intake invite email (prospects)
 
 Migration: `20261117200000_prospect_invite_email.sql`. Redeploy `integration-email`.

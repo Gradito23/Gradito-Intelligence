@@ -34,7 +34,8 @@ export default function ChefQuoMessages({ chef, eventId = null }) {
     [events],
   );
 
-  const canSend = quoStatus?.enabled && chefPhone && content.trim().length > 0;
+  const messagingOptIn = chef?.gradito_messaging_opt_in !== false;
+  const canSend = quoStatus?.enabled && chefPhone && content.trim().length > 0 && messagingOptIn;
 
   const handleSend = async () => {
     try {
@@ -76,6 +77,15 @@ export default function ChefQuoMessages({ chef, eventId = null }) {
       <Card className="p-4 text-sm text-muted-foreground flex items-start gap-2">
         <Phone className="h-4 w-4 mt-0.5 shrink-0" />
         Add a mobile or phone number on this chef before sending SMS.
+      </Card>
+    );
+  }
+
+  if (!messagingOptIn) {
+    return (
+      <Card className="p-4 text-sm text-muted-foreground">
+        This chef has opted out of Gradito messaging (including SMS). Re-enable under Contact &amp; Portfolio if they
+        agree to receive messages again.
       </Card>
     );
   }

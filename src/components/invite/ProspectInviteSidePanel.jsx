@@ -80,7 +80,7 @@ export default function ProspectInviteSidePanel({
 
   const previewSms = prospect
     ? renderChefInviteTemplate(smsTemplate, prospect)
-    : renderChefInviteTemplate(smsTemplate, { first_name: 'Jane', last_name: 'Doe' });
+    : renderChefInviteTemplate(smsTemplate, { first_name: 'Jane', last_name: 'Doe', city: 'Miami' });
 
   const subjectPreview = prospect
     ? renderChefInviteEmailSubject(emailSubject, prospect)
@@ -88,7 +88,7 @@ export default function ProspectInviteSidePanel({
 
   const emailPlainPreview = prospect
     ? renderChefInviteEmailPlain(emailBody, prospect)
-    : renderChefInviteEmailPlain(emailBody, { first_name: 'Jane', last_name: 'Doe' });
+    : renderChefInviteEmailPlain(emailBody, { first_name: 'Jane', last_name: 'Doe', city: 'Miami' });
 
   const emailHtmlPreview = plainInviteTextToHtml(emailPlainPreview);
 
@@ -108,8 +108,15 @@ export default function ProspectInviteSidePanel({
               {prospect.first_name} {prospect.last_name}
             </h2>
             <p className="text-xs text-muted-foreground">
-              {prospect.email || 'No email'} · {prospect.mobile || prospect.phone || 'No phone'}
+              {[prospect.city, prospect.email || 'No email', prospect.mobile || prospect.phone || 'No phone']
+                .filter(Boolean)
+                .join(' · ')}
             </p>
+            {prospect.gradito_messaging_opt_in === false && (
+              <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                Opted out of Gradito messaging — SMS and email invites are disabled.
+              </p>
+            )}
           </div>
 
           <Tabs defaultValue="sms" className="w-full">
@@ -121,7 +128,7 @@ export default function ProspectInviteSidePanel({
 
             <TabsContent value="sms" className="space-y-3 mt-3">
               <p className="text-xs text-muted-foreground">
-                Variables: {'{{first_name}}'}, {'{{last_name}}'}, {'{{intake_link}}'}
+                Variables: {'{{first_name}}'}, {'{{last_name}}'}, {'{{city}}'}, {'{{intake_link}}'}
               </p>
               <Textarea
                 value={smsTemplate}
@@ -154,6 +161,9 @@ export default function ProspectInviteSidePanel({
             </TabsContent>
 
             <TabsContent value="email" className="space-y-3 mt-3">
+              <p className="text-xs text-muted-foreground">
+                Variables: {'{{first_name}}'}, {'{{last_name}}'}, {'{{city}}'}, {'{{intake_link}}'}
+              </p>
               <LabelRow label="Subject" />
               <Input
                 value={emailSubject}

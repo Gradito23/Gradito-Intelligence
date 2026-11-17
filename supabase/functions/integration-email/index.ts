@@ -618,7 +618,7 @@ async function handleSendIntakeInvite(
 
   const { data: prospect, error: prospectError } = await adminClient
     .from('chef_invite_prospects')
-    .select('id, email, archived, status')
+    .select('id, email, archived, status, gradito_messaging_opt_in')
     .eq('id', prospectId)
     .maybeSingle();
 
@@ -628,6 +628,9 @@ async function handleSendIntakeInvite(
   }
   if (prospect.status === 'joined') {
     return jsonResponse({ error: 'Prospect has already joined' }, 400);
+  }
+  if (prospect.gradito_messaging_opt_in === false) {
+    return jsonResponse({ error: 'This person has opted out of Gradito messaging' }, 400);
   }
 
   const to = typeof prospect.email === 'string' ? prospect.email.trim() : '';

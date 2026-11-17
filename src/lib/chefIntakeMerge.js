@@ -63,5 +63,9 @@ export function chefPayloadFromIntakeRequest(req) {
     profile_status: 'Complete',
     status: 'Active',
     travel_fees: [],
+    gradito_messaging_opt_in: p.gradito_messaging_opt_in !== false,
+    gradito_messaging_opt_out_at: p.gradito_messaging_opt_in === false
+      ? new Date().toISOString()
+      : null,
   };
 }

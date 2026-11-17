@@ -147,6 +147,82 @@ export async function quoJson<T = unknown>(
   };
 }
 
+export function isSmsOptOutKeyword(body: string | null | undefined): boolean {
+  const normalized = (body || '').trim().toUpperCase();
+  return [
+    'STOP',
+    'STOPALL',
+    'UNSUBSCRIBE',
+    'CANCEL',
+    'END',
+    'QUIT',
+  ].includes(normalized);
+}
+
+export async function resolveProspectIdByPhone(
+  adminClient: ReturnType<typeof createServiceClient>,
+  counterpartyE164: string | null,
+): Promise<string | null> {
+  if (!counterpartyE164) return null;
+  const { data: prospects, error } = await adminClient
+    .from('chef_invite_prospects')
+    .select('id, phone, mobile')
+    .eq('archived', false);
+  if (error) {
+    console.error('resolveProspectIdByPhone:', error.message);
+    return null;
+  }
+  const matches = (prospects || []).filter(
+    (p) => phonesMatch(counterpartyE164, p.mobile) || phonesMatch(counterpartyE164, p.phone),
+  );
+  if (matches.length === 1) return matches[0].id;
+  if (matches.length > 1) {
+    console.warn('resolveProspectIdByPhone: multiple prospects for', counterpartyE164);
+    return matches[0].id;
+  }
+  return null;
+}
+
+export async function applyMessagingOptOutByPhone(
+  adminClient: ReturnType<typeof createServiceClient>,
+  counterpartyE164: string | null,
+): Promise<void> {
+  if (!counterpartyE164) return;
+  const now = new Date().toISOString();
+
+  const { data: chefs } = await adminClient
+    .from('chefs')
+    .select('id, phone, mobile')
+    .eq('archived', false);
+
+  const chefIds = (chefs || [])
+    .filter((c) => phonesMatch(counterpartyE164, c.mobile) || phonesMatch(counterpartyE164, c.phone))
+  .map((c) => c.id);
+
+  if (chefIds.length) {
+    await adminClient
+      .from('chefs')
+      .update({ gradito_messaging_opt_in: false, gradito_messaging_opt_out_at: now })
+      .in('id', chefIds);
+  }
+
+  const { data: prospects } = await adminClient
+    .from('chef_invite_prospects')
+    .select('id, phone, mobile')
+    .eq('archived', false);
+
+  const prospectIds = (prospects || [])
+    .filter((p) => phonesMatch(counterpartyE164, p.mobile) || phonesMatch(counterpartyE164, p.phone))
+    .map((p) => p.id);
+
+  if (prospectIds.length) {
+    await adminClient
+      .from('chef_invite_prospects')
+      .update({ gradito_messaging_opt_in: false, gradito_messaging_opt_out_at: now })
+      .in('id', prospectIds);
+  }
+}
+
 export async function resolveChefIdByPhone(
   adminClient: ReturnType<typeof createServiceClient>,
   counterpartyE164: string | null,

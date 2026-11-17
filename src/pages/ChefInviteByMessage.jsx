@@ -69,7 +69,7 @@ function delay(ms) {
 }
 
 function AddProspectDialog({ open, onClose, chefs, prospects, onCreated }) {
-  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', mobile: '' });
+  const [form, setForm] = useState({ first_name: '', last_name: '', email: '', mobile: '', city: '' });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -95,10 +95,12 @@ function AddProspectDialog({ open, onClose, chefs, prospects, onCreated }) {
         last_name: form.last_name.trim(),
         email: form.email?.trim() || undefined,
         mobile: form.mobile?.trim() || undefined,
+        city: form.city?.trim() || undefined,
         status: 'not_invited',
+        gradito_messaging_opt_in: true,
       });
       toast({ title: 'Prospect added' });
-      setForm({ first_name: '', last_name: '', email: '', mobile: '' });
+      setForm({ first_name: '', last_name: '', email: '', mobile: '', city: '' });
       onCreated();
       onClose();
     } catch (err) {
@@ -132,6 +134,10 @@ function AddProspectDialog({ open, onClose, chefs, prospects, onCreated }) {
           <div>
             <Label htmlFor="prospect-mobile">Mobile (SMS)</Label>
             <Input id="prospect-mobile" value={form.mobile} onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value }))} />
+          </div>
+          <div>
+            <Label htmlFor="prospect-city">City</Label>
+            <Input id="prospect-city" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} placeholder="e.g. Miami" />
           </div>
           <Button type="submit" className="w-full bg-navy hover:bg-navy/90 text-white" disabled={saving}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add prospect'}
@@ -179,6 +185,7 @@ export default function ChefInviteByMessage() {
       inviteStatus: deriveProspectInviteStatus(p),
       displayPhone: p.mobile?.trim() || p.phone?.trim() || '',
       displayEmail: p.email?.trim() || '',
+      displayCity: p.city?.trim() || '',
     })),
     [activeList],
   );
@@ -397,6 +404,7 @@ export default function ChefInviteByMessage() {
                 </TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
+                <TableHead>City</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Last SMS</TableHead>
@@ -406,7 +414,7 @@ export default function ChefInviteByMessage() {
             <TableBody>
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-sm text-muted-foreground py-10">
+                  <TableCell colSpan={8} className="text-center text-sm text-muted-foreground py-10">
                     No prospects match. Add a prospect to send SMS or email invites.
                   </TableCell>
                 </TableRow>
@@ -428,6 +436,7 @@ export default function ChefInviteByMessage() {
                     {prospect.first_name} {prospect.last_name}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{prospect.displayPhone || '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{prospect.displayCity || '—'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">{prospect.displayEmail || '—'}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`text-xs ${statusBadgeClass(prospect.inviteStatus)}`}>
