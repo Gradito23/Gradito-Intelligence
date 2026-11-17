@@ -10,6 +10,7 @@ import {
 } from '@/hooks/useEmailIntegration';
 import { findChefByIdentity, findProspectByIdentity } from '@/lib/chefDedupe';
 import ProspectInviteSidePanel from '@/components/invite/ProspectInviteSidePanel';
+import ProspectWorkbookImportDialog from '@/components/invite/ProspectWorkbookImportDialog';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,10 +42,8 @@ import {
   useSaveChefInviteMessageSettings,
 } from '@/hooks/useChefInviteMessageSettings';
 import { MessageSquare, Loader2, Send, Mail, AlertCircle, Plus } from 'lucide-react';
-
-const STATUS_FILTER_OPTIONS = [
-  { value: 'all', label: 'All' },
-  { value: 'not_invited', label: 'Not invited' },
+  MessageSquare, Loader2, Send, Mail, AlertCircle, Plus, Upload, Trash2,
+} from 'lucide-react';
   { value: 'invited', label: 'Invited' },
   { value: 'joined', label: 'Joined' },
   { value: 'no_phone', label: 'No phone' },
@@ -357,19 +356,20 @@ export default function ChefInviteByMessage() {
         <p className="text-sm text-amber-950">
           Could not load invite templates from the database. Apply migration
           {' '}
-          <code className="text-xs">20261117400000_chef_invite_message_settings.sql</code>
-          {' '}
-          and refresh.
-        </p>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold text-navy flex items-center gap-2">
+    const deletingIds = selectedProspects.map((p) => p.id);
+    setDeleting(true);
+    let failed = 0;
+    for (const p of selectedProspects) {
+      try {
+        await base44.entities.ChefInviteProspect.delete(p.id);
+      } catch {
+        failed += 1;
+      }
+    }
+    setDeleting(false);
+    setShowDeleteConfirm(false);
+    setSelectedIds(new Set());
+    if (activeProspectId && deletingIds.includes(activeProspectId)) {
             <MessageSquare className="h-6 w-6" />
             Invite by Message
           </h1>
@@ -435,12 +435,6 @@ export default function ChefInviteByMessage() {
           variant="outline"
           disabled={selectedIds.size === 0 || bulkProgress || sendQuo.isPending}
           onClick={() => runBulk('sms')}
-        >
-          {bulkProgress?.channel === 'sms' ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{bulkProgress.done}/{bulkProgress.total}</>
-          ) : (
-            <><Send className="h-4 w-4 mr-2" />SMS ({selectedIds.size})</>
-          )}
         </Button>
         <Button
           type="button"
@@ -504,6 +498,20 @@ export default function ChefInviteByMessage() {
                   <TableCell className="text-sm text-muted-foreground">{prospect.displayPhone || '—'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{prospect.displayCity || '—'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">{prospect.displayEmail || '—'}</TableCell>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-destructive border-destructive/40 hover:bg-destructive/10"
+          disabled={selectedIds.size === 0 || bulkProgress || deleting}
+          onClick={() => setShowDeleteConfirm(true)}
+        >
+          {deleting ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting…</>
+          ) : (
+            <><Trash2 className="h-4 w-4 mr-2" />Delete ({selectedIds.size})</>
+          )}
+        </Button>
                   <TableCell>
                     <Badge variant="outline" className={`text-xs ${statusBadgeClass(prospect.inviteStatus)}`}>
                       {inviteStatusLabel(prospect.inviteStatus)}

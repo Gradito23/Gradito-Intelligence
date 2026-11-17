@@ -426,8 +426,8 @@ export default function Events() {
               : 'Log your first event or adjust filters.'}
           </p>
           {!searchInput.trim() && (
-            <Button onClick={() => setShowCreateEvent(true)} className="bg-gold hover:bg-gold/80 text-white">
-              <Plus size={16} className="mr-2" /> Log an event
+          <Button onClick={() => setShowCreateEvent(true)} className="bg-gold hover:bg-gold/80 text-white">
+            <Plus size={16} className="mr-2" /> Log an event
             </Button>
           )}
         </div>
