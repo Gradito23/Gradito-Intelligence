@@ -26,7 +26,7 @@ export const ADMIN_NAV_SECTIONS = [
       { path: '/admin/activity', label: 'Activity Log', icon: Activity, permission: { resource: 'team', action: 'read' } },
       { path: '/admin/bulk-upload', label: 'Bulk Upload', icon: Upload, permission: { resource: 'chefs', action: 'write' } },
       { path: '/admin/user-guide', label: 'User Guide', icon: BookOpen, permission: { resource: 'config', action: 'read' } },
-      { path: '/admin/job-pages', label: 'Job Pages', icon: Briefcase, permission: { resource: 'integrations', action: 'read' } },
+      { path: '/admin/job-pages', label: 'Job Pages', icon: Briefcase, permission: { resource: 'events', action: 'read' } },
       { path: '/admin/chef-salary-calculator', label: 'Chef Salary Calculator', icon: Calculator, permission: { resource: 'config', action: 'read' } },
     ],
   },

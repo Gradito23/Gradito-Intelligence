@@ -252,7 +252,7 @@ function AuthenticatedApp() {
                   <Route
                     path="job-pages"
                     element={(
-                      <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
+                      <PermissionRoute permission={{ resource: 'events', action: 'read' }}>
                         <JobPages />
                       </PermissionRoute>
                     )}

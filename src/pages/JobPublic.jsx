@@ -64,6 +64,15 @@ export default function JobPublic() {
   const ai = job?.ai_content || {};
   const snap = job?.source_snapshot || {};
 
+  useEffect(() => {
+    if (ai.title) {
+      document.title = `${ai.title} | Gradito`;
+    }
+    return () => {
+      document.title = 'Gradito';
+    };
+  }, [ai.title]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-cream flex items-center justify-center">

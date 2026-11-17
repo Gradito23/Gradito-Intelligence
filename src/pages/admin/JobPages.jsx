@@ -1,11 +1,16 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/api/supabaseClient';
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -14,21 +19,22 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import EventJobPageActions from '@/components/events/EventJobPageActions';
+import { fetchConfirmedEventsJobHub, upcomingConfirmedDateFilter } from '@/hooks/useEventJobPage';
+import {
+  CONFIRMED_EVENTS_JOB_HUB_KEY,
+  JOB_HUB_FILTERS,
+  JOB_PAGE_STATUS_STYLES,
+  invokeEventJob,
+  matchesJobHubFilter,
+} from '@/lib/eventJobPage';
+import { useAuth } from '@/lib/AuthContext';
 import { toast } from '@/components/ui/use-toast';
-import { Briefcase, Copy, Loader2, RefreshCw, Search, Unlink } from 'lucide-react';
+import { Briefcase, Loader2, RefreshCw, Search, Sparkles } from 'lucide-react';
 
-const STATUS_STYLES = {
-  published: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-  draft: 'bg-amber-100 text-amber-800 border-amber-200',
-  unpublished: 'bg-slate-100 text-slate-700 border-slate-200',
-};
+const BULK_CONCURRENCY = 3;
 
-function publicJobUrl(id) {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/job/${id}`;
-}
-
-function formatDate(value) {
+function formatEventDate(value) {
   if (!value) return '—';
   try {
     const d = parseISO(String(value).slice(0, 10));
@@ -38,101 +44,98 @@ function formatDate(value) {
   }
 }
 
-async function fetchJobPages() {
-  const { data, error } = await supabase
-    .from('event_job_pages')
-    .select(`
-      id,
-      event_id,
-      status,
-      generation_error,
-      published_at,
-      created_at,
-      updated_at,
-      ai_content,
-      source_snapshot,
-      events (
-        date,
-        service_area,
-        experience_type,
-        status
-      )
-    `)
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+function jobStatusLabel(jobPage) {
+  if (!jobPage) return '—';
+  if (jobPage.status === 'published') return 'Live';
+  if (jobPage.status === 'draft' && jobPage.generation_error) return 'Failed';
+  if (jobPage.status === 'draft') return 'Draft';
+  return jobPage.status;
 }
 
-async function invokeEventJob(body) {
-  const { data, error } = await supabase.functions.invoke('event-job', { body });
-  if (error) {
-    let message = error.message;
-    if (error instanceof FunctionsHttpError) {
-      try {
-        const payload = await error.context.json();
-        if (payload?.error) message = payload.error;
-      } catch {
-        /* ignore */
-      }
+async function runBatched(items, worker, concurrency) {
+  let ok = 0;
+  let failed = 0;
+  for (let i = 0; i < items.length; i += concurrency) {
+    const chunk = items.slice(i, i + concurrency);
+    const results = await Promise.allSettled(chunk.map(worker));
+    for (const r of results) {
+      if (r.status === 'fulfilled') ok += 1;
+      else failed += 1;
     }
-    throw new Error(message);
   }
-  if (data?.error) throw new Error(data.error);
-  return data;
+  return { ok, failed };
 }
 
 export default function JobPages() {
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission('events', 'write');
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
-  const [busyId, setBusyId] = useState(null);
+  const [hubFilter, setHubFilter] = useState('all');
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  const hubQueryKey = useMemo(
+    () => [...CONFIRMED_EVENTS_JOB_HUB_KEY, upcomingConfirmedDateFilter()],
+    [],
+  );
 
   const { data: rows = [], isLoading, refetch } = useQuery({
-    queryKey: ['admin', 'event_job_pages'],
-    queryFn: fetchJobPages,
+    queryKey: hubQueryKey,
+    queryFn: fetchConfirmedEventsJobHub,
   });
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
     return rows.filter((row) => {
-      const title = String(row.ai_content?.title || '').toLowerCase();
-      const area = String(row.source_snapshot?.service_area || row.events?.service_area || '').toLowerCase();
-      const id = String(row.id).toLowerCase();
-      return title.includes(q) || area.includes(q) || id.includes(q);
+      if (!matchesJobHubFilter(row.jobPage, hubFilter)) return false;
+      if (!q) return true;
+      const title = String(row.jobPage?.ai_content?.title || '').toLowerCase();
+      const client = String(row.client_name || '').toLowerCase();
+      const area = String(row.service_area || '').toLowerCase();
+      const exp = String(row.experience_type || '').toLowerCase();
+      const type = String(row.event_type || '').toLowerCase();
+      const jobId = String(row.jobPage?.id || '').toLowerCase();
+      return (
+        title.includes(q)
+        || client.includes(q)
+        || area.includes(q)
+        || exp.includes(q)
+        || type.includes(q)
+        || jobId.includes(q)
+      );
     });
-  }, [rows, search]);
+  }, [rows, search, hubFilter]);
 
-  const copyLink = useCallback(async (id) => {
-    const url = publicJobUrl(id);
-    try {
-      await navigator.clipboard.writeText(url);
-      toast({ title: 'Link copied', description: url });
-    } catch {
-      toast({ title: 'Copy failed', description: url, variant: 'destructive' });
-    }
-  }, []);
+  const missingInView = useMemo(
+    () => filtered.filter((row) => !row.jobPage),
+    [filtered],
+  );
 
-  const runAction = useCallback(async (id, action, eventId) => {
-    setBusyId(id);
+  const runBulkGenerate = useCallback(async () => {
+    if (!canWrite || missingInView.length === 0) return;
+    setBulkBusy(true);
     try {
-      if (action === 'unpublish') {
-        await invokeEventJob({ action: 'unpublish', job_id: id });
-        toast({ title: 'Job unpublished' });
-      } else {
-        await invokeEventJob({ action: 'regenerate', event_id: eventId });
-        toast({ title: 'Job page regenerated' });
-      }
-      await queryClient.invalidateQueries({ queryKey: ['admin', 'event_job_pages'] });
+      const { ok, failed } = await runBatched(
+        missingInView,
+        (row) => invokeEventJob({ action: 'generate', event_id: row.id }),
+        BULK_CONCURRENCY,
+      );
+      await queryClient.invalidateQueries({ queryKey: CONFIRMED_EVENTS_JOB_HUB_KEY });
+      toast({
+        title: 'Bulk generation finished',
+        description: `${ok} succeeded, ${failed} failed (${missingInView.length} targeted).`,
+        variant: failed > 0 ? 'destructive' : undefined,
+      });
     } catch (err) {
       toast({
-        title: 'Action failed',
+        title: 'Bulk generation failed',
         description: err instanceof Error ? err.message : 'Unknown error',
         variant: 'destructive',
       });
     } finally {
-      setBusyId(null);
+      setBulkBusy(false);
     }
-  }, [queryClient]);
+  }, [canWrite, missingInView, queryClient]);
 
   return (
     <div className="space-y-6">
@@ -142,7 +145,11 @@ export default function JobPages() {
           Job pages
         </h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Public chef job listings auto-created when events are confirmed. Links live at /job/&#123;id&#125;.
+          Upcoming and undated Confirmed events only—past dates are hidden. Public chef recruitment links
+          (chef-safe, AI copy) at /job/&#123;id&#125;.
+        </p>
+        <p className="text-xs text-muted-foreground mt-2">
+          Existing Confirmed events are not auto-generated retroactively—use Generate all missing or confirm again.
         </p>
       </div>
 
@@ -151,12 +158,36 @@ export default function JobPages() {
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
             className="pl-9"
-            placeholder="Search title, area, or id…"
+            placeholder="Search client, area, type, title, or job id…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading}>
+        <Select value={hubFilter} onValueChange={setHubFilter}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filter" />
+          </SelectTrigger>
+          <SelectContent>
+            {JOB_HUB_FILTERS.map((f) => (
+              <SelectItem key={f.id} value={f.id}>{f.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="default"
+          size="sm"
+          disabled={!canWrite || bulkBusy || missingInView.length === 0}
+          onClick={runBulkGenerate}
+        >
+          {bulkBusy ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Sparkles className="h-4 w-4 mr-2" />
+          )}
+          Generate all missing (AI)
+          {missingInView.length > 0 ? ` (${missingInView.length})` : ''}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isLoading || bulkBusy}>
           <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
@@ -166,17 +197,20 @@ export default function JobPages() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Event</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Published</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Client</TableHead>
+              <TableHead>Area</TableHead>
+              <TableHead>Type</TableHead>
+              <TableHead>Experience</TableHead>
+              <TableHead>Public title</TableHead>
+              <TableHead>Job</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                   <Loader2 className="h-5 w-5 animate-spin inline-block mr-2" />
                   Loading…
                 </TableCell>
@@ -184,67 +218,49 @@ export default function JobPages() {
             )}
             {!isLoading && filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-10 text-muted-foreground">
-                  No job pages yet. Confirm an event to generate one.
+                <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                  No upcoming Confirmed events match this filter.
                 </TableCell>
               </TableRow>
             )}
             {filtered.map((row) => {
-              const title = row.ai_content?.title || 'Untitled job';
-              const eventLabel = [
-                formatDate(row.events?.date || row.source_snapshot?.event_date),
-                row.source_snapshot?.service_area || row.events?.service_area,
-              ].filter(Boolean).join(' · ');
-              const isBusy = busyId === row.id;
+              const jobPage = row.jobPage;
+              const title = jobPage?.ai_content?.title || '—';
+              const statusKey = jobPage?.status;
               return (
                 <TableRow key={row.id}>
-                  <TableCell className="font-medium max-w-[220px]">
-                    <div className="truncate" title={title}>{title}</div>
-                    {row.generation_error && (
-                      <p className="text-xs text-amber-700 mt-1 truncate" title={row.generation_error}>
-                        {row.generation_error}
+                  <TableCell className="whitespace-nowrap text-sm">{formatEventDate(row.date)}</TableCell>
+                  <TableCell className="text-sm font-medium max-w-[160px]">
+                    <span className="truncate block" title={row.client_name || ''}>
+                      {row.client_name || '—'}
+                    </span>
+                  </TableCell>
+                  <TableCell className="text-sm">{row.service_area || '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{row.event_type || '—'}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{row.experience_type || '—'}</TableCell>
+                  <TableCell className="max-w-[200px]">
+                    <div className="truncate text-sm font-medium" title={title}>{title}</div>
+                    {jobPage?.generation_error && (
+                      <p className="text-xs text-amber-700 mt-1 truncate" title={jobPage.generation_error}>
+                        {jobPage.generation_error}
                       </p>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{eventLabel || '—'}</TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={`text-xs border ${STATUS_STYLES[row.status] || ''}`}>
-                      {row.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {row.published_at ? format(new Date(row.published_at), 'MMM d, yyyy') : '—'}
+                    {statusKey ? (
+                      <Badge variant="outline" className={`text-xs border ${JOB_PAGE_STATUS_STYLES[statusKey] || ''}`}>
+                        {jobStatusLabel(jobPage)}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Missing</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-1 flex-wrap">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={row.status !== 'published' || isBusy}
-                        onClick={() => copyLink(row.id)}
-                        title="Copy public link"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={isBusy}
-                        onClick={() => runAction(row.id, 'regenerate', row.event_id)}
-                        title="Regenerate"
-                      >
-                        {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={row.status !== 'published' || isBusy}
-                        onClick={() => runAction(row.id, 'unpublish', row.event_id)}
-                        title="Unpublish"
-                      >
-                        <Unlink className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    <EventJobPageActions
+                      eventId={row.id}
+                      jobPage={jobPage}
+                      variant="inline"
+                    />
                   </TableCell>
                 </TableRow>
               );
@@ -252,6 +268,16 @@ export default function JobPages() {
           </TableBody>
         </Table>
       </div>
+
+      {!isLoading && filtered.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {filtered.length.toLocaleString()}
+          {' '}
+          upcoming or undated Confirmed event
+          {filtered.length === 1 ? '' : 's'}
+          {hubFilter !== 'all' || search.trim() ? ' matching filters' : ''}
+        </p>
+      )}
     </div>
   );
 }
