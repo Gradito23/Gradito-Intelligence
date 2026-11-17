@@ -56,6 +56,15 @@ Phone number id and webhook URLs are not shown in the admin UI.
 
 Migration: `20261117100000_chef_invite_prospects.sql`. Deploy `chef-intake-submit` for public `/intake` submissions.
 
+### Invite templates (SMS + email copy)
+
+Migration: `20261117400000_chef_invite_message_settings.sql`.
+
+- SMS, email subject, and email body templates live in **`chef_invite_message_settings`** (singleton row `id = 1`), not in browser localStorage.
+- **Invite by Message** loads templates on page open and auto-saves edits after ~800ms (admin users only; RLS `is_admin()` on update).
+- Seed copy uses Sean / `{{city}}` / `{{intake_link}}` variables (see `src/lib/chefInviteMessage.js` defaults).
+- All authenticated users can **read** templates (for preview/send); only admins can **change** them.
+
 - **Invite by Message** uses `chef_invite_prospects` (not the live chef roster).
 - Send intake SMS with `send_message` + `prospect_id` + `mark_intake_invite: true` (updates prospect `intake_invite_last_sent_at`).
 - Public intake runs through `chef-intake-submit`: blocks if email/phone matches a live chef; links `prospect_id` when matched.

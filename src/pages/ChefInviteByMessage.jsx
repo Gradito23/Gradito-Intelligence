@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
@@ -27,18 +27,19 @@ import {
   canSendProspectEmail,
   canSendProspectSms,
   deriveProspectInviteStatus,
+  DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY,
+  DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT,
+  DEFAULT_CHEF_INTAKE_INVITE_TEMPLATE,
   getIntakeLink,
   inviteStatusLabel,
-  loadStoredInviteEmailBody,
-  loadStoredInviteEmailSubject,
-  loadStoredInviteTemplate,
   renderChefInviteEmailHtml,
   renderChefInviteEmailSubject,
-  saveStoredInviteEmailBody,
-  saveStoredInviteEmailSubject,
-  saveStoredInviteTemplate,
   renderChefInviteTemplate,
 } from '@/lib/chefInviteMessage';
+import {
+  useChefInviteMessageSettings,
+  useSaveChefInviteMessageSettings,
+} from '@/hooks/useChefInviteMessageSettings';
 import { MessageSquare, Loader2, Send, Mail, AlertCircle, Plus } from 'lucide-react';
 
 const STATUS_FILTER_OPTIONS = [
@@ -161,18 +162,65 @@ export default function ChefInviteByMessage() {
   const [statusFilter, setStatusFilter] = useState('not_invited');
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [activeProspectId, setActiveProspectId] = useState(null);
-  const [smsTemplate, setSmsTemplate] = useState(() => loadStoredInviteTemplate());
-  const [emailSubject, setEmailSubject] = useState(() => loadStoredInviteEmailSubject());
-  const [emailBody, setEmailBody] = useState(() => loadStoredInviteEmailBody());
+  const [smsTemplate, setSmsTemplate] = useState(DEFAULT_CHEF_INTAKE_INVITE_TEMPLATE);
+  const [emailSubject, setEmailSubject] = useState(DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT);
+  const [emailBody, setEmailBody] = useState(DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY);
   const [bulkProgress, setBulkProgress] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const templatesHydratedRef = useRef(false);
+  const lastPersistedTemplatesRef = useRef(null);
+
+  const {
+    data: inviteSettings,
+    isLoading: inviteSettingsLoading,
+    isError: inviteSettingsError,
+  } = useChefInviteMessageSettings();
+  const saveInviteSettings = useSaveChefInviteMessageSettings();
 
   const quoReady = quoStatus?.enabled && quoStatus?.configured;
   const emailReady = emailStatus?.enabled && emailStatus?.configured;
 
-  useEffect(() => { saveStoredInviteTemplate(smsTemplate); }, [smsTemplate]);
-  useEffect(() => { saveStoredInviteEmailSubject(emailSubject); }, [emailSubject]);
-  useEffect(() => { saveStoredInviteEmailBody(emailBody); }, [emailBody]);
+  useEffect(() => {
+    if (inviteSettingsLoading || templatesHydratedRef.current) return;
+    const sms = inviteSettings?.sms_template ?? DEFAULT_CHEF_INTAKE_INVITE_TEMPLATE;
+    const subject = inviteSettings?.email_subject ?? DEFAULT_CHEF_INTAKE_INVITE_EMAIL_SUBJECT;
+    const body = inviteSettings?.email_body ?? DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY;
+    setSmsTemplate(sms);
+    setEmailSubject(subject);
+    setEmailBody(body);
+    lastPersistedTemplatesRef.current = JSON.stringify({
+      sms_template: sms,
+      email_subject: subject,
+      email_body: body,
+    });
+    templatesHydratedRef.current = true;
+  }, [inviteSettings, inviteSettingsLoading]);
+
+  useEffect(() => {
+    if (!templatesHydratedRef.current) return;
+    const payload = {
+      sms_template: smsTemplate,
+      email_subject: emailSubject,
+      email_body: emailBody,
+    };
+    const snapshot = JSON.stringify(payload);
+    const timeout = setTimeout(() => {
+      if (snapshot === lastPersistedTemplatesRef.current) return;
+      saveInviteSettings.mutate(payload, {
+        onSuccess: () => {
+          lastPersistedTemplatesRef.current = snapshot;
+        },
+        onError: (err) => {
+          toast({
+            title: 'Could not save invite templates',
+            description: err.message || 'Check that you have admin access.',
+            variant: 'destructive',
+          });
+        },
+      });
+    }, 800);
+    return () => clearTimeout(timeout);
+  }, [smsTemplate, emailSubject, emailBody, saveInviteSettings]);
 
   const activeList = useMemo(
     () => (prospects ?? []).filter((p) => !p.archived),
@@ -295,11 +343,25 @@ export default function ChefInviteByMessage() {
     });
   };
 
-  if (isLoading) {
+  if (isLoading || inviteSettingsLoading) {
     return (
       <div className="flex justify-center py-24">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
+    );
+  }
+
+  if (inviteSettingsError) {
+    return (
+      <Card className="p-6 border-amber-200 bg-amber-50/80">
+        <p className="text-sm text-amber-950">
+          Could not load invite templates from the database. Apply migration
+          {' '}
+          <code className="text-xs">20261117400000_chef_invite_message_settings.sql</code>
+          {' '}
+          and refresh.
+        </p>
+      </Card>
     );
   }
 
@@ -315,7 +377,11 @@ export default function ChefInviteByMessage() {
             SMS (Quo) and email (Admin → Integrations) with intake link
             {' '}
             <code className="text-xs">{getIntakeLink()}</code>
+            . Templates are saved to Supabase (shared for all users).
           </p>
+          {saveInviteSettings.isPending && (
+            <p className="text-xs text-muted-foreground mt-1">Saving templates…</p>
+          )}
           <div className="flex flex-col gap-1 mt-2">
             {!quoReady && (
               <p className="text-sm text-amber-800 dark:text-amber-200 flex items-center gap-1.5">
