@@ -40,6 +40,8 @@ import {
 import { toast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/AuthContext';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { toAppRows } from '@/infrastructure/supabase/rowMapper';
 import PerfectVenueSyncHistory from '@/components/events/PerfectVenueSyncHistory';
 
 function formatEventDate(dateStr) {
@@ -57,6 +59,8 @@ const LEDGER_VIEWS = [
 
 export default function Events() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
   const queryClient = useQueryClient();
   const { data: eventChefs } = useEventChefs();
@@ -148,6 +152,31 @@ export default function Events() {
 
   const ledgerEvents = ledgerData?.rows ?? [];
   const totalCount = ledgerData?.totalCount ?? 0;
+
+  useEffect(() => {
+    const openId = location.state?.openEventId;
+    if (!openId) return;
+
+    const fromLedger = ledgerEvents.find((e) => e.id === openId);
+    if (fromLedger) {
+      setSelectedEvent(fromLedger);
+      navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from('events').select('*').eq('id', openId).maybeSingle();
+      if (cancelled) return;
+      if (!error && data) {
+        const row = toAppRows([data])[0];
+        if (row) setSelectedEvent(row);
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    })();
+
+    return () => { cancelled = true; };
+  }, [location.state, location.pathname, ledgerEvents, navigate]);
   const pageStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const pageEnd = Math.min(page * pageSize, totalCount);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));

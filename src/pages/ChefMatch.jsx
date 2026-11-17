@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { format, parseISO } from 'date-fns';
+import { Link } from 'react-router-dom';
 
 const TRANSCRIPT_SAVE_LIMIT = 2000;
 
@@ -334,6 +335,13 @@ ${transcript}`,
                 ))}
               </SelectContent>
             </Select>
+            {selectedEventId && (
+              <Button variant="outline" size="sm" asChild>
+                <Link to={`/admin/job-pages/${selectedEventId}`}>
+                  Open workspace
+                </Link>
+              </Button>
+            )}
           </Card>
           {selectedEventRow && (
             <Card className="p-4">

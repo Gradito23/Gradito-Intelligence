@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { format, parseISO } from 'date-fns';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
@@ -20,8 +21,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import EventJobPageActions from '@/components/events/EventJobPageActions';
-import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { fetchConfirmedEventsJobHub, upcomingConfirmedDateFilter } from '@/hooks/useEventJobPage';
 import {
   CONFIRMED_EVENTS_JOB_HUB_KEY,
@@ -75,7 +74,7 @@ export default function JobPages() {
   const [search, setSearch] = useState('');
   const [hubFilter, setHubFilter] = useState('all');
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [matchEvent, setMatchEvent] = useState(null);
+  const navigate = useNavigate();
 
   const hubQueryKey = useMemo(
     () => [...CONFIRMED_EVENTS_JOB_HUB_KEY, upcomingConfirmedDateFilter()],
@@ -231,7 +230,11 @@ export default function JobPages() {
               const title = jobPage?.ai_content?.title || '—';
               const statusKey = jobPage?.status;
               return (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  className="cursor-pointer hover:bg-secondary/30"
+                  onClick={() => navigate(`/admin/job-pages/${row.id}`)}
+                >
                   <TableCell className="whitespace-nowrap text-sm">{formatEventDate(row.date)}</TableCell>
                   <TableCell className="text-sm font-medium max-w-[160px]">
                     <span className="truncate block" title={row.client_name || ''}>
@@ -258,14 +261,14 @@ export default function JobPages() {
                       <span className="text-xs text-muted-foreground">Missing</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end items-center gap-0.5 flex-wrap">
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        title="Match chefs"
-                        onClick={() => setMatchEvent(row)}
+                        title="Chef match tab"
+                        onClick={() => navigate(`/admin/job-pages/${row.id}?tab=match`)}
                       >
                         <UserSearch className="h-4 w-4" />
                       </Button>
@@ -293,25 +296,6 @@ export default function JobPages() {
         </p>
       )}
 
-      <Sheet open={Boolean(matchEvent)} onOpenChange={(open) => !open && setMatchEvent(null)}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>
-              Match chefs
-              {matchEvent?.client_name ? ` — ${matchEvent.client_name}` : ''}
-            </SheetTitle>
-          </SheetHeader>
-          <div className="mt-6">
-            {matchEvent && (
-              <EventChefMatchPanel
-                key={matchEvent.id}
-                event={matchEvent}
-                jobSnapshot={matchEvent.jobPage?.source_snapshot}
-              />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
     </div>
   );
 }

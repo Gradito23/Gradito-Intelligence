@@ -53,6 +53,7 @@ const PerfectVenueIntegration = lazy(() => import('@/pages/admin/PerfectVenueInt
 const QuoIntegration = lazy(() => import('@/pages/admin/QuoIntegration'));
 const PerfectVenueOAuthCallback = lazy(() => import('@/pages/PerfectVenueOAuthCallback'));
 const JobPages = lazy(() => import('@/pages/admin/JobPages'));
+const ConfirmedEventHub = lazy(() => import('@/pages/admin/ConfirmedEventHub'));
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -239,6 +240,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'config', action: 'read' }}>
                         <UserGuide />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="job-pages/:eventId"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'events', action: 'read' }}>
+                        <ConfirmedEventHub />
                       </PermissionRoute>
                     )}
                   />
