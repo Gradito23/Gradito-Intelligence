@@ -13,8 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   estimateSmsSegments,
   isProspectJoined,
-  plainInviteTextToHtml,
-  renderChefInviteEmailPlain,
+  renderChefInviteEmailHtml,
   renderChefInviteEmailSubject,
   renderChefInviteTemplate,
 } from '@/lib/chefInviteMessage';
@@ -86,11 +85,8 @@ export default function ProspectInviteSidePanel({
     ? renderChefInviteEmailSubject(emailSubject, prospect)
     : renderChefInviteEmailSubject(emailSubject, { first_name: 'Jane', last_name: 'Doe' });
 
-  const emailPlainPreview = prospect
-    ? renderChefInviteEmailPlain(emailBody, prospect)
-    : renderChefInviteEmailPlain(emailBody, { first_name: 'Jane', last_name: 'Doe', city: 'Miami' });
-
-  const emailHtmlPreview = plainInviteTextToHtml(emailPlainPreview);
+  const emailPreviewPerson = prospect ?? { first_name: 'Jane', last_name: 'Doe', city: 'Miami' };
+  const emailHtmlPreview = renderChefInviteEmailHtml(emailBody, emailPreviewPerson);
 
   const handleCopySms = () => {
     if (!prospect) return;
@@ -180,10 +176,15 @@ export default function ProspectInviteSidePanel({
                 disabled={joined}
               />
               <p className="text-xs text-muted-foreground">Preview subject: {subjectPreview}</p>
-              <Card
-                className="p-3 bg-muted/40 text-sm prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: emailHtmlPreview }}
-              />
+              <p className="text-xs font-medium text-muted-foreground">Email preview</p>
+              <div className="rounded-md border border-border overflow-hidden bg-muted/20">
+                <iframe
+                  title="Invite email preview"
+                  className="w-full min-h-[440px] bg-white border-0"
+                  sandbox=""
+                  srcDoc={emailHtmlPreview}
+                />
+              </div>
               {joined ? (
                 <p className="text-sm text-muted-foreground">Joined — email disabled.</p>
               ) : (
