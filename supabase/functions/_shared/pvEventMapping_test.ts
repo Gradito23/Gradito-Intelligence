@@ -1,7 +1,10 @@
 import {
+  buildCustomFieldsArray,
   buildInsertNotes,
+  buildPvMetadataFields,
   parseClientNameFromPvEvent,
   pvMinutesToDisplayTime,
+  resolveAreaFromPv,
   resolvePvRevenue,
 } from './pvEventMapping.ts';
 
@@ -56,4 +59,38 @@ Deno.test('resolvePvRevenue falls back to budget', () => {
   if (resolvePvRevenue({ amount: 0, budget: 50000 }) !== 500) {
     throw new Error('budget fallback failed');
   }
+});
+
+const lisaWithAddress = {
+  ...lisaCapreFixture,
+  custom_field_values: [
+    {
+      label: 'Event Address',
+      value: 'The Moorings, Islamorada (the Keys)',
+    },
+  ],
+};
+
+Deno.test('resolveAreaFromPv uses event address custom field', () => {
+  const area = resolveAreaFromPv(lisaWithAddress, { pvAccountVenueName: 'Gradito' });
+  if (area !== 'The Moorings, Islamorada (the Keys)') {
+    throw new Error(`Unexpected area: ${JSON.stringify(area)}`);
+  }
+});
+
+Deno.test('resolveAreaFromPv parses region from title when no address', () => {
+  const area = resolveAreaFromPv(lisaCapreFixture, {});
+  if (area !== 'Florida Keys') throw new Error(`Expected Florida Keys, got ${area}`);
+});
+
+Deno.test('buildCustomFieldsArray captures PV intake', () => {
+  const rows = buildCustomFieldsArray(lisaWithAddress);
+  if (rows.length !== 1 || !rows[0].label.includes('Address')) {
+    throw new Error('custom fields not captured');
+  }
+});
+
+Deno.test('buildPvMetadataFields includes custom_fields', () => {
+  const meta = buildPvMetadataFields(lisaWithAddress, {});
+  if (!meta.custom_fields?.length) throw new Error('metadata missing custom_fields');
 });
