@@ -5,7 +5,11 @@ export type PvContactLike = {
   first_name?: string;
   last_name?: string;
   email?: string;
+  phone?: string;
+  mobile?: string;
 };
+
+export type PvCustomFieldEntry = { label: string; value: string };
 
 export type PvEventLike = Record<string, unknown> & {
   id?: string;
@@ -220,14 +224,118 @@ export function extractEventAddress(ev: PvEventLike): string | null {
 export function extractEventLocationLabel(ev: PvEventLike): string | null {
   const fromCustom =
     findCustomFieldByLabel(ev, 'event space') ??
-    findCustomFieldByLabel(ev, 'event location');
-  if (fromCustom) return fromCustom;
+    findCustomFieldByLabel(ev, 'event location') ??
+    findCustomFieldByLabel(ev, 'event address');
+  if (fromCustom) {
+    const firstLine = fromCustom.split(/[\n,]/)[0]?.trim();
+    if (firstLine) return firstLine;
+  }
   const addr = extractEventAddress(ev);
   if (addr) {
     const firstLine = addr.split(/[\n,]/)[0]?.trim();
     if (firstLine) return firstLine;
   }
   return null;
+}
+
+/** Gradito Area: known market first, else PV location/region string (not bare account name). */
+export function resolveAreaFromPv(
+  ev: PvEventLike,
+  options: { knownGraditoMarket?: string | null; pvAccountVenueName?: string | null } = {},
+): string | null {
+  if (options.knownGraditoMarket?.trim()) return options.knownGraditoMarket.trim();
+  const eventAddressField = findCustomFieldByLabel(ev, 'event address');
+  if (eventAddressField?.trim()) return eventAddressField.trim().slice(0, 120);
+  const loc = extractEventLocationLabel(ev) ?? extractEventAddress(ev);
+  if (loc) {
+    const first = loc.split(/[\n,]/)[0]?.trim();
+    if (first && first.length <= 120) return first;
+  }
+  const title = parseEventTitleFromName(ev.name);
+  if (title) {
+    const inMatch = title.match(/\b(?:in|at)\s+(.+)$/i);
+    if (inMatch?.[1]?.trim()) return inMatch[1].trim().slice(0, 120);
+  }
+  const venue = options.pvAccountVenueName?.trim();
+  if (venue && venue.toLowerCase() !== 'gradito') {
+    return null;
+  }
+  return null;
+}
+
+export function buildCustomFieldsArray(ev: PvEventLike): PvCustomFieldEntry[] {
+  const out: PvCustomFieldEntry[] = [];
+  for (const item of iterPvCustomFields(ev)) {
+    const label = String(
+      item.label ?? item.name ?? item.key ?? item.field_name ?? '',
+    ).trim();
+    const value = customFieldAnswer(item);
+    if (!label || !value) continue;
+    out.push({
+      label,
+      value: value.length > 2000 ? `${value.slice(0, 1997)}...` : value,
+    });
+  }
+  return out;
+}
+
+function readPvStringField(ev: PvEventLike, key: string): string | null {
+  const v = ev[key];
+  if (typeof v === 'string' && v.trim()) return v.trim();
+  if (v && typeof v === 'object' && 'name' in v) {
+    const name = (v as { name?: string }).name;
+    if (typeof name === 'string' && name.trim()) return name.trim();
+  }
+  return null;
+}
+
+export function resolvePvSpecialistNames(ev: PvEventLike): {
+  sales_specialist_name: string | null;
+  execution_specialist_name: string | null;
+} {
+  const sales =
+    readPvStringField(ev, 'sales_specialist') ??
+    readPvStringField(ev, 'sales_specialist_name') ??
+    readPvStringField(ev, 'owner_name') ??
+    readPvStringField(ev, 'owner') ??
+    findCustomFieldByLabel(ev, 'sales specialist');
+  const execution =
+    readPvStringField(ev, 'execution_specialist') ??
+    readPvStringField(ev, 'execution_specialist_name') ??
+    findCustomFieldByLabel(ev, 'execution specialist');
+  return { sales_specialist_name: sales, execution_specialist_name: execution };
+}
+
+const EXPERIENCE_KEYWORD_MAP: [RegExp, string][] = [
+  [/\bwedding\b/i, 'Wedding'],
+  [/\bcorporate\b/i, 'Corporate'],
+  [/\bwelcome dinner\b/i, 'Family-Style'],
+  [/\bcocktail\b|\bcanap/i, 'Cocktail Reception / Canapés'],
+  [/\bbrunch\b/i, 'Brunch / Daytime'],
+  [/\bclass\b/i, 'Interactive Cooking Class'],
+];
+
+/** Map PV vision/intake text to Gradito experience_type when unambiguous. */
+export function resolveExperienceTypeFromPv(ev: PvEventLike): string | null {
+  const chunks = [
+    findCustomFieldByLabel(ev, 'type of event'),
+    findCustomFieldByLabel(ev, 'vision'),
+    parseEventTitleFromName(ev.name),
+  ].filter(Boolean) as string[];
+  const hay = chunks.join(' ').toLowerCase();
+  if (!hay) return null;
+  for (const [re, exp] of EXPERIENCE_KEYWORD_MAP) {
+    if (re.test(hay)) return exp;
+  }
+  return null;
+}
+
+export function contactEmailFromPvContact(contact?: PvContactLike | null): string | null {
+  return contact?.email?.trim() || null;
+}
+
+export function contactPhoneFromPvContact(contact?: PvContactLike | null): string | null {
+  return contact?.mobile?.trim() || contact?.phone?.trim() || null;
 }
 
 const INTAKE_LABEL_KEYWORDS = [
@@ -270,15 +378,27 @@ export type PvMetadataBuilt = {
   event_address?: string | null;
   event_location_label?: string | null;
   intake_summary?: Record<string, string> | null;
+  custom_fields?: PvCustomFieldEntry[];
+  contact_email?: string | null;
+  contact_phone?: string | null;
+  sales_specialist_name?: string | null;
+  execution_specialist_name?: string | null;
+  attribution_unmatched?: string[] | null;
   updated_at?: unknown;
 };
 
 export function buildPvMetadataFields(
   ev: PvEventLike,
-  options: { zip?: string | null; pvVenueName?: string | null } = {},
+  options: {
+    zip?: string | null;
+    pvVenueName?: string | null;
+    contact?: PvContactLike | null;
+    attribution_unmatched?: string[] | null;
+  } = {},
 ): PvMetadataBuilt {
   const revenueRaw = getPvRevenueRaw(ev);
   const times = formatPvEventTimes(ev);
+  const specialists = resolvePvSpecialistNames(ev);
   return {
     name: ev.name,
     source: ev.source,
@@ -303,6 +423,21 @@ export function buildPvMetadataFields(
     event_address: extractEventAddress(ev),
     event_location_label: extractEventLocationLabel(ev),
     intake_summary: buildIntakeSummary(ev),
+    custom_fields: buildCustomFieldsArray(ev),
+    contact_email: contactEmailFromPvContact(options.contact),
+    contact_phone: contactPhoneFromPvContact(options.contact),
+    sales_specialist_name: specialists.sales_specialist_name,
+    execution_specialist_name: specialists.execution_specialist_name,
+    attribution_unmatched: options.attribution_unmatched ?? null,
     updated_at: ev.updated_at,
   };
+}
+
+/** True when list payload likely omits custom_field_values. */
+export function pvEventNeedsDetailFetch(ev: PvEventLike): boolean {
+  return buildCustomFieldsArray(ev).length === 0;
+}
+
+export function shouldSyncPvClientRevenue(ev: PvEventLike): boolean {
+  return resolvePvRevenue(ev) > 0;
 }

@@ -111,6 +111,15 @@ export default function EventAttribution({ draft, update, teamMembers, netProfit
           </button>
         </div>
 
+        {Array.isArray(draft.pv_metadata?.attribution_unmatched) && draft.pv_metadata.attribution_unmatched.length > 0 && (
+          <p className="text-xs text-amber-800 dark:text-amber-200 flex items-start gap-1.5">
+            <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            PV specialists not auto-linked:
+            {' '}
+            {draft.pv_metadata.attribution_unmatched.join('; ')}
+          </p>
+        )}
+
         {/* Lead Type */}
         <div>
           <label className="text-xs text-muted-foreground block mb-1">Lead Type</label>

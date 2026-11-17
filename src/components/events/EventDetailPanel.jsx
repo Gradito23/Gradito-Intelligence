@@ -21,8 +21,14 @@ import { resolveClientByName } from '@/lib/resolveClient';
 import EventPnL from './EventPnL';
 import EventAttribution from './EventAttribution';
 import EventSummary from './EventSummary';
+import PvEventSourceCard from './PvEventSourceCard';
 import ManageTeamModal from './ManageTeamModal';
 import EventPayments from './EventPayments';
+
+const PV_FIELD_LOCK_KEYS = [
+  'service_area', 'client_name', 'client_id', 'date', 'event_type', 'guest_count',
+  'status', 'client_revenue', 'experience_type', 'notes', 'closer_id', 'facilitators',
+];
 
 function ChipPicker({ label, selected, options, onChange }) {
   return (
@@ -138,8 +144,21 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
       clientId = client?.id || null;
     }
 
+    const prevLocks = typeof event.pv_field_locks === 'object' && event.pv_field_locks
+      ? { ...event.pv_field_locks }
+      : {};
+    const nextLocks = { ...prevLocks };
+    if (event.event_source === 'perfect_venue') {
+      for (const key of PV_FIELD_LOCK_KEYS) {
+        const a = draft[key];
+        const b = event[key];
+        if (JSON.stringify(a) !== JSON.stringify(b)) nextLocks[key] = true;
+      }
+    }
+
     await base44.entities.Event.update(event.id, {
       ...draft,
+      pv_field_locks: nextLocks,
       client_id:             clientId || undefined,
       client_name:           String(draft.client_name || '').trim(),
       guest_count:           Number(draft.guest_count) || 0,
@@ -256,6 +275,20 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
     onClose();
   };
 
+  const areaOptions = useMemo(() => {
+    const base = [...SERVICE_AREAS];
+    const cur = draft?.service_area?.trim();
+    if (cur && !base.includes(cur)) base.unshift(cur);
+    return base;
+  }, [draft?.service_area]);
+
+  const eventTypeOptions = useMemo(() => {
+    const base = ['Private', 'Corporate', 'Wedding'];
+    const cur = draft?.event_type?.trim();
+    if (cur && !base.includes(cur)) base.unshift(cur);
+    return base;
+  }, [draft?.event_type]);
+
   if (!draft) return null;
 
   return (
@@ -301,6 +334,8 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
               commissionLines={commissionLinesData}
             />
 
+            <PvEventSourceCard event={draft} />
+
             {/* Core fields */}
             <Card className="p-4 space-y-3">
               <h4 className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Event Details</h4>
@@ -324,9 +359,9 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Area</label>
-                  <Select value={draft.service_area} onValueChange={v => update('service_area', v)}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                    <SelectContent>{SERVICE_AREAS.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
+                  <Select value={draft.service_area || ''} onValueChange={v => update('service_area', v)}>
+                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select or from PV…" /></SelectTrigger>
+                    <SelectContent>{areaOptions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
                 <div>
@@ -338,9 +373,9 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
                   <Select value={draft.event_type} onValueChange={v => update('event_type', v)}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Private">Private</SelectItem>
-                      <SelectItem value="Corporate">Corporate</SelectItem>
-                      <SelectItem value="Wedding">Wedding</SelectItem>
+                      {eventTypeOptions.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
