@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { useEventChefs, useClients, useChefs, formatCurrency } from '@/hooks/useAppData';
 import {
   useEventsLedger,
@@ -169,6 +170,11 @@ export default function Events() {
       actor: 'Team', action: 'Updated', entity_type: 'Event', entity_label: event.client_name,
       summary: `Changed status of ${event.client_name} event to ${newStatus}`,
     });
+    if (newStatus === 'Confirmed') {
+      void supabase.functions.invoke('event-job', {
+        body: { action: 'generate', event_id: event.id },
+      });
+    }
     invalidateEventsLedger(queryClient);
     toast({ title: `Event status → ${newStatus}` });
   };

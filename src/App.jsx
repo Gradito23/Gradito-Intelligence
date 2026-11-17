@@ -19,6 +19,7 @@ const ChefIntake = lazy(() => import('@/pages/ChefIntake'));
 const ContractorTerms = lazy(() => import('@/pages/legal/ContractorTerms'));
 const ContractorNda = lazy(() => import('@/pages/legal/ContractorNda'));
 const GuideRedirect = lazy(() => import('@/pages/GuideRedirect'));
+const JobPublic = lazy(() => import('@/pages/JobPublic'));
 
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
@@ -51,6 +52,7 @@ const IntegrationsDocument = lazy(() => import('@/pages/admin/IntegrationsDocume
 const PerfectVenueIntegration = lazy(() => import('@/pages/admin/PerfectVenueIntegration'));
 const QuoIntegration = lazy(() => import('@/pages/admin/QuoIntegration'));
 const PerfectVenueOAuthCallback = lazy(() => import('@/pages/PerfectVenueOAuthCallback'));
+const JobPages = lazy(() => import('@/pages/admin/JobPages'));
 
 const PUBLIC_PATHS = new Set([
   '/login',
@@ -91,6 +93,7 @@ function AuthenticatedApp() {
   const location = useLocation();
   const isPublicRoute = PUBLIC_PATHS.has(location.pathname)
     || location.pathname.startsWith('/guide/')
+    || location.pathname.startsWith('/job/')
     || location.pathname.startsWith('/legal/');
 
   if (isPublicRoute && (isLoadingPublicSettings || isLoadingAuth)) {
@@ -117,6 +120,7 @@ function AuthenticatedApp() {
           <Route path="/legal/contractor-terms" element={<ContractorTerms />} />
           <Route path="/legal/contractor-nda" element={<ContractorNda />} />
           <Route path="/guide/:token" element={<GuideRedirect />} />
+          <Route path="/job/:jobId" element={<JobPublic />} />
           <Route path="/oauth/perfect-venue/callback" element={<PerfectVenueOAuthCallback />} />
 
           <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
@@ -242,6 +246,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'config', action: 'read' }}>
                         <UserGuide />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="job-pages"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'integrations', action: 'read' }}>
+                        <JobPages />
                       </PermissionRoute>
                     )}
                   />
