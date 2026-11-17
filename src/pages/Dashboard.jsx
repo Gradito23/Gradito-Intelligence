@@ -34,7 +34,7 @@ const QUICK_LINKS = [
   { path: '/chefs', label: 'Chefs', description: 'Roster and chef profiles', icon: ChefHat, permission: { resource: 'chefs', action: 'read' } },
   { path: '/intake-requests', label: 'Intake Requests', description: 'Approve chef submissions', icon: ClipboardList, permission: { resource: 'intake', action: 'read' } },
   { path: '/events', label: 'Events', description: 'Events and assignments', icon: Calendar, permission: { resource: 'events', action: 'read' } },
-  { path: '/match', label: 'Chef Match', description: 'Shortlist chefs from a transcript', icon: Sparkles, permission: { resource: 'chefs', action: 'read' } },
+  { path: '/admin/chef-match', label: 'Chef Match', description: 'Shortlist chefs for events', icon: Sparkles, permission: { resource: 'chefs', action: 'read' } },
   { path: '/reports', label: 'Reports', description: 'Analytics by area and cuisine', icon: BarChart3, permission: { resource: 'reports', action: 'read' } },
   { path: '/profitability', label: 'Profitability', description: 'Margins and commissions', icon: DollarSign, permission: { resource: 'reports', action: 'read' } },
 ];
@@ -146,7 +146,7 @@ export default function Dashboard() {
     attentionItems.push({
       key: 'match',
       label: 'Run Chef Match',
-      to: '/match',
+      to: '/admin/chef-match',
     });
   }
 

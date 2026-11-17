@@ -99,6 +99,47 @@ export function detectEventColumnRoles(headerRow) {
   return roles;
 }
 
+// ─── Prospect invite (Chef Directory workbook) header match ───────────────────
+const PROSPECT_HEADER_MAP = {
+  'first name': 'first_name',
+  chef: 'first_name',
+  'last name': 'last_name',
+  'last name ': 'last_name',
+  phone: 'mobile',
+  'phone number': 'mobile',
+  mobile: 'mobile',
+  email: 'email',
+  'location change': 'location_note',
+};
+
+export function detectProspectColumnRoles(headerRow) {
+  if (!headerRow) return {};
+  const roles = {};
+  let hasExplicitFirstName = false;
+  headerRow.forEach((cell, i) => {
+    const raw = String(cell || '').trim();
+    if (!raw || /^__empty/i.test(raw)) return;
+    const key = raw.toLowerCase();
+    const role = PROSPECT_HEADER_MAP[key];
+    if (role) {
+      roles[i] = role;
+      if (key === 'first name') hasExplicitFirstName = true;
+    }
+  });
+  // "Chef" maps to first_name only when there is no "First Name" column
+  if (hasExplicitFirstName) {
+    headerRow.forEach((cell, i) => {
+      if (String(cell || '').trim().toLowerCase() === 'chef') delete roles[i];
+    });
+  }
+  return roles;
+}
+
+export function countProspectIdentityColumns(colRoles) {
+  const identity = new Set(['first_name', 'last_name', 'mobile', 'email']);
+  return Object.values(colRoles).filter((r) => identity.has(r)).length;
+}
+
 // ─── Sheet parser ─────────────────────────────────────────────────────────────
 export function parseSheet(sheetName, worksheet) {
   const raw = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null, blankrows: false });

@@ -71,7 +71,7 @@ export const TECHNICAL_DOC_SECTIONS = [
     bullets: [
       'Public: /intake (chef self-onboarding), /login, /register, password reset and invite acceptance flows.',
       'Public tracking: /guide/:token — redirects to the configured onboarding guide URL and records click events.',
-      'Ops (authenticated): /dashboard, /chefs, /intake-requests, /events, /match, /reports, /profitability, /profile.',
+      'Ops (authenticated): /dashboard, /chefs, /intake-requests, /events, /reports, /profitability, /profile. Admin: /admin/chef-match, /admin/job-pages, …',
       'Admin (admin_panel access): /admin/* — users, roles, reference data, integrations, bulk upload, commission team, documentation pages.',
     ],
   },

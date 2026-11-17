@@ -3,7 +3,6 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   ChefHat,
   Calendar,
-  Sparkles,
   BarChart3,
   DollarSign,
   LayoutDashboard,
@@ -29,7 +28,6 @@ const NAV_SECTIONS = [
       { path: '/invite-by-message', label: 'Invite by Message', icon: MessageSquare, permission: { resource: 'chefs', action: 'write' } },
       { path: '/intake-requests', label: 'Intake Requests', icon: ClipboardList, permission: { resource: 'intake', action: 'read' } },
       { path: '/events', label: 'Events', icon: Calendar, permission: { resource: 'events', action: 'read' } },
-      { path: '/match', label: 'Chef Match', icon: Sparkles, permission: { resource: 'chefs', action: 'read' } },
     ],
   },
   {

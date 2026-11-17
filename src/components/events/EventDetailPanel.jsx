@@ -24,6 +24,10 @@ import EventSummary from './EventSummary';
 import PvEventSourceCard from './PvEventSourceCard';
 import ManageTeamModal from './ManageTeamModal';
 import EventPayments from './EventPayments';
+import EventJobPageActions from './EventJobPageActions';
+import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
+import { useEventJobPage } from '@/hooks/useEventJobPage';
+import { supabase } from '@/api/supabaseClient';
 
 const PV_FIELD_LOCK_KEYS = [
   'service_area', 'client_name', 'client_id', 'date', 'event_type', 'guest_count',
@@ -103,6 +107,11 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
     () => (draft && pnl) ? computeCommission({ ...draft, facilitators }, pnl.commissionableProfit, teamMembers) : null,
     [draft, facilitators, pnl, teamMembers]
   );
+
+  const confirmedForJobPage = draft?.status === 'Confirmed';
+  const { jobPage, invalidate: invalidateJobPage } = useEventJobPage(event?.id, {
+    enabled: open && confirmedForJobPage,
+  });
 
   // ── Persist commission lines ───────────────────────────────────────────────
   const persistCommissionLines = async (eventId, lines, lineStatus, eventLabel) => {
@@ -210,6 +219,12 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
     queryClient.invalidateQueries({ queryKey: ['clients'] });
     queryClient.invalidateQueries({ queryKey: ['activityLogs'] });
     queryClient.invalidateQueries({ queryKey: ['commissionLines'] });
+    if (draft.status === 'Confirmed' && event.status !== 'Confirmed') {
+      void supabase.functions.invoke('event-job', {
+        body: { action: 'generate', event_id: event.id },
+      });
+      invalidateJobPage();
+    }
     toast({ title: `Event for ${draft.client_name} updated` });
     setDirty(false);
     } catch (err) {
@@ -335,6 +350,26 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
             />
 
             <PvEventSourceCard event={draft} />
+
+            {confirmedForJobPage && (
+              <>
+                <Card className="p-4">
+                  <EventJobPageActions
+                    eventId={event.id}
+                    jobPage={jobPage}
+                    variant="card"
+                    onUpdated={invalidateJobPage}
+                  />
+                </Card>
+                <Card className="p-4">
+                  <EventChefMatchPanel
+                    event={draft}
+                    jobPage={jobPage}
+                    jobSnapshot={jobPage?.source_snapshot}
+                  />
+                </Card>
+              </>
+            )}
 
             {/* Core fields */}
             <Card className="p-4 space-y-3">

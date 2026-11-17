@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
+import { supabase } from '@/api/supabaseClient';
 import { useEventChefs, useClients, useChefs, formatCurrency } from '@/hooks/useAppData';
 import {
   useEventsLedger,
@@ -39,6 +40,8 @@ import {
 import { toast } from '@/components/ui/use-toast';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useAuth } from '@/lib/AuthContext';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { toAppRows } from '@/infrastructure/supabase/rowMapper';
 import PerfectVenueSyncHistory from '@/components/events/PerfectVenueSyncHistory';
 
 function formatEventDate(dateStr) {
@@ -56,6 +59,8 @@ const LEDGER_VIEWS = [
 
 export default function Events() {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
   const isAdmin = user?.role === 'admin';
   const queryClient = useQueryClient();
   const { data: eventChefs } = useEventChefs();
@@ -147,6 +152,31 @@ export default function Events() {
 
   const ledgerEvents = ledgerData?.rows ?? [];
   const totalCount = ledgerData?.totalCount ?? 0;
+
+  useEffect(() => {
+    const openId = location.state?.openEventId;
+    if (!openId) return;
+
+    const fromLedger = ledgerEvents.find((e) => e.id === openId);
+    if (fromLedger) {
+      setSelectedEvent(fromLedger);
+      navigate(location.pathname, { replace: true, state: {} });
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      const { data, error } = await supabase.from('events').select('*').eq('id', openId).maybeSingle();
+      if (cancelled) return;
+      if (!error && data) {
+        const row = toAppRows([data])[0];
+        if (row) setSelectedEvent(row);
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    })();
+
+    return () => { cancelled = true; };
+  }, [location.state, location.pathname, ledgerEvents, navigate]);
   const pageStart = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
   const pageEnd = Math.min(page * pageSize, totalCount);
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
@@ -169,6 +199,11 @@ export default function Events() {
       actor: 'Team', action: 'Updated', entity_type: 'Event', entity_label: event.client_name,
       summary: `Changed status of ${event.client_name} event to ${newStatus}`,
     });
+    if (newStatus === 'Confirmed') {
+      void supabase.functions.invoke('event-job', {
+        body: { action: 'generate', event_id: event.id },
+      });
+    }
     invalidateEventsLedger(queryClient);
     toast({ title: `Event status → ${newStatus}` });
   };
@@ -426,8 +461,8 @@ export default function Events() {
               : 'Log your first event or adjust filters.'}
           </p>
           {!searchInput.trim() && (
-            <Button onClick={() => setShowCreateEvent(true)} className="bg-gold hover:bg-gold/80 text-white">
-              <Plus size={16} className="mr-2" /> Log an event
+          <Button onClick={() => setShowCreateEvent(true)} className="bg-gold hover:bg-gold/80 text-white">
+            <Plus size={16} className="mr-2" /> Log an event
             </Button>
           )}
         </div>
