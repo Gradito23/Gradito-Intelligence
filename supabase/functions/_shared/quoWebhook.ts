@@ -2,10 +2,13 @@ import { createServiceClient, jsonResponse } from './auth.ts';
 import {
   extractCounterpartyFromWebhook,
   extractIdsFromEnvelope,
+  applyMessagingOptOutByPhone,
   extractMessageBody,
   extractTranscriptBody,
+  isSmsOptOutKeyword,
   normalizeE164,
   resolveChefIdByPhone,
+  resolveProspectIdByPhone,
 } from './quo.ts';
 
 function decodeSigningKey(secret: string): Uint8Array {
@@ -98,6 +101,7 @@ export async function insertQuoCommunicationFromWebhook(input: InsertEventInput)
   const counterparty = extractCounterpartyFromWebhook(envelope);
   const counterpartyE164 = normalizeE164(counterparty);
   const chefId = await resolveChefIdByPhone(adminClient, counterpartyE164);
+  const prospectId = await resolveProspectIdByPhone(adminClient, counterpartyE164);
 
   const ids = extractIdsFromEnvelope(envelope);
   const bodyText = channel === 'call_transcript'
@@ -114,6 +118,7 @@ export async function insertQuoCommunicationFromWebhook(input: InsertEventInput)
 
   const { error } = await adminClient.from('quo_communication_events').insert({
     chef_id: chefId,
+    prospect_id: prospectId,
     channel,
     direction,
     quo_conversation_id: ids.quo_conversation_id,
@@ -132,6 +137,15 @@ export async function insertQuoCommunicationFromWebhook(input: InsertEventInput)
     }
     console.error('quo webhook insert:', error.message);
     return jsonResponse({ error: 'Failed to persist event' }, 500);
+  }
+
+  if (
+    channel === 'sms'
+    && direction === 'inbound'
+    && isSmsOptOutKeyword(bodyText)
+    && counterpartyE164
+  ) {
+    await applyMessagingOptOutByPhone(adminClient, counterpartyE164);
   }
 
   return jsonResponse({ ok: true });

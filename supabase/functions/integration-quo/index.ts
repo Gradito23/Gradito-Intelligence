@@ -197,7 +197,7 @@ async function handleSendMessage(
   if (prospectId) {
     const { data: prospect, error: prospectError } = await adminClient
       .from('chef_invite_prospects')
-      .select('id, phone, mobile, archived, status')
+      .select('id, phone, mobile, archived, status, gradito_messaging_opt_in')
       .eq('id', prospectId)
       .maybeSingle();
 
@@ -208,18 +208,24 @@ async function handleSendMessage(
     if (prospect.status === 'joined') {
       return jsonResponse({ error: 'Prospect has already joined' }, 400);
     }
+    if (prospect.gradito_messaging_opt_in === false) {
+      return jsonResponse({ error: 'This person has opted out of Gradito messaging' }, 400);
+    }
 
     toE164 = normalizeE164(toOverride || prospect.mobile || prospect.phone);
   } else {
     const { data: chef, error: chefError } = await adminClient
       .from('chefs')
-      .select('id, phone, mobile, archived')
+      .select('id, phone, mobile, archived, gradito_messaging_opt_in')
       .eq('id', chefId)
       .maybeSingle();
 
     if (chefError) throw chefError;
     if (!chef || chef.archived) {
       return jsonResponse({ error: 'Chef not found' }, 404);
+    }
+    if (chef.gradito_messaging_opt_in === false) {
+      return jsonResponse({ error: 'This chef has opted out of Gradito messaging' }, 400);
     }
 
     toE164 = normalizeE164(toOverride || chef.mobile || chef.phone);

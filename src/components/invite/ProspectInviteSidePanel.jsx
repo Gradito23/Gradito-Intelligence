@@ -13,8 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   estimateSmsSegments,
   isProspectJoined,
-  plainInviteTextToHtml,
-  renderChefInviteEmailPlain,
+  renderChefInviteEmailHtml,
   renderChefInviteEmailSubject,
   renderChefInviteTemplate,
 } from '@/lib/chefInviteMessage';
@@ -80,17 +79,14 @@ export default function ProspectInviteSidePanel({
 
   const previewSms = prospect
     ? renderChefInviteTemplate(smsTemplate, prospect)
-    : renderChefInviteTemplate(smsTemplate, { first_name: 'Jane', last_name: 'Doe' });
+    : renderChefInviteTemplate(smsTemplate, { first_name: 'Jane', last_name: 'Doe', city: 'Miami' });
 
   const subjectPreview = prospect
     ? renderChefInviteEmailSubject(emailSubject, prospect)
     : renderChefInviteEmailSubject(emailSubject, { first_name: 'Jane', last_name: 'Doe' });
 
-  const emailPlainPreview = prospect
-    ? renderChefInviteEmailPlain(emailBody, prospect)
-    : renderChefInviteEmailPlain(emailBody, { first_name: 'Jane', last_name: 'Doe' });
-
-  const emailHtmlPreview = plainInviteTextToHtml(emailPlainPreview);
+  const emailPreviewPerson = prospect ?? { first_name: 'Jane', last_name: 'Doe', city: 'Miami' };
+  const emailHtmlPreview = renderChefInviteEmailHtml(emailBody, emailPreviewPerson);
 
   const handleCopySms = () => {
     if (!prospect) return;
@@ -108,8 +104,15 @@ export default function ProspectInviteSidePanel({
               {prospect.first_name} {prospect.last_name}
             </h2>
             <p className="text-xs text-muted-foreground">
-              {prospect.email || 'No email'} · {prospect.mobile || prospect.phone || 'No phone'}
+              {[prospect.city, prospect.email || 'No email', prospect.mobile || prospect.phone || 'No phone']
+                .filter(Boolean)
+                .join(' · ')}
             </p>
+            {prospect.gradito_messaging_opt_in === false && (
+              <p className="text-xs text-amber-800 dark:text-amber-200 mt-1">
+                Opted out of Gradito messaging — SMS and email invites are disabled.
+              </p>
+            )}
           </div>
 
           <Tabs defaultValue="sms" className="w-full">
@@ -121,7 +124,7 @@ export default function ProspectInviteSidePanel({
 
             <TabsContent value="sms" className="space-y-3 mt-3">
               <p className="text-xs text-muted-foreground">
-                Variables: {'{{first_name}}'}, {'{{last_name}}'}, {'{{intake_link}}'}
+                Variables: {'{{first_name}}'}, {'{{last_name}}'}, {'{{city}}'}, {'{{intake_link}}'}
               </p>
               <Textarea
                 value={smsTemplate}
@@ -154,6 +157,9 @@ export default function ProspectInviteSidePanel({
             </TabsContent>
 
             <TabsContent value="email" className="space-y-3 mt-3">
+              <p className="text-xs text-muted-foreground">
+                Variables: {'{{first_name}}'}, {'{{last_name}}'}, {'{{city}}'}, {'{{intake_link}}'}
+              </p>
               <LabelRow label="Subject" />
               <Input
                 value={emailSubject}
@@ -170,10 +176,15 @@ export default function ProspectInviteSidePanel({
                 disabled={joined}
               />
               <p className="text-xs text-muted-foreground">Preview subject: {subjectPreview}</p>
-              <Card
-                className="p-3 bg-muted/40 text-sm prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{ __html: emailHtmlPreview }}
-              />
+              <p className="text-xs font-medium text-muted-foreground">Email preview</p>
+              <div className="rounded-md border border-border overflow-hidden bg-muted/20">
+                <iframe
+                  title="Invite email preview"
+                  className="w-full min-h-[440px] bg-white border-0"
+                  sandbox=""
+                  srcDoc={emailHtmlPreview}
+                />
+              </div>
               {joined ? (
                 <p className="text-sm text-muted-foreground">Joined — email disabled.</p>
               ) : (

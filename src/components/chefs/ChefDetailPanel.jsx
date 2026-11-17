@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -208,10 +209,15 @@ export default function ChefDetailPanel({
     if (!dirty || !draft) return;
     setSaving(true);
     const tp = draft.talent_profile || {};
+    const messagingOn = draft.gradito_messaging_opt_in !== false;
     const payload = {
       ...draft,
       talent_profile: tp,
       notes: tp.professional_bio ?? draft.notes ?? null,
+      gradito_messaging_opt_in: messagingOn,
+      gradito_messaging_opt_out_at: messagingOn
+        ? null
+        : (draft.gradito_messaging_opt_out_at || new Date().toISOString()),
     };
     await base44.entities.Chef.update(chef.id, payload);
     await base44.entities.ActivityLog.create({
@@ -391,6 +397,25 @@ export default function ChefDetailPanel({
                 <EditableField label="Menu URL" value={draft.menu_url} onChange={v => update('menu_url', v)} placeholder="Canva link" />
                 <EditableField label="Bio URL" value={draft.bio_url} onChange={v => update('bio_url', v)} placeholder="Canva link" />
                 <EditableField label="Photo URL" value={draft.photo_url} onChange={v => update('photo_url', v)} />
+                <label className="flex items-start gap-3 cursor-pointer pt-1">
+                  <Checkbox
+                    checked={draft.gradito_messaging_opt_in !== false}
+                    onCheckedChange={(checked) => {
+                      const on = checked === true;
+                      update('gradito_messaging_opt_in', on);
+                      update('gradito_messaging_opt_out_at', on ? null : new Date().toISOString());
+                    }}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm text-muted-foreground leading-relaxed">
+                    Gradito messaging (SMS &amp; email). Uncheck to opt out of invites and ops messages.
+                    {draft.gradito_messaging_opt_out_at && (
+                      <span className="block text-xs mt-1">
+                        Opted out {new Date(draft.gradito_messaging_opt_out_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </span>
+                </label>
               </Card>
 
               <Card className="p-4 space-y-3">

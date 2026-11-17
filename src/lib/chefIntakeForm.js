@@ -89,6 +89,7 @@ export function createEmptyIntakeForm() {
     // Agreements
     agreed_to_terms: false,
     agreed_to_nda: false,
+    gradito_messaging_opt_in: true,
 
     // Legacy defaults used on approve for ops systems
     roles_available: 'Head',
@@ -255,6 +256,7 @@ export function buildIntakePayload(form) {
       ? 'Anywhere'
       : 'Home only',
     notes: form.professional_bio || null,
+    gradito_messaging_opt_in: form.gradito_messaging_opt_in !== false,
     agreements: {
       terms: {
         accepted: form.agreed_to_terms === true,
