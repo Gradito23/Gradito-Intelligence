@@ -13,6 +13,20 @@ import CreateEventModal from '@/components/events/CreateEventModal';
 import { Sparkles, Loader2, FileText, AlertCircle, ChevronDown, ChevronUp, CalendarPlus } from 'lucide-react';
 import { SAMPLE_TRANSCRIPT } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
+import { rankSousChefs, resultsFromSuggested } from '@/lib/chefMatchScore';
+import { computeMatchLists, persistMatchRun, polishMatchReasons } from '@/lib/runChefMatch';
+import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
+import { fetchConfirmedEventsJobHub } from '@/hooks/useEventJobPage';
+import { useQuery } from '@tanstack/react-query';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { format, parseISO } from 'date-fns';
 
 const TRANSCRIPT_SAVE_LIMIT = 2000;
 
@@ -32,126 +46,13 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function computeMatchScore(chef, criteria, events, eventChefs, clients) {
-  let score = 0;
-  const reasons = [];
-
-  const area = criteria.service_area;
-  if (area) {
-    const isHome = (chef.home_areas || []).includes(area);
-    if (!isHome) {
-      if (chef.travel_policy === 'Home only') return { score: -1, reason: 'Cannot travel to area', travelFee: 0 };
-      if (chef.travel_policy === 'Select areas') {
-        const tf = (chef.travel_fees || []).find(t => t.service_area === area);
-        if (!tf) return { score: -1, reason: 'Area not in travel list', travelFee: 0 };
-      }
-    }
+function formatEventOptionDate(value) {
+  if (!value) return 'Undated';
+  try {
+    return format(parseISO(String(value).slice(0, 10)), 'MMM d, yyyy');
+  } catch {
+    return String(value);
   }
-
-  let travelFee = 0;
-  if (area && !(chef.home_areas || []).includes(area)) {
-    const override = (chef.travel_fees || []).find(t => t.service_area === area);
-    if (override) {
-      travelFee = override.fee;
-    } else if (chef.travel_policy === 'Anywhere') {
-      travelFee = chef.default_travel_fee || 0;
-    }
-  }
-
-  const wantedCuisines = criteria.cuisines || [];
-  const matchedCuisines = wantedCuisines.filter(c => (chef.cuisines || []).includes(c));
-  if (wantedCuisines.length > 0 && matchedCuisines.length > 0) {
-    score += 25 * (matchedCuisines.length / wantedCuisines.length);
-    reasons.push(matchedCuisines.join(' + '));
-  }
-
-  score += (chef.quality_rating || 3) * 5;
-  reasons.push(`${chef.quality_rating}★`);
-
-  if (area && (chef.home_areas || []).includes(area)) {
-    score += 10;
-    reasons.push(`based in ${area} (event area)`);
-  }
-
-  if (criteria.experience_type && (chef.experience_types || []).includes(criteria.experience_type)) {
-    score += 10;
-    reasons.push(criteria.experience_type.toLowerCase());
-  }
-
-  if (criteria.budget) {
-    const estCost = 3500 + travelFee;
-    if (estCost <= criteria.budget) score += 5;
-    else score -= 10;
-  }
-
-  if (criteria.client_name) {
-    const client = clients.find(c => c.name.toLowerCase().includes(criteria.client_name.toLowerCase()));
-    if (client) {
-      const clientEventIds = events.filter(e => e.client_id === client.id).map(e => e.id);
-      const workedTogether = eventChefs.filter(ec => ec.chef_id === chef.id && clientEventIds.includes(ec.event_id));
-      if (workedTogether.length > 0) {
-        score += 15;
-        reasons.push(`${workedTogether.length} prior events with this client`);
-      }
-    }
-  }
-
-  const kpis = getChefKPIs(chef, events, eventChefs);
-  if (kpis.eventsCount > 0) {
-    score += Math.min(kpis.eventsCount * 2, 10);
-  }
-
-  if (criteria.dietary && (chef.dietary_specialties || []).some(d => d.toLowerCase().includes(criteria.dietary.toLowerCase()))) {
-    score += 5;
-    reasons.push('dietary match');
-  }
-
-  if (kpis.eventsCount < 3) {
-    score += 3;
-  }
-
-  score = Math.min(Math.round(score), 100);
-
-  return {
-    score,
-    reason: reasons.join(' · '),
-    travelFee,
-  };
-}
-
-function computeSousCandidates(chefs, criteria, events, eventChefs, clients, limit = 3, excludeIds = []) {
-  const excluded = new Set(excludeIds);
-  return chefs
-    .filter((c) =>
-      !c.archived &&
-      !excluded.has(c.id) &&
-      (c.roles_available === 'Sous' || c.roles_available === 'Both')
-    )
-    .map((chef) => {
-      const { score, reason, travelFee } = computeMatchScore(chef, criteria, events, eventChefs, clients);
-      return { chef, score, reason, travelFee, label: null, needsSous: false };
-    })
-    .filter((r) => r.score >= 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit);
-}
-
-function resultsFromSuggested(suggested, chefs, criteria) {
-  const needsSous = (criteria?.guest_count || 0) >= 15;
-  return (suggested || [])
-    .map((s, i) => {
-      const chef = chefs.find((c) => c.id === s.chef_id);
-      if (!chef) return null;
-      return {
-        chef,
-        score: s.score ?? 0,
-        reason: s.reason || `${s.label || 'Suggested'} · score ${s.score ?? '—'}`,
-        travelFee: s.travel_fee ?? 0,
-        label: s.label || (i === 0 ? 'Top Pick' : null),
-        needsSous,
-      };
-    })
-    .filter(Boolean);
 }
 
 export default function ChefMatch() {
@@ -178,6 +79,19 @@ export default function ChefMatch() {
   const [prefillChef, setPrefillChef] = useState(null);
   const [prefillSous, setPrefillSous] = useState(null);
   const [prefillCriteria, setPrefillCriteria] = useState(null);
+  const [matchMode, setMatchMode] = useState('transcript');
+  const [selectedEventId, setSelectedEventId] = useState('');
+
+  const { data: confirmedEvents = [] } = useQuery({
+    queryKey: ['admin', 'chef_match_events'],
+    queryFn: fetchConfirmedEventsJobHub,
+    enabled: matchMode === 'event',
+  });
+
+  const selectedEventRow = useMemo(
+    () => confirmedEvents.find((e) => e.id === selectedEventId) || null,
+    [confirmedEvents, selectedEventId],
+  );
 
   const chefKPIs = useMemo(() => {
     const map = {};
@@ -292,82 +206,20 @@ ${transcript}`,
     const crit = matchCriteria;
     if (!crit) return;
 
-    const headCandidates = chefs.filter(
-      (c) => !c.archived && (c.roles_available === 'Head' || c.roles_available === 'Both'),
-    );
-    const scored = headCandidates.map((chef) => {
-      const { score, reason, travelFee } = computeMatchScore(chef, crit, events, eventChefs, clients);
-      return { chef, score, reason, travelFee };
-    }).filter((r) => r.score >= 0).sort((a, b) => b.score - a.score);
+    const context = { events, eventChefs, clients };
+    const { finalResults, sousList } = computeMatchLists(chefs, crit, context);
+    await polishMatchReasons(finalResults, crit);
 
-    const topPick = scored[0];
-    const valuePick = scored.find((r) => r !== topPick && r.travelFee === 0);
-    const wildcard = scored.find((r) => r !== topPick && r !== valuePick && r.chef.quality_rating <= 4);
-
-    let finalResults = [topPick, valuePick, wildcard].filter(Boolean);
-    for (const r of scored) {
-      if (finalResults.length >= 5) break;
-      if (!finalResults.includes(r)) finalResults.push(r);
-    }
-    finalResults = finalResults.slice(0, 5);
-
-    const labels = ['Top Pick', 'Value Pick', 'Wildcard'];
-    finalResults.forEach((r, i) => {
-      if (crit.client_name) {
-        const client = clients.find((c) => c.name.toLowerCase().includes(crit.client_name.toLowerCase()));
-        if (client) {
-          const clientEventIds = events.filter((e) => e.client_id === client.id).map((e) => e.id);
-          const workedTogether = eventChefs.filter((ec) => ec.chef_id === r.chef.id && clientEventIds.includes(ec.event_id));
-          if (workedTogether.length > 0) {
-            r.label = 'Repeat Favorite';
-            return;
-          }
-        }
-      }
-      r.label = labels[i] || null;
-    });
-
-    await Promise.all(
-      finalResults.map(async (result) => {
-        const localReason = result.reason;
-        try {
-          const aiReason = await base44.integrations.Core.InvokeLLM({
-            prompt: `Write a one-sentence explanation (max 20 words) for why Chef ${result.chef.first_name} ${result.chef.last_name} is a good match for this event.
-Chef details: ${result.chef.quality_rating}★, cuisines: ${(result.chef.cuisines || []).join(', ')}, home areas: ${(result.chef.home_areas || []).join(', ')}, specialties: ${result.chef.signature_experiences || 'none'}
-Event criteria: area ${crit.service_area || 'any'}, cuisines: ${(crit.cuisines || []).join(', ')}, guests: ${crit.guest_count || 'TBD'}, type: ${crit.event_type || 'any'}
-Base reason: ${localReason}
-Travel fee: $${result.travelFee}`,
-          });
-          result.reason = typeof aiReason === 'string' && aiReason.trim() ? aiReason.trim() : localReason;
-        } catch {
-          result.reason = localReason;
-        }
-      }),
-    );
-
-    const needsSous = (crit.guest_count || 0) >= 15;
-    finalResults.forEach((r) => { r.needsSous = needsSous; });
-
-    const sousList = needsSous
-      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3)
-      : [];
     setSousCandidates(sousList);
     setSelectedSousId(null);
     setSelectedHeadId(finalResults[0]?.chef.id || null);
     setResults(finalResults);
 
-    await base44.entities.MatchRun.create({
-      client_name: crit.client_name || '',
-      transcript_excerpt: transcript.slice(0, TRANSCRIPT_SAVE_LIMIT),
-      extracted_criteria: crit,
-      suggested_chefs: finalResults.map((r) => ({
-        chef_id: r.chef.id,
-        chef_name: `${r.chef.first_name} ${r.chef.last_name}`,
-        score: r.score,
-        label: r.label,
-        reason: r.reason,
-        travel_fee: r.travelFee,
-      })),
+    await persistMatchRun({
+      criteria: crit,
+      finalResults,
+      transcriptExcerpt: transcript.slice(0, TRANSCRIPT_SAVE_LIMIT),
+      matchSource: 'transcript',
     });
     queryClient.invalidateQueries({ queryKey: ['matchRuns'] });
   };
@@ -416,7 +268,7 @@ Travel fee: $${result.travelFee}`,
     setResults(rebuilt);
     const needsSous = (crit.guest_count || 0) >= 15;
     const sousList = needsSous
-      ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 3)
+      ? rankSousChefs(chefs, crit, { events, eventChefs, clients }, { limit: 3 })
       : [];
     setSousCandidates(sousList);
     setSelectedSousId(null);
@@ -455,9 +307,45 @@ Travel fee: $${result.travelFee}`,
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-3xl font-bold">Chef Match</h1>
-        <p className="text-muted-foreground mt-1">Paste a client call transcript to find the perfect chef</p>
+        <p className="text-muted-foreground mt-1">Match roster chefs from a transcript or a confirmed event</p>
       </div>
 
+      <Tabs value={matchMode} onValueChange={setMatchMode}>
+        <TabsList>
+          <TabsTrigger value="transcript">Transcript</TabsTrigger>
+          <TabsTrigger value="event">Match for event</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="event" className="space-y-4 mt-4">
+          <Card className="p-4 space-y-3">
+            <p className="text-sm text-muted-foreground">Upcoming or undated Confirmed events (same list as Job Pages).</p>
+            <Select value={selectedEventId} onValueChange={setSelectedEventId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select confirmed event…" />
+              </SelectTrigger>
+              <SelectContent>
+                {confirmedEvents.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {formatEventOptionDate(row.date)}
+                    {' — '}
+                    {row.client_name || 'Unknown'}
+                    {row.service_area ? ` · ${row.service_area}` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Card>
+          {selectedEventRow && (
+            <Card className="p-4">
+              <EventChefMatchPanel
+                event={selectedEventRow}
+                jobSnapshot={selectedEventRow.jobPage?.source_snapshot}
+              />
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="transcript" className="space-y-6 mt-4">
       {repeatBanner && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center gap-3">
           <FileText size={18} className="text-blue-600 shrink-0" />
@@ -675,7 +563,7 @@ Travel fee: $${result.travelFee}`,
                               const needsSous = (crit.guest_count || 0) >= 15;
                               const headIds = [chef.id];
                               const topSous = needsSous
-                                ? computeSousCandidates(chefs, crit, events, eventChefs, clients, 1, headIds)[0]
+                                ? rankSousChefs(chefs, crit, { events, eventChefs, clients }, { limit: 1, excludeIds: headIds })[0]
                                 : null;
                               setCriteria(crit);
                               setPrefillChef(chef);
@@ -697,6 +585,8 @@ Travel fee: $${result.travelFee}`,
           </div>
         </div>
       )}
+        </TabsContent>
+      </Tabs>
 
       <ChefDetailPanel
         chef={viewChef}

@@ -25,6 +25,7 @@ import PvEventSourceCard from './PvEventSourceCard';
 import ManageTeamModal from './ManageTeamModal';
 import EventPayments from './EventPayments';
 import EventJobPageActions from './EventJobPageActions';
+import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
 import { useEventJobPage } from '@/hooks/useEventJobPage';
 import { supabase } from '@/api/supabaseClient';
 
@@ -351,14 +352,22 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
             <PvEventSourceCard event={draft} />
 
             {confirmedForJobPage && (
-              <Card className="p-4">
-                <EventJobPageActions
-                  eventId={event.id}
-                  jobPage={jobPage}
-                  variant="card"
-                  onUpdated={invalidateJobPage}
-                />
-              </Card>
+              <>
+                <Card className="p-4">
+                  <EventJobPageActions
+                    eventId={event.id}
+                    jobPage={jobPage}
+                    variant="card"
+                    onUpdated={invalidateJobPage}
+                  />
+                </Card>
+                <Card className="p-4">
+                  <EventChefMatchPanel
+                    event={draft}
+                    jobSnapshot={jobPage?.source_snapshot}
+                  />
+                </Card>
+              </>
             )}
 
             {/* Core fields */}

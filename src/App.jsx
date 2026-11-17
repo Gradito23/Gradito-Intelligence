@@ -174,14 +174,7 @@ function AuthenticatedApp() {
                   </PermissionRoute>
                 )}
               />
-              <Route
-                path="/match"
-                element={(
-                  <PermissionRoute permission={{ resource: 'chefs', action: 'read' }}>
-                    <ChefMatch />
-                  </PermissionRoute>
-                )}
-              />
+              <Route path="/match" element={<Navigate to="/admin/chef-match" replace />} />
               <Route
                 path="/reports"
                 element={(
@@ -254,6 +247,14 @@ function AuthenticatedApp() {
                     element={(
                       <PermissionRoute permission={{ resource: 'events', action: 'read' }}>
                         <JobPages />
+                      </PermissionRoute>
+                    )}
+                  />
+                  <Route
+                    path="chef-match"
+                    element={(
+                      <PermissionRoute permission={{ resource: 'chefs', action: 'read' }}>
+                        <ChefMatch />
                       </PermissionRoute>
                     )}
                   />

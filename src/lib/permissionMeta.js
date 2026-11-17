@@ -20,7 +20,7 @@ export const LANDING_ROUTE_CANDIDATES = [
   { path: '/chefs', permission: { resource: 'chefs', action: 'read' } },
   { path: '/intake-requests', permission: { resource: 'intake', action: 'read' } },
   { path: '/events', permission: { resource: 'events', action: 'read' } },
-  { path: '/match', permission: { resource: 'chefs', action: 'read' } },
+  { path: '/admin/chef-match', permission: { resource: 'chefs', action: 'read' } },
   { path: '/reports', permission: { resource: 'reports', action: 'read' } },
   { path: '/profitability', permission: { resource: 'reports', action: 'read' } },
 ];

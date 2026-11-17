@@ -20,6 +20,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import EventJobPageActions from '@/components/events/EventJobPageActions';
+import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { fetchConfirmedEventsJobHub, upcomingConfirmedDateFilter } from '@/hooks/useEventJobPage';
 import {
   CONFIRMED_EVENTS_JOB_HUB_KEY,
@@ -30,7 +32,7 @@ import {
 } from '@/lib/eventJobPage';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from '@/components/ui/use-toast';
-import { Briefcase, Loader2, RefreshCw, Search, Sparkles } from 'lucide-react';
+import { Briefcase, Loader2, RefreshCw, Search, Sparkles, UserSearch } from 'lucide-react';
 
 const BULK_CONCURRENCY = 3;
 
@@ -73,6 +75,7 @@ export default function JobPages() {
   const [search, setSearch] = useState('');
   const [hubFilter, setHubFilter] = useState('all');
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [matchEvent, setMatchEvent] = useState(null);
 
   const hubQueryKey = useMemo(
     () => [...CONFIRMED_EVENTS_JOB_HUB_KEY, upcomingConfirmedDateFilter()],
@@ -256,11 +259,22 @@ export default function JobPages() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    <EventJobPageActions
-                      eventId={row.id}
-                      jobPage={jobPage}
-                      variant="inline"
-                    />
+                    <div className="flex justify-end items-center gap-0.5 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        title="Match chefs"
+                        onClick={() => setMatchEvent(row)}
+                      >
+                        <UserSearch className="h-4 w-4" />
+                      </Button>
+                      <EventJobPageActions
+                        eventId={row.id}
+                        jobPage={jobPage}
+                        variant="inline"
+                      />
+                    </div>
                   </TableCell>
                 </TableRow>
               );
@@ -278,6 +292,26 @@ export default function JobPages() {
           {hubFilter !== 'all' || search.trim() ? ' matching filters' : ''}
         </p>
       )}
+
+      <Sheet open={Boolean(matchEvent)} onOpenChange={(open) => !open && setMatchEvent(null)}>
+        <SheetContent className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>
+              Match chefs
+              {matchEvent?.client_name ? ` — ${matchEvent.client_name}` : ''}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-6">
+            {matchEvent && (
+              <EventChefMatchPanel
+                key={matchEvent.id}
+                event={matchEvent}
+                jobSnapshot={matchEvent.jobPage?.source_snapshot}
+              />
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
