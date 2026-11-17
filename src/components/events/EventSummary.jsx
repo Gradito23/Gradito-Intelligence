@@ -66,8 +66,13 @@ export default function EventSummary({ pnl, comm, teamMembers, event, assignment
         {event?.event_source === 'perfect_venue' && (
           <span className="text-xs text-muted-foreground">Synced from Perfect Venue</span>
         )}
-        {event?.pv_venue_id && event?.service_area && (
-          <span className="text-xs text-muted-foreground">Venue: {event.service_area}</span>
+        {event?.pv_metadata?.event_location_label && (
+          <span className="text-xs text-muted-foreground">
+            Location: {event.pv_metadata.event_location_label}
+          </span>
+        )}
+        {event?.service_area && (
+          <span className="text-xs text-muted-foreground">Market: {event.service_area}</span>
         )}
       </div>
       {event?.perfect_venue_id && (
