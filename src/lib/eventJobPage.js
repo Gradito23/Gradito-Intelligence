@@ -16,7 +16,14 @@ export const JOB_HUB_FILTERS = [
 ];
 
 export function publicJobUrl(jobPageId) {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  return canonicalPublicJobUrl(jobPageId);
+}
+
+export function canonicalPublicJobUrl(jobPageId) {
+  const envBase = typeof import.meta !== 'undefined' && import.meta.env?.VITE_APP_URL
+    ? String(import.meta.env.VITE_APP_URL).replace(/\/$/, '')
+    : '';
+  const origin = envBase || (typeof window !== 'undefined' ? window.location.origin : '');
   return `${origin}/job/${jobPageId}`;
 }
 

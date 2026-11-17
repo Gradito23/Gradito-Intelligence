@@ -5,8 +5,12 @@ import { supabase } from '@/api/supabaseClient';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import GraditoLogo from '@/components/brand/GraditoLogo';
 import { Calendar, MapPin, ChefHat, Loader2, Users } from 'lucide-react';
+import { PUBLIC_INTAKE_URL } from '@/lib/chefInviteMessage';
 
 function formatEventDate(value) {
   if (!value) return null;
@@ -24,6 +28,16 @@ export default function JobPublic() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [job, setJob] = useState(null);
+  const [applyForm, setApplyForm] = useState({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    intake_attestation: false,
+  });
+  const [applyBusy, setApplyBusy] = useState(false);
+  const [applyMessage, setApplyMessage] = useState(null);
+  const [applyError, setApplyError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,13 +111,57 @@ export default function JobPublic() {
   const eventDate = formatEventDate(snap.event_date);
   const guestCount = snap.guest_count != null ? Number(snap.guest_count) : null;
 
+  const onSubmitApplication = async (e) => {
+    e.preventDefault();
+    setApplyBusy(true);
+    setApplyError(null);
+    setApplyMessage(null);
+    try {
+      const { data, error: invokeError } = await supabase.functions.invoke('event-job', {
+        body: {
+          action: 'submit_application',
+          job_page_id: jobId,
+          ...applyForm,
+        },
+      });
+      if (invokeError) {
+        let message = invokeError.message;
+        if (invokeError instanceof FunctionsHttpError) {
+          try {
+            const body = await invokeError.context.json();
+            if (body?.error) message = body.error;
+          } catch {
+            /* ignore */
+          }
+        }
+        throw new Error(message);
+      }
+      if (data?.error) throw new Error(data.error);
+      setApplyMessage(
+        data?.message
+        || 'Thanks — we received your application. Our team will follow up if this opportunity is a fit.',
+      );
+      setApplyForm({
+        first_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+        intake_attestation: false,
+      });
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Unable to submit application');
+    } finally {
+      setApplyBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-cream text-navy">
       <header className="border-b border-border/60 bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
           <GraditoLogo className="h-7 w-auto" title="Gradito" />
-          <Button asChild size="sm" className="bg-gold hover:bg-gold/90 text-navy font-semibold">
-            <Link to="/intake">I&apos;m interested</Link>
+          <Button asChild size="sm" variant="outline">
+            <a href="#apply">Apply</a>
           </Button>
         </div>
       </header>
@@ -173,14 +231,103 @@ export default function JobPublic() {
           )}
         </Card>
 
-        <div className="text-center pb-12">
-          <Button asChild size="lg" className="bg-gold hover:bg-gold/90 text-navy font-semibold">
-            <Link to="/intake">Express interest — apply via chef intake</Link>
-          </Button>
-          <p className="text-xs text-muted-foreground mt-4">
-            Gradito connects exceptional chefs with private dining experiences nationwide.
-          </p>
-        </div>
+        <Card id="apply" className="p-6 md:p-8 border-navy/10 shadow-sm space-y-5">
+          <div>
+            <h2 className="font-heading text-xl font-semibold">Apply for this opportunity</h2>
+            <p className="text-sm text-muted-foreground mt-2">
+              Please complete the chef intake form first if you have not already:{' '}
+              <Link to="/intake" className="text-navy underline font-medium">
+                Go to intake
+              </Link>
+              {' '}
+              or{' '}
+              <a href={PUBLIC_INTAKE_URL} className="text-navy underline font-medium">
+                {PUBLIC_INTAKE_URL.replace(/^https?:\/\//, '')}
+              </a>
+            </p>
+          </div>
+
+          <form onSubmit={onSubmitApplication} className="space-y-4">
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50/80 p-3">
+              <Checkbox
+                id="intake_attestation"
+                checked={applyForm.intake_attestation}
+                onCheckedChange={(v) => setApplyForm((f) => ({ ...f, intake_attestation: v === true }))}
+              />
+              <Label htmlFor="intake_attestation" className="text-sm leading-snug font-normal cursor-pointer">
+                I have already completed the Gradito chef intake
+              </Label>
+            </div>
+            <p className="text-xs text-muted-foreground -mt-2">
+              If we cannot match an intake on file and you do not confirm above, your application may not be reviewed.
+            </p>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="first_name">First name</Label>
+                <Input
+                  id="first_name"
+                  required
+                  value={applyForm.first_name}
+                  onChange={(ev) => setApplyForm((f) => ({ ...f, first_name: ev.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="last_name">Last name</Label>
+                <Input
+                  id="last_name"
+                  required
+                  value={applyForm.last_name}
+                  onChange={(ev) => setApplyForm((f) => ({ ...f, last_name: ev.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  autoComplete="email"
+                  value={applyForm.email}
+                  onChange={(ev) => setApplyForm((f) => ({ ...f, email: ev.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  value={applyForm.phone}
+                  onChange={(ev) => setApplyForm((f) => ({ ...f, phone: ev.target.value }))}
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Email or phone is required.</p>
+
+            {applyError && (
+              <p className="text-sm text-destructive">{applyError}</p>
+            )}
+            {applyMessage && (
+              <p className="text-sm text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md p-3">
+                {applyMessage}
+              </p>
+            )}
+
+            <Button
+              type="submit"
+              size="lg"
+              disabled={applyBusy || (!applyForm.email.trim() && !applyForm.phone.trim())}
+              className="bg-gold hover:bg-gold/90 text-navy font-semibold"
+            >
+              {applyBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Submit application
+            </Button>
+          </form>
+        </Card>
+
+        <p className="text-xs text-muted-foreground text-center pb-12">
+          Gradito connects exceptional chefs with private dining experiences nationwide.
+        </p>
       </main>
     </div>
   );

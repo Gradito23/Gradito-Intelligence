@@ -364,6 +364,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
                 <Card className="p-4">
                   <EventChefMatchPanel
                     event={draft}
+                    jobPage={jobPage}
                     jobSnapshot={jobPage?.source_snapshot}
                   />
                 </Card>

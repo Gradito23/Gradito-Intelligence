@@ -12,7 +12,9 @@ import ChefDetailPanel from '@/components/chefs/ChefDetailPanel';
 import { getChefKPIs } from '@/hooks/useAppData';
 import { rankSousChefs } from '@/lib/chefMatchScore';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, Sparkles } from 'lucide-react';
+import { useJobChefInvitations } from '@/hooks/useJobChefInvitations';
+import { chefCanReceiveJobEmail, chefCanReceiveJobSms } from '@/lib/jobInviteMessage';
+import { Loader2, Send, Sparkles } from 'lucide-react';
 
 function formatEventDate(value) {
   if (!value) return '—';
@@ -25,6 +27,7 @@ function formatEventDate(value) {
 
 export default function EventChefMatchPanel({
   event,
+  jobPage = null,
   jobSnapshot = null,
   compact = false,
   className = '',
@@ -52,6 +55,15 @@ export default function EventChefMatchPanel({
   const [selectedHeadId, setSelectedHeadId] = useState(null);
   const [selectedSousId, setSelectedSousId] = useState(null);
   const [viewChef, setViewChef] = useState(null);
+  const [inviteBusyChefId, setInviteBusyChefId] = useState(null);
+  const [inviteAllBusy, setInviteAllBusy] = useState(false);
+
+  const jobPageId = jobPage?.id;
+  const jobPublished = jobPage?.status === 'published';
+  const {
+    invitationByChefId,
+    sendInvites,
+  } = useJobChefInvitations(jobPageId, { enabled: Boolean(jobPageId) });
 
   const displayCriteria = useMemo(() => {
     if (criteria) return criteria;
@@ -89,6 +101,89 @@ export default function EventChefMatchPanel({
   }, [chefs, events, eventChefs]);
 
   const needsSousSection = (displayCriteria?.guest_count || 0) >= 15 && sousCandidates.length > 0;
+
+  const allMatchChefs = useMemo(() => {
+    const ids = new Set();
+    const list = [];
+    for (const r of results ?? []) {
+      if (!ids.has(r.chef.id)) {
+        ids.add(r.chef.id);
+        list.push(r.chef);
+      }
+    }
+    for (const r of sousCandidates ?? []) {
+      if (!ids.has(r.chef.id)) {
+        ids.add(r.chef.id);
+        list.push(r.chef);
+      }
+    }
+    return list;
+  }, [results, sousCandidates]);
+
+  const inviteableChefIds = useMemo(
+    () => allMatchChefs
+      .filter((c) => chefCanReceiveJobSms(c) || chefCanReceiveJobEmail(c))
+      .map((c) => c.id),
+    [allMatchChefs],
+  );
+
+  const sendChefInvite = async (chef, channels) => {
+    if (!canWrite || !jobPublished || !jobPageId || !eventId) {
+      toast({
+        title: 'Cannot send invite',
+        description: jobPublished ? 'You need write access.' : 'Publish the job page first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setInviteBusyChefId(chef.id);
+    try {
+      await sendInvites({ eventId, chefIds: [chef.id], channels });
+      toast({
+        title: 'Invitation sent',
+        description: `${chef.first_name} ${chef.last_name}`,
+      });
+    } catch (err) {
+      toast({
+        title: 'Invite failed',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setInviteBusyChefId(null);
+    }
+  };
+
+  const onInviteAllShown = async () => {
+    if (!inviteableChefIds.length) {
+      toast({ title: 'No chefs to invite', description: 'No phone or email on shown chefs.' });
+      return;
+    }
+    if (!jobPublished) {
+      toast({ title: 'Publish job page first', variant: 'destructive' });
+      return;
+    }
+    setInviteAllBusy(true);
+    try {
+      await sendInvites({
+        eventId,
+        chefIds: inviteableChefIds,
+        channels: ['sms', 'email'],
+      });
+      toast({
+        title: 'Invitations sent',
+        description: `${inviteableChefIds.length} chefs`,
+      });
+    } catch (err) {
+      toast({
+        title: 'Bulk invite failed',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setInviteAllBusy(false);
+    }
+  };
 
   const onRunMatch = async () => {
     if (!canWrite || !event) return;
@@ -140,17 +235,40 @@ export default function EventChefMatchPanel({
             </p>
           )}
         </div>
-        <Button
-          type="button"
-          size="sm"
-          disabled={!canWrite || busy}
-          onClick={onRunMatch}
-          className="bg-navy hover:bg-navy/90 text-white shrink-0"
-        >
-          {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
-          Run match
-        </Button>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {results?.length > 0 && canWrite && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={inviteAllBusy || !jobPublished || inviteableChefIds.length === 0}
+              onClick={onInviteAllShown}
+              title={!jobPublished ? 'Publish the public job page to send invites' : undefined}
+            >
+              {inviteAllBusy ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Send className="h-4 w-4 mr-1" />
+              )}
+              Invite all shown
+            </Button>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            disabled={!canWrite || busy}
+            onClick={onRunMatch}
+            className="bg-navy hover:bg-navy/90 text-white"
+          >
+            {busy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Sparkles className="h-4 w-4 mr-1" />}
+            Run match
+          </Button>
+        </div>
       </div>
+
+      {canWrite && results?.length > 0 && !jobPublished && (
+        <p className="text-xs text-amber-700">Publish the public job page before sending job invitations.</p>
+      )}
 
       {displayCriteria && (
         <Card className={compact ? 'p-3' : 'p-4'}>
@@ -186,6 +304,18 @@ export default function EventChefMatchPanel({
                   if (selectedSousId === result.chef.id) setSelectedSousId(null);
                 }}
                 onViewChef={(chef) => setViewChef(chef)}
+                invitation={invitationByChefId[result.chef.id]}
+                inviteBusy={inviteBusyChefId === result.chef.id}
+                onSendSms={
+                  canWrite && chefCanReceiveJobSms(result.chef)
+                    ? (chef) => sendChefInvite(chef, ['sms'])
+                    : undefined
+                }
+                onSendEmail={
+                  canWrite && chefCanReceiveJobEmail(result.chef)
+                    ? (chef) => sendChefInvite(chef, ['email'])
+                    : undefined
+                }
               />
             ))}
           </div>
@@ -211,6 +341,18 @@ export default function EventChefMatchPanel({
                   }
                 }}
                 onViewChef={(chef) => setViewChef(chef)}
+                invitation={invitationByChefId[result.chef.id]}
+                inviteBusy={inviteBusyChefId === result.chef.id}
+                onSendSms={
+                  canWrite && chefCanReceiveJobSms(result.chef)
+                    ? (chef) => sendChefInvite(chef, ['sms'])
+                    : undefined
+                }
+                onSendEmail={
+                  canWrite && chefCanReceiveJobEmail(result.chef)
+                    ? (chef) => sendChefInvite(chef, ['email'])
+                    : undefined
+                }
               />
             ))}
           </div>

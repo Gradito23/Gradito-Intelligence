@@ -41,9 +41,13 @@ import {
   useChefInviteMessageSettings,
   useSaveChefInviteMessageSettings,
 } from '@/hooks/useChefInviteMessageSettings';
-import { MessageSquare, Loader2, Send, Mail, AlertCircle, Plus } from 'lucide-react';
+import {
   MessageSquare, Loader2, Send, Mail, AlertCircle, Plus, Upload, Trash2,
 } from 'lucide-react';
+
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'not_invited', label: 'Not invited' },
   { value: 'invited', label: 'Invited' },
   { value: 'joined', label: 'Joined' },
   { value: 'no_phone', label: 'No phone' },
@@ -166,6 +170,9 @@ export default function ChefInviteByMessage() {
   const [emailBody, setEmailBody] = useState(DEFAULT_CHEF_INTAKE_INVITE_EMAIL_BODY);
   const [bulkProgress, setBulkProgress] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const templatesHydratedRef = useRef(false);
   const lastPersistedTemplatesRef = useRef(null);
 
@@ -342,20 +349,13 @@ export default function ChefInviteByMessage() {
     });
   };
 
-  if (isLoading || inviteSettingsLoading) {
-    return (
-      <div className="flex justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const selectedProspects = useMemo(
+    () => activeList.filter((p) => selectedIds.has(p.id)),
+    [activeList, selectedIds],
+  );
 
-  if (inviteSettingsError) {
-    return (
-      <Card className="p-6 border-amber-200 bg-amber-50/80">
-        <p className="text-sm text-amber-950">
-          Could not load invite templates from the database. Apply migration
-          {' '}
+  const confirmDeleteSelected = async () => {
+    if (!selectedProspects.length) return;
     const deletingIds = selectedProspects.map((p) => p.id);
     setDeleting(true);
     let failed = 0;
@@ -370,6 +370,45 @@ export default function ChefInviteByMessage() {
     setShowDeleteConfirm(false);
     setSelectedIds(new Set());
     if (activeProspectId && deletingIds.includes(activeProspectId)) {
+      setActiveProspectId(null);
+    }
+    queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] });
+    toast({
+      title: 'Prospects deleted',
+      description: failed
+        ? `${selectedProspects.length - failed} removed · ${failed} failed`
+        : `${selectedProspects.length} removed`,
+      variant: failed ? 'destructive' : 'default',
+    });
+  };
+
+  if (isLoading || inviteSettingsLoading) {
+    return (
+      <div className="flex justify-center py-24">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (inviteSettingsError) {
+    return (
+      <Card className="p-6 border-amber-200 bg-amber-50/80">
+        <p className="text-sm text-amber-950">
+          Could not load invite templates from the database. Apply migration
+          {' '}
+          <code className="text-xs">20261117400000_chef_invite_message_settings.sql</code>
+          {' '}
+          and refresh.
+        </p>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold text-navy flex items-center gap-2">
             <MessageSquare className="h-6 w-6" />
             Invite by Message
           </h1>
@@ -397,10 +436,16 @@ export default function ChefInviteByMessage() {
             )}
           </div>
         </div>
-        <Button type="button" className="bg-navy hover:bg-navy/90 text-white" onClick={() => setShowAdd(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add prospect
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => setShowImport(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import workbook
+          </Button>
+          <Button type="button" className="bg-navy hover:bg-navy/90 text-white" onClick={() => setShowAdd(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add prospect
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
@@ -435,6 +480,12 @@ export default function ChefInviteByMessage() {
           variant="outline"
           disabled={selectedIds.size === 0 || bulkProgress || sendQuo.isPending}
           onClick={() => runBulk('sms')}
+        >
+          {bulkProgress?.channel === 'sms' ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{bulkProgress.done}/{bulkProgress.total}</>
+          ) : (
+            <><Send className="h-4 w-4 mr-2" />SMS ({selectedIds.size})</>
+          )}
         </Button>
         <Button
           type="button"
@@ -447,6 +498,20 @@ export default function ChefInviteByMessage() {
             <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{bulkProgress.done}/{bulkProgress.total}</>
           ) : (
             <><Mail className="h-4 w-4 mr-2" />Email ({selectedIds.size})</>
+          )}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="text-destructive border-destructive/40 hover:bg-destructive/10"
+          disabled={selectedIds.size === 0 || bulkProgress || deleting}
+          onClick={() => setShowDeleteConfirm(true)}
+        >
+          {deleting ? (
+            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting…</>
+          ) : (
+            <><Trash2 className="h-4 w-4 mr-2" />Delete ({selectedIds.size})</>
           )}
         </Button>
       </div>
@@ -498,20 +563,6 @@ export default function ChefInviteByMessage() {
                   <TableCell className="text-sm text-muted-foreground">{prospect.displayPhone || '—'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground">{prospect.displayCity || '—'}</TableCell>
                   <TableCell className="text-sm text-muted-foreground max-w-[140px] truncate">{prospect.displayEmail || '—'}</TableCell>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="text-destructive border-destructive/40 hover:bg-destructive/10"
-          disabled={selectedIds.size === 0 || bulkProgress || deleting}
-          onClick={() => setShowDeleteConfirm(true)}
-        >
-          {deleting ? (
-            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Deleting…</>
-          ) : (
-            <><Trash2 className="h-4 w-4 mr-2" />Delete ({selectedIds.size})</>
-          )}
-        </Button>
                   <TableCell>
                     <Badge variant="outline" className={`text-xs ${statusBadgeClass(prospect.inviteStatus)}`}>
                       {inviteStatusLabel(prospect.inviteStatus)}
@@ -575,6 +626,39 @@ export default function ChefInviteByMessage() {
         prospects={activeList}
         onCreated={() => queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] })}
       />
+
+      <ProspectWorkbookImportDialog
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        chefs={chefs.filter((c) => !c.archived)}
+        prospects={activeList}
+        onImported={() => queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] })}
+      />
+
+      <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete selected prospects?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            This removes {selectedIds.size} prospect{selectedIds.size === 1 ? '' : 's'} from the invite list. This cannot be undone.
+          </p>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting}
+              onClick={confirmDeleteSelected}
+            >
+              {deleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

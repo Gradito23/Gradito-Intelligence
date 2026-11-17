@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import ChefAvatar from '@/components/ui/ChefAvatar';
 import GoldStars from '@/components/ui/GoldStars';
 import { formatCurrency } from '@/hooks/useAppData';
-import { MapPin, User } from 'lucide-react';
+import { Loader2, Mail, MapPin, MessageSquare, User } from 'lucide-react';
+import { inviteChannelChipLabel } from '@/lib/jobInviteMessage';
 
 export default function MatchResultCard({
   result,
@@ -14,6 +15,10 @@ export default function MatchResultCard({
   selected = false,
   selectedLabel,
   onSelect,
+  invitation = null,
+  onSendSms,
+  onSendEmail,
+  inviteBusy = false,
 }) {
   const { chef, score, reason, travelFee, label } = result;
   const fullName = `${chef.first_name} ${chef.last_name}`;
@@ -86,6 +91,31 @@ export default function MatchResultCard({
               <p className="mt-2 text-xs font-medium text-navy">{selectedLabel}</p>
             )}
 
+            {(invitation || onSendSms || onSendEmail) && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {inviteChannelChipLabel('sms', invitation, chef) && (
+                  <Badge variant="secondary" className="text-xs">
+                    {inviteChannelChipLabel('sms', invitation, chef) === 'SMS sent'
+                      ? 'SMS sent'
+                      : inviteChannelChipLabel('sms', invitation, chef)}
+                  </Badge>
+                )}
+                {inviteChannelChipLabel('email', invitation, chef) && (
+                  <Badge variant="secondary" className="text-xs">
+                    {inviteChannelChipLabel('email', invitation, chef) === 'Email sent'
+                      ? 'Email sent'
+                      : inviteChannelChipLabel('email', invitation, chef)}
+                  </Badge>
+                )}
+                {invitation?.sms_status === 'failed' && (
+                  <Badge variant="destructive" className="text-xs">SMS failed</Badge>
+                )}
+                {invitation?.email_status === 'failed' && (
+                  <Badge variant="destructive" className="text-xs">Email failed</Badge>
+                )}
+              </div>
+            )}
+
             {onViewChef && (
               <div
                 className="mt-4 flex flex-wrap gap-2"
@@ -96,6 +126,38 @@ export default function MatchResultCard({
                   <User size={14} className="mr-1.5" />
                   View chef
                 </Button>
+                {onSendSms && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={inviteBusy}
+                    onClick={() => onSendSms(chef)}
+                  >
+                    {inviteBusy ? (
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <MessageSquare size={14} className="mr-1.5" />
+                    )}
+                    Send SMS
+                  </Button>
+                )}
+                {onSendEmail && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={inviteBusy}
+                    onClick={() => onSendEmail(chef)}
+                  >
+                    {inviteBusy ? (
+                      <Loader2 size={14} className="mr-1.5 animate-spin" />
+                    ) : (
+                      <Mail size={14} className="mr-1.5" />
+                    )}
+                    Send email
+                  </Button>
+                )}
               </div>
             )}
           </div>

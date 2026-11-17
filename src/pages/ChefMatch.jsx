@@ -347,6 +347,7 @@ ${transcript}`,
             <Card className="p-4">
               <EventChefMatchPanel
                 event={selectedEventRow}
+                jobPage={selectedEventRow.jobPage}
                 jobSnapshot={selectedEventRow.jobPage?.source_snapshot}
               />
             </Card>

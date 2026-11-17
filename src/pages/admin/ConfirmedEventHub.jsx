@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/table';
 import EventJobPageActions from '@/components/events/EventJobPageActions';
 import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
+import { useJobApplications } from '@/hooks/useJobChefInvitations';
 import { JOB_PAGE_STATUS_STYLES, publicJobUrl } from '@/lib/eventJobPage';
 import { EVENT_STATUS_COLORS } from '@/lib/eventStatuses';
 import { ArrowLeft, Calendar, ExternalLink, Loader2 } from 'lucide-react';
@@ -43,7 +44,7 @@ function formatEventDate(value) {
   }
 }
 
-const TAB_IDS = new Set(['overview', 'job', 'match', 'staffing']);
+const TAB_IDS = new Set(['overview', 'job', 'match', 'applications', 'staffing']);
 
 export default function ConfirmedEventHub() {
   const { eventId } = useParams();
@@ -66,6 +67,15 @@ export default function ConfirmedEventHub() {
     () => allEventChefs.filter((ec) => ec.event_id === eventId),
     [allEventChefs, eventId],
   );
+
+  const [applicationFilter, setApplicationFilter] = useState('pending');
+  const { applications, isLoading: applicationsLoading } = useJobApplications(jobPage?.id, {
+    enabled: Boolean(jobPage?.id),
+  });
+  const filteredApplications = useMemo(() => {
+    if (applicationFilter === 'all') return applications;
+    return applications.filter((a) => a.status === applicationFilter);
+  }, [applications, applicationFilter]);
 
   if (isLoading) {
     return (
@@ -137,6 +147,7 @@ export default function ConfirmedEventHub() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="job">Public job</TabsTrigger>
           <TabsTrigger value="match">Chef match</TabsTrigger>
+          <TabsTrigger value="applications">Applications</TabsTrigger>
           <TabsTrigger value="staffing">Staffing</TabsTrigger>
         </TabsList>
 
@@ -227,8 +238,80 @@ export default function ConfirmedEventHub() {
             <EventChefMatchPanel
               key={event.id}
               event={event}
+              jobPage={jobPage}
               jobSnapshot={jobPage?.source_snapshot}
             />
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="applications" className="mt-4 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: 'pending', label: 'Pending' },
+              { id: 'ignored', label: 'Ignored' },
+              { id: 'reviewed', label: 'Reviewed' },
+              { id: 'all', label: 'All' },
+            ].map((f) => (
+              <Button
+                key={f.id}
+                type="button"
+                size="sm"
+                variant={applicationFilter === f.id ? 'default' : 'outline'}
+                onClick={() => setApplicationFilter(f.id)}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </div>
+          <Card className="overflow-hidden">
+            {!jobPage?.id ? (
+              <p className="p-6 text-sm text-muted-foreground">Generate a job page to collect applications.</p>
+            ) : applicationsLoading ? (
+              <div className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading applications…
+              </div>
+            ) : filteredApplications.length === 0 ? (
+              <p className="p-6 text-sm text-muted-foreground">No applications in this filter.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Contact</TableHead>
+                    <TableHead>Attestation</TableHead>
+                    <TableHead>Verified</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Submitted</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredApplications.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="font-medium">
+                        {row.first_name}
+                        {' '}
+                        {row.last_name}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {row.email && <div>{row.email}</div>}
+                        {row.phone && <div className="text-muted-foreground">{row.phone}</div>}
+                      </TableCell>
+                      <TableCell>{row.intake_attestation ? 'Yes' : 'No'}</TableCell>
+                      <TableCell>{row.intake_verified ? 'Yes' : 'No'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs capitalize">
+                          {row.status}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
+                        {row.created_at ? format(new Date(row.created_at), 'MMM d, yyyy h:mm a') : '—'}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </Card>
         </TabsContent>
 
