@@ -754,7 +754,7 @@ function pruneEmptyPvCrmFields(patch: Record<string, unknown>): Record<string, u
   if (!next.experience_type) delete next.experience_type;
   if (!next.closer_id) delete next.closer_id;
   if (!next.client_id) delete next.client_id;
-  if (next.client_revenue == null || next.client_revenue === 0) delete next.client_revenue;
+  if (next.client_revenue == null) delete next.client_revenue;
   return next;
 }
 
@@ -899,10 +899,8 @@ function buildCrmPatchFromPv(
     event_type: resolveEventTypeFromPv(ev),
     guest_count: ev.group_size ?? null,
     status: mapPvStatus(ev.status),
+    client_revenue: shouldSyncPvClientRevenue(ev) ? resolvePvRevenue(ev) : 0,
   };
-  if (shouldSyncPvClientRevenue(ev)) {
-    patch.client_revenue = resolvePvRevenue(ev);
-  }
   const experienceType = resolveExperienceTypeFromPv(ev);
   if (experienceType) patch.experience_type = experienceType;
 
