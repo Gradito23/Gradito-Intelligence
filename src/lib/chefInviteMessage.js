@@ -1,3 +1,4 @@
+/** @deprecated Persistence is `chef_invite_message_settings` in Supabase; keys kept for legacy localStorage migration only. */
 export const CHEF_INTAKE_INVITE_TEMPLATE_KEY = 'gradito_chef_intake_invite_template_v3';
 export const CHEF_INTAKE_INVITE_EMAIL_SUBJECT_KEY = 'gradito_chef_intake_invite_email_subject_v1';
 export const CHEF_INTAKE_INVITE_EMAIL_BODY_KEY = 'gradito_chef_intake_invite_email_body_v3';

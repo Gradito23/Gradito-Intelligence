@@ -10,6 +10,7 @@ import {
   ChefRepository,
   ChefIntakeRequestRepository,
   ChefInviteProspectRepository,
+  ChefInviteMessageSettingsRepository,
   OnboardingGuideRepository,
   OnboardingGuideDeliveryRepository,
   ClientRepository,
@@ -173,6 +174,10 @@ export const base44 = {
     OnboardingGuide: {
       get: () => OnboardingGuideRepository.get(),
       update: (payload) => OnboardingGuideRepository.update(payload),
+    },
+    ChefInviteMessageSettings: {
+      get: () => ChefInviteMessageSettingsRepository.get(),
+      update: (payload) => ChefInviteMessageSettingsRepository.update(payload),
     },
     OnboardingGuideDelivery: entityFromRepo(OnboardingGuideDeliveryRepository),
     // Legacy Users page; admin user management uses Profile APIs instead.
