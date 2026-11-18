@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { useChefs, useEvents, useEventChefs, useClients, useMatchRuns, getChefKPIs } from '@/hooks/useAppData';
+import { useChefs, useEvents, useEventChefs, useClients, useMatchRuns, useServiceAreas, getChefKPIs } from '@/hooks/useAppData';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -11,10 +11,10 @@ import MatchResultCard from '@/components/match/MatchResultCard';
 import ChefDetailPanel from '@/components/chefs/ChefDetailPanel';
 import CreateEventModal from '@/components/events/CreateEventModal';
 import { Sparkles, Loader2, FileText, AlertCircle, ChevronDown, ChevronUp, CalendarPlus } from 'lucide-react';
-import { SAMPLE_TRANSCRIPT } from '@/lib/constants';
+import { SAMPLE_TRANSCRIPT, SERVICE_AREAS } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
 import { rankSousChefs, resultsFromSuggested } from '@/lib/chefMatchScore';
-import { computeMatchLists, persistMatchRun, polishMatchReasons } from '@/lib/runChefMatch';
+import { computeMatchLists, persistMatchRun, polishMatchReasons, buildMatchContext } from '@/lib/runChefMatch';
 import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
 import { fetchConfirmedEventsJobHub } from '@/hooks/useEventJobPage';
 import { useQuery } from '@tanstack/react-query';
@@ -61,7 +61,10 @@ export default function ChefMatch() {
   const { data: events = [] } = useEvents();
   const { data: eventChefs = [] } = useEventChefs();
   const { data: clients = [] } = useClients();
+  const { data: serviceAreas = [] } = useServiceAreas();
   const { data: matchRuns = [] } = useMatchRuns();
+
+  const serviceAreaListPrompt = useMemo(() => SERVICE_AREAS.join(', '), []);
   const queryClient = useQueryClient();
 
   const [transcript, setTranscript] = useState(SAMPLE_TRANSCRIPT);
@@ -173,7 +176,7 @@ export default function ChefMatch() {
     return base44.integrations.Core.InvokeLLM({
       prompt: `Extract structured event criteria from this client call transcript. Return ONLY the JSON object with these fields (use null for anything not mentioned):
 - client_name: string or null
-- service_area: one of [Manhattan, Brooklyn, Westchester, The Hamptons, Miami, Los Angeles, Philadelphia, Washington DC, San Francisco] or null
+- service_area: one of [${serviceAreaListPrompt}] or null
 - date: string or null
 - cuisines: array of strings from [Cantonese, French, Italian, Japanese, Mediterranean, New American, Kosher, Plant-Based, Spanish, Thai, Vietnamese]
 - guest_count: number or null
@@ -207,7 +210,7 @@ ${transcript}`,
     const crit = matchCriteria;
     if (!crit) return;
 
-    const context = { events, eventChefs, clients };
+    const context = buildMatchContext({ events, eventChefs, clients, serviceAreas });
     const { finalResults, sousList } = computeMatchLists(chefs, crit, context);
     await polishMatchReasons(finalResults, crit);
 

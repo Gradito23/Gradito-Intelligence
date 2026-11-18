@@ -22,10 +22,16 @@ export function matchCriteriaFromEvent(event, { jobSnapshot = null, eventChefsFo
     .filter((r) => !r.filled)
     .map((r) => r.role);
 
+  const eventGeo =
+    event.geo_lat != null && event.geo_lng != null
+      ? { lat: Number(event.geo_lat), lng: Number(event.geo_lng) }
+      : null;
+
   return {
     client_name: event.client_name || null,
     service_area: event.service_area || jobSnapshot?.service_area || null,
     date: event.date || jobSnapshot?.event_date || null,
+    event_geo: eventGeo,
     cuisines,
     guest_count: Number.isNaN(guestCount) ? null : guestCount,
     budget,

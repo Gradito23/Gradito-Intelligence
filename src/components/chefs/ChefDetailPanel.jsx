@@ -220,6 +220,14 @@ export default function ChefDetailPanel({
         : (draft.gradito_messaging_opt_out_at || new Date().toISOString()),
     };
     await base44.entities.Chef.update(chef.id, payload);
+    if (draft.city?.trim() && draft.state?.trim()) {
+      try {
+        const { supabase } = await import('@/api/supabaseClient');
+        await supabase.functions.invoke('geo-resolve', { body: { chef_id: chef.id } });
+      } catch {
+        // best-effort geocode
+      }
+    }
     await base44.entities.ActivityLog.create({
       actor: 'Team',
       action: 'Updated',

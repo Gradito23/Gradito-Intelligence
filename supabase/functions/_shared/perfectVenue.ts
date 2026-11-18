@@ -13,6 +13,7 @@ import {
   shouldSyncPvClientRevenue,
   type PvContactLike,
 } from './pvEventMapping.ts';
+import { resolveEventGeoFromPv } from './eventGeoResolve.ts';
 export const PV_API_BASE = 'https://api.perfectvenue.com/api/v1';
 export const PV_OAUTH_AUTHORIZE = 'https://api.perfectvenue.com/oauth/authorize';
 export const PV_OAUTH_TOKEN = 'https://api.perfectvenue.com/oauth/token';
@@ -960,11 +961,39 @@ export async function upsertEventsBatch(
 
   const teamIndex = await loadTeamMemberNameIndex(adminClient);
 
+  const { data: areaRows } = await adminClient
+    .from('service_areas')
+    .select('name, centroid_lat, centroid_lng');
+  const areaCentroids = new Map<string, { lat: number; lng: number }>();
+  for (const row of areaRows ?? []) {
+    if (row.centroid_lat != null && row.centroid_lng != null) {
+      areaCentroids.set(String(row.name), {
+        lat: Number(row.centroid_lat),
+        lng: Number(row.centroid_lng),
+      });
+    }
+  }
+  const geocodeOnSync = Deno.env.get('GEOCODING_ON_PV_SYNC') === 'true';
+
   const insertRows: Record<string, unknown>[] = [];
   const updateRows: Record<string, unknown>[] = [];
 
   for (const ev of withIds) {
     let crmPatch = buildCrmPatchFromPv(ev, venues, contacts, teamIndex);
+    const serviceArea = typeof crmPatch.service_area === 'string' ? crmPatch.service_area : null;
+    const centroid = serviceArea ? areaCentroids.get(serviceArea) ?? null : null;
+    const geo = await resolveEventGeoFromPv(
+      crmPatch.pv_metadata as Parameters<typeof resolveEventGeoFromPv>[0],
+      serviceArea,
+      centroid,
+      { allowGeocode: geocodeOnSync },
+    );
+    if (geo.geo_lat != null && geo.geo_lng != null) {
+      crmPatch.geo_lat = geo.geo_lat;
+      crmPatch.geo_lng = geo.geo_lng;
+      crmPatch.geo_source = geo.geo_source;
+      crmPatch.geo_confidence = geo.geo_confidence;
+    }
   if (linkClients) {
       const contact = ev.contact_id ? contacts.get(ev.contact_id) : undefined;
       const clientName = contactDisplayName(contact, ev);

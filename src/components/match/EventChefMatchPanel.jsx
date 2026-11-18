@@ -9,8 +9,9 @@ import { matchCriteriaFromEvent } from '@/lib/matchCriteriaFromEvent';
 import CriteriaChips from '@/components/match/CriteriaChips';
 import MatchResultCard from '@/components/match/MatchResultCard';
 import ChefDetailPanel from '@/components/chefs/ChefDetailPanel';
-import { getChefKPIs } from '@/hooks/useAppData';
+import { getChefKPIs, useServiceAreas } from '@/hooks/useAppData';
 import { rankSousChefs } from '@/lib/chefMatchScore';
+import { buildMatchContext } from '@/lib/runChefMatch';
 import { toast } from '@/components/ui/use-toast';
 import { useJobChefInvitations } from '@/hooks/useJobChefInvitations';
 import { chefCanReceiveJobEmail, chefCanReceiveJobSms } from '@/lib/jobInviteMessage';
@@ -35,6 +36,7 @@ export default function EventChefMatchPanel({
   const { hasPermission } = useAuth();
   const canWrite = hasPermission('chefs', 'write');
   const eventId = event?.id;
+  const { data: serviceAreas = [] } = useServiceAreas();
 
   const {
     latestRun,
@@ -89,10 +91,10 @@ export default function EventChefMatchPanel({
     setSelectedHeadId(hydrated.results[0]?.chef.id || null);
     const needsSous = (hydrated.criteria.guest_count || 0) >= 15;
     if (needsSous) {
-      const ctx = { events, eventChefs, clients };
+      const ctx = buildMatchContext({ events, eventChefs, clients, serviceAreas });
       setSousCandidates(rankSousChefs(chefs, hydrated.criteria, ctx, { limit: 3 }));
     }
-  }, [latestRun, hydrateFromRun, chefs, events, eventChefs, clients, results]);
+  }, [latestRun, hydrateFromRun, chefs, events, eventChefs, clients, serviceAreas, results]);
 
   const chefKPIs = useMemo(() => {
     const map = {};

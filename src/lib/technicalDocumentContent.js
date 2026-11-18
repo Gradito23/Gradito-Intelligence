@@ -58,6 +58,8 @@ export const TECHNICAL_DOC_SECTIONS = [
       'integration-smtp — SMTP-related helpers used by the email integration stack.',
       'onboarding-guide-email — Sends the Chef & FOH onboarding guide after intake; open/click tracking.',
       'chef-intake-approve-notify — Welcome email and SMS after ops approves a chef intake request.',
+      'chef-match-run — Server-side geo-v1 chef shortlist (locals first, distance, talent score).',
+      'geo-resolve — Geocode chef city/state on profile save.',
       'manage-users — Admin user lifecycle (invites, role assignment) with service-role access.',
       'auth-gate — Auth-related gatekeeping for protected flows.',
       'auth-password-reset — Password reset email and token handling.',
