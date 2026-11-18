@@ -109,12 +109,53 @@ export async function insertQuoCommunicationFromWebhook(input: InsertEventInput)
     : extractMessageBody(envelope);
 
   const data = envelope.data as Record<string, unknown> | undefined;
+  const eventType = typeof envelope.type === 'string' ? envelope.type : '';
   const payload = {
     resource: data?.resource ?? {},
     context: data?.context ?? {},
     type: envelope.type,
     apiVersion: envelope.apiVersion,
   };
+
+  if (channel === 'sms' && direction === 'outbound' && ids.quo_message_id) {
+    const { data: existingByMessageId, error: lookupErr } = await adminClient
+      .from('quo_communication_events')
+      .select('id, payload, webhook_delivery_id, prospect_id, chef_id')
+      .eq('quo_message_id', ids.quo_message_id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (lookupErr) {
+      console.error('quo webhook merge lookup:', lookupErr.message);
+    } else if (existingByMessageId?.id) {
+      const resource = (data?.resource ?? {}) as Record<string, unknown>;
+      const deliveryStatus = typeof resource.status === 'string' ? resource.status : null;
+      const priorPayload = existingByMessageId.payload && typeof existingByMessageId.payload === 'object'
+        ? existingByMessageId.payload as Record<string, unknown>
+        : {};
+      const mergedPayload = {
+        ...priorPayload,
+        ...payload,
+        delivery_event: eventType,
+        ...(deliveryStatus ? { delivery_status: deliveryStatus } : {}),
+      };
+      const update: Record<string, unknown> = { payload: mergedPayload };
+      if (!existingByMessageId.webhook_delivery_id) {
+        update.webhook_delivery_id = webhookDeliveryId;
+      }
+      if (!existingByMessageId.prospect_id && prospectId) update.prospect_id = prospectId;
+      if (!existingByMessageId.chef_id && chefId) update.chef_id = chefId;
+      const { error: updateErr } = await adminClient
+        .from('quo_communication_events')
+        .update(update)
+        .eq('id', existingByMessageId.id);
+      if (updateErr) {
+        console.error('quo webhook merge update:', updateErr.message);
+        return jsonResponse({ error: 'Failed to merge delivery event' }, 500);
+      }
+      return jsonResponse({ ok: true, merged: true });
+    }
+  }
 
   const { error } = await adminClient.from('quo_communication_events').insert({
     chef_id: chefId,
