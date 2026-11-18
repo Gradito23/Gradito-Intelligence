@@ -57,6 +57,7 @@ export const TECHNICAL_DOC_SECTIONS = [
       'quo-webhook-messages / quo-webhook-transcripts — Inbound SMS and call transcripts into quo_communication_events.',
       'integration-smtp — SMTP-related helpers used by the email integration stack.',
       'onboarding-guide-email — Sends the Chef & FOH onboarding guide after intake; open/click tracking.',
+      'chef-intake-approve-notify — Welcome email and SMS after ops approves a chef intake request.',
       'manage-users — Admin user lifecycle (invites, role assignment) with service-role access.',
       'auth-gate — Auth-related gatekeeping for protected flows.',
       'auth-password-reset — Password reset email and token handling.',

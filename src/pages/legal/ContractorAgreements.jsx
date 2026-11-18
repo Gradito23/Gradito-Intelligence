@@ -38,9 +38,9 @@ export default function ContractorAgreements() {
             {(section.paragraphs || []).map((text) => (
               <p key={text}>{text}</p>
             ))}
-            {section.bullets?.length > 0 && (
+            {(section.bullets ?? []).length > 0 && (
               <ul className="list-disc pl-5 space-y-2">
-                {section.bullets.map((item) => (
+                {(section.bullets ?? []).map((item) => (
                   <li key={item}>{item}</li>
                 ))}
               </ul>

@@ -31,6 +31,9 @@ verify_jwt = false
 [functions.chef-intake-submit]
 verify_jwt = false
 
+[functions.chef-intake-approve-notify]
+verify_jwt = true
+
 [functions.event-job]
 verify_jwt = false
 

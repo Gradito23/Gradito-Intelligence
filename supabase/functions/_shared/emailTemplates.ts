@@ -173,6 +173,35 @@ export function renderTestEmail(): string {
   });
 }
 
+export function renderIntakeApprovedEmail({
+  firstName,
+  appUrl,
+}: {
+  firstName?: string | null;
+  appUrl?: string | null;
+}): string {
+  const greeting = firstName?.trim()
+    ? `Hi ${escapeHtml(firstName.trim())},`
+    : 'Hi there,';
+  const home = appUrl?.trim() || '';
+  const cta = home ? renderCta('Open Gradito', home) : '';
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${BRAND.navy};font-weight:600;">You&apos;re on the roster</h1>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Great news — your Gradito chef intake has been <strong>approved</strong>. Our team may reach out with private dining opportunities that match your profile.
+    </p>
+  ${cta}
+    <p style="margin:0;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Thank you for partnering with Gradito.
+    </p>
+  `;
+  return renderLayout({
+    preheader: 'Your Gradito chef intake was approved.',
+    bodyHtml,
+  });
+}
+
 export function renderOnboardingGuideEmail({
   chefName,
   guideTitle,
