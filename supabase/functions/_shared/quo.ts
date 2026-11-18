@@ -288,6 +288,17 @@ export function extractCounterpartyFromWebhook(envelope: Record<string, unknown>
       : null,
   );
 
+  const senderIdentifier = normalizeE164(
+    typeof context?.senderIdentifier === 'string' ? context.senderIdentifier : null,
+  );
+  const recipientIdentifiers = Array.isArray(context?.recipientIdentifiers)
+    ? (context.recipientIdentifiers as unknown[])
+      .filter((id): id is string => typeof id === 'string')
+      .map((id) => normalizeE164(id))
+      .filter(Boolean) as string[]
+    : [];
+  const recipientIdentifier = recipientIdentifiers[0] ?? null;
+
   const participants = context?.participants as Array<{ phoneNumber?: string }> | undefined;
   if (participants?.length) {
     for (const p of participants) {
@@ -298,11 +309,13 @@ export function extractCounterpartyFromWebhook(envelope: Record<string, unknown>
 
   const type = typeof envelope.type === 'string' ? envelope.type : '';
   if (type.startsWith('message.')) {
-    if (type === 'message.received') return from || to;
-    if (type === 'message.delivered' || type === 'message.failed' || type === 'message.undelivered') {
-      return to || from;
+    if (type === 'message.received') {
+      return senderIdentifier || from || to || recipientIdentifier;
     }
-    return from || to;
+    if (type === 'message.delivered' || type === 'message.failed' || type === 'message.undelivered') {
+      return recipientIdentifier || to || from || senderIdentifier;
+    }
+    return senderIdentifier || from || to || recipientIdentifier;
   }
   if (type.startsWith('call.')) {
     const ext = normalizeE164(
