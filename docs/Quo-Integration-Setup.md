@@ -81,6 +81,8 @@ Migration: `20261117300000_gradito_messaging_opt_in.sql`.
 
 Redeploy `quo-webhook-messages` after changes to `quoWebhook.ts` / `quo.ts`.
 
+Outbound SMS is logged once on send (`integration-quo`); `message.delivered` webhooks merge into that row by `quo_message_id` (migration `20261117900000_quo_sms_message_id_unique.sql`).
+
 ## Intake invite email (prospects)
 
 Migration: `20261117200000_prospect_invite_email.sql`. Redeploy `integration-email`.
