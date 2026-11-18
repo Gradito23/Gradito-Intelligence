@@ -16,8 +16,7 @@ const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 const AcceptInvite = lazy(() => import('@/pages/AcceptInvite'));
 const ChefIntake = lazy(() => import('@/pages/ChefIntake'));
-const ContractorTerms = lazy(() => import('@/pages/legal/ContractorTerms'));
-const ContractorNda = lazy(() => import('@/pages/legal/ContractorNda'));
+const ContractorAgreements = lazy(() => import('@/pages/legal/ContractorAgreements'));
 const GuideRedirect = lazy(() => import('@/pages/GuideRedirect'));
 const JobPublic = lazy(() => import('@/pages/JobPublic'));
 
@@ -118,8 +117,15 @@ function AuthenticatedApp() {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/intake" element={<ChefIntake />} />
-          <Route path="/legal/contractor-terms" element={<ContractorTerms />} />
-          <Route path="/legal/contractor-nda" element={<ContractorNda />} />
+          <Route path="/legal/contractor-agreements" element={<ContractorAgreements />} />
+          <Route
+            path="/legal/contractor-terms"
+            element={<Navigate to="/legal/contractor-agreements#terms" replace />}
+          />
+          <Route
+            path="/legal/contractor-nda"
+            element={<Navigate to="/legal/contractor-agreements#nda" replace />}
+          />
           <Route path="/guide/:token" element={<GuideRedirect />} />
           <Route path="/job/:jobId" element={<JobPublic />} />
           <Route path="/oauth/perfect-venue/callback" element={<PerfectVenueOAuthCallback />} />

@@ -87,8 +87,7 @@ export function createEmptyIntakeForm() {
     partnering_experience: '',
 
     // Agreements
-    agreed_to_terms: false,
-    agreed_to_nda: false,
+    agreed_to_contractor_legal: false,
     gradito_messaging_opt_in: true,
 
     // Legacy defaults used on approve for ops systems
@@ -144,8 +143,10 @@ export function validateIntakeForm(form) {
     'Expected salary / compensation is required',
   );
 
-  req(form.agreed_to_terms === true, 'Please agree to the Gradito Contractor Terms & Conditions');
-  req(form.agreed_to_nda === true, 'Please agree to the Gradito Contractor Confidentiality Agreement (NDA)');
+  req(
+    form.agreed_to_contractor_legal === true,
+    'Please agree to the Gradito contractor terms and confidentiality agreement',
+  );
 
   return errors;
 }
@@ -257,18 +258,22 @@ export function buildIntakePayload(form) {
       : 'Home only',
     notes: form.professional_bio || null,
     gradito_messaging_opt_in: form.gradito_messaging_opt_in !== false,
-    agreements: {
-      terms: {
-        accepted: form.agreed_to_terms === true,
-        version: CONTRACTOR_LEGAL_VERSION,
-        accepted_at: new Date().toISOString(),
-      },
-      nda: {
-        accepted: form.agreed_to_nda === true,
-        version: CONTRACTOR_LEGAL_VERSION,
-        accepted_at: new Date().toISOString(),
-      },
-      role: form.current_position?.trim() || form.roles_available || null,
-    },
+    agreements: (() => {
+      const legalAccepted = form.agreed_to_contractor_legal === true;
+      const acceptedAt = legalAccepted ? new Date().toISOString() : null;
+      return {
+        terms: {
+          accepted: legalAccepted,
+          version: CONTRACTOR_LEGAL_VERSION,
+          accepted_at: acceptedAt,
+        },
+        nda: {
+          accepted: legalAccepted,
+          version: CONTRACTOR_LEGAL_VERSION,
+          accepted_at: acceptedAt,
+        },
+        role: form.current_position?.trim() || form.roles_available || null,
+      };
+    })(),
   };
 }

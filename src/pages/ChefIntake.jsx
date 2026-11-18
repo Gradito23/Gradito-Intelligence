@@ -39,10 +39,7 @@ import {
   createEmptyIntakeForm,
   validateIntakeForm,
 } from '@/lib/chefIntakeForm';
-import {
-  CONTRACTOR_NDA_PATH,
-  CONTRACTOR_TERMS_PATH,
-} from '@/lib/contractorLegal';
+import { CONTRACTOR_LEGAL_PATH } from '@/lib/contractorLegal';
 import {
   clearIntakeDraft,
   loadIntakeDraft,
@@ -53,7 +50,17 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { CheckCircle, ExternalLink, Loader2 } from 'lucide-react';
 
 function createInitialIntakeForm() {
-  return { ...createEmptyIntakeForm(), ...(loadIntakeDraft() || {}) };
+  const base = createEmptyIntakeForm();
+  const draft = loadIntakeDraft() || {};
+  const merged = { ...base, ...draft };
+  if (
+    merged.agreed_to_contractor_legal !== true
+    && draft.agreed_to_terms === true
+    && draft.agreed_to_nda === true
+  ) {
+    merged.agreed_to_contractor_legal = true;
+  }
+  return merged;
 }
 
 function Section({ title, description, children }) {
@@ -760,44 +767,25 @@ export default function ChefIntake() {
 
         <Section
           title="Agreements"
-          description="Please read and accept both documents to submit."
+          description="Read and accept the contractor agreements to submit."
         >
           <div className="space-y-4">
             <label className="flex items-start gap-3 cursor-pointer">
               <Checkbox
-                checked={form.agreed_to_terms}
-                onCheckedChange={(checked) => set('agreed_to_terms', checked === true)}
+                checked={form.agreed_to_contractor_legal}
+                onCheckedChange={(checked) => set('agreed_to_contractor_legal', checked === true)}
                 className="mt-0.5"
                 aria-required
               />
               <span className="text-sm leading-relaxed">
                 I have read and agree to the{' '}
                 <Link
-                  to={CONTRACTOR_TERMS_PATH}
+                  to={CONTRACTOR_LEGAL_PATH}
                   className="text-navy underline"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  Gradito Contractor Terms &amp; Conditions
-                </Link>
-                .
-              </span>
-            </label>
-
-            <label className="flex items-start gap-3 cursor-pointer">
-              <Checkbox
-                checked={form.agreed_to_nda}
-                onCheckedChange={(checked) => set('agreed_to_nda', checked === true)}
-                className="mt-0.5"
-                aria-required
-              />
-              <span className="text-sm leading-relaxed">
-                I have read and agree to the{' '}
-                <Link
-                  to={CONTRACTOR_NDA_PATH}
-                  className="text-navy underline"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  Gradito Contractor Confidentiality Agreement (NDA)
+                  Gradito Contractor Terms &amp; Conditions and the Gradito Contractor
+                  Confidentiality Agreement (NDA)
                 </Link>
                 .
               </span>
@@ -823,7 +811,7 @@ export default function ChefIntake() {
 
         <Button
           type="submit"
-          disabled={loading || !form.agreed_to_terms || !form.agreed_to_nda}
+          disabled={loading || !form.agreed_to_contractor_legal}
           className="w-full h-12 bg-navy hover:bg-navy/90 text-white"
         >
           {loading ? (

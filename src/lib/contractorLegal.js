@@ -3,8 +3,15 @@
 export const CONTRACTOR_LEGAL_VERSION = '2026-11-04';
 export const CONTRACTOR_LEGAL_EFFECTIVE_LABEL = 'Effective Nov 4, 2026';
 
+export const CONTRACTOR_LEGAL_PATH = '/legal/contractor-agreements';
+
+/** @deprecated Use CONTRACTOR_LEGAL_PATH#terms — redirects in App.jsx */
 export const CONTRACTOR_TERMS_PATH = '/legal/contractor-terms';
+
+/** @deprecated Use CONTRACTOR_LEGAL_PATH#nda — redirects in App.jsx */
 export const CONTRACTOR_NDA_PATH = '/legal/contractor-nda';
+
+export const CONTRACTOR_LEGAL_PAGE_TITLE = 'Gradito contractor agreements';
 
 export const CONTRACTOR_TERMS = {
   title: 'Gradito Contractor Terms & Conditions',
