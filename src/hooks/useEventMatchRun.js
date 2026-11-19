@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/api/supabaseClient';
-import { useChefs, useEvents, useEventChefs, useClients } from '@/hooks/useAppData';
-import { computeMatchLists, persistMatchRun, polishMatchReasons } from '@/lib/runChefMatch';
+import { useChefs, useEvents, useEventChefs, useClients, useServiceAreas } from '@/hooks/useAppData';
+import { computeMatchLists, persistMatchRun, polishMatchReasons, buildMatchContext } from '@/lib/runChefMatch';
 import { matchCriteriaFromEvent } from '@/lib/matchCriteriaFromEvent';
 import { resultsFromSuggested } from '@/lib/chefMatchScore';
 
@@ -26,6 +26,7 @@ export function useEventMatchRun(eventId, { enabled = true } = {}) {
   const { data: events = [] } = useEvents();
   const { data: eventChefs = [] } = useEventChefs();
   const { data: clients = [] } = useClients();
+  const { data: serviceAreas = [] } = useServiceAreas();
 
   const query = useQuery({
     queryKey: [EVENT_MATCH_RUN_KEY, eventId],
@@ -47,7 +48,7 @@ export function useEventMatchRun(eventId, { enabled = true } = {}) {
     const criteria = matchCriteriaFromEvent(event, { jobSnapshot, eventChefsForEvent: chefsForEvent });
     if (!criteria) throw new Error('Could not build match criteria');
 
-    const context = { events, eventChefs, clients };
+    const context = buildMatchContext({ events, eventChefs, clients, serviceAreas });
     const { finalResults, sousList } = computeMatchLists(chefs, criteria, context);
 
     if (polish && finalResults.length > 0) {

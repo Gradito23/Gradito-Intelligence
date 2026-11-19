@@ -31,6 +31,15 @@ verify_jwt = false
 [functions.chef-intake-submit]
 verify_jwt = false
 
+[functions.chef-intake-approve-notify]
+verify_jwt = true
+
+[functions.geo-resolve]
+verify_jwt = true
+
+[functions.chef-match-run]
+verify_jwt = true
+
 [functions.event-job]
 verify_jwt = false
 

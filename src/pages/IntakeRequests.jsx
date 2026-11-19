@@ -24,6 +24,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { supabase } from '@/api/supabaseClient';
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { toast } from '@/components/ui/use-toast';
 import ChefAvatar from '@/components/ui/ChefAvatar';
 import IntakeRequestDetail from '@/components/intake/IntakeRequestDetail';
@@ -85,6 +87,40 @@ export default function IntakeRequests() {
     queryClient.invalidateQueries({ queryKey: ['chefInviteProspects'] });
   };
 
+  async function sendApprovalWelcome(intakeRequestId) {
+    const { data, error } = await supabase.functions.invoke('chef-intake-approve-notify', {
+      body: { intake_request_id: intakeRequestId },
+    });
+    if (error) {
+      let message = error.message;
+      if (error instanceof FunctionsHttpError) {
+        try {
+          const body = await error.context.json();
+          if (body?.error) message = body.error;
+        } catch {
+          /* ignore */
+        }
+      }
+      throw new Error(message);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+
+  function approvalNotifySummary(notify) {
+    if (!notify) return null;
+    const parts = [];
+    if (notify.email?.status === 'sent') parts.push('welcome email sent');
+    else if (notify.email?.status === 'failed') parts.push('email failed');
+    else if (notify.email?.reason === 'no_email') parts.push('no email on file');
+    if (notify.sms?.status === 'sent') parts.push('SMS sent');
+    else if (notify.sms?.status === 'failed') parts.push('SMS failed');
+    else if (notify.sms?.reason === 'no_phone') parts.push('no phone for SMS');
+    else if (notify.sms?.reason === 'messaging_opt_out') parts.push('SMS skipped (opt-out)');
+    else if (notify.sms?.reason === 'quo_not_configured') parts.push('SMS skipped (Quo off)');
+    return parts.length ? parts.join(' · ') : null;
+  }
+
   const handleApprove = async (req) => {
     if (!canWrite || req.status !== 'pending') return;
     setBusyId(req.id);
@@ -140,7 +176,21 @@ export default function IntakeRequests() {
           summary: `Approved intake for ${req.first_name} ${req.last_name} → chef roster`,
         });
       } catch { /* ignore */ }
-      toast({ title: 'Approved', description: `${req.first_name} ${req.last_name} added to Chefs.` });
+      let notifyDescription = `${req.first_name} ${req.last_name} added to Chefs.`;
+      let notifyVariant = 'default';
+      try {
+        const notify = await sendApprovalWelcome(req.id);
+        const summary = approvalNotifySummary(notify);
+        if (summary) notifyDescription += ` ${summary}.`;
+      } catch (notifyErr) {
+        notifyDescription += ` Welcome message could not be sent: ${notifyErr instanceof Error ? notifyErr.message : 'Unknown error'}.`;
+        notifyVariant = 'destructive';
+      }
+      toast({
+        title: 'Approved',
+        description: notifyDescription,
+        variant: notifyVariant === 'destructive' ? 'destructive' : undefined,
+      });
       if (detailRequest?.id === req.id) setDetailRequest(null);
       invalidate();
     } catch (err) {

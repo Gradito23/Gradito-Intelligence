@@ -2,6 +2,9 @@ import {
   buildCustomFieldsArray,
   buildInsertNotes,
   buildPvMetadataFields,
+  inferServiceAreaFromAddressText,
+  normalizePvEventForMapping,
+  pvEventNeedsDetailFetch,
   parseClientNameFromPvEvent,
   pvMinutesToDisplayTime,
   resolveAreaFromPv,
@@ -71,16 +74,43 @@ const lisaWithAddress = {
   ],
 };
 
-Deno.test('resolveAreaFromPv uses event address custom field', () => {
+Deno.test('resolveAreaFromPv maps event address custom field to roster market', () => {
   const area = resolveAreaFromPv(lisaWithAddress, { pvAccountVenueName: 'Gradito' });
-  if (area !== 'The Moorings, Islamorada (the Keys)') {
+  if (area !== 'Miami') {
     throw new Error(`Unexpected area: ${JSON.stringify(area)}`);
   }
 });
 
+Deno.test('inferServiceAreaFromAddressText maps NYC street to Manhattan', () => {
+  const area = inferServiceAreaFromAddressText('1365 York Avenue New York, NY');
+  if (area !== 'Manhattan') throw new Error(`Expected Manhattan, got ${area}`);
+});
+
+Deno.test('normalizePvEventForMapping expands official custom object', () => {
+  const ev = normalizePvEventForMapping(
+    {
+      id: 'gradito-e423563b5dbe',
+      custom: { event_address: '1365 York Avenue New York, NY' },
+    },
+    {
+      custom_fields: [{ key: 'event_address', name: 'Event Address' }],
+    },
+  );
+  const rows = buildCustomFieldsArray(ev);
+  if (!rows.some((r) => r.label === 'Event Address' && r.value.includes('York Avenue'))) {
+    throw new Error(`custom object not merged: ${JSON.stringify(rows)}`);
+  }
+  const meta = buildPvMetadataFields(ev, {});
+  if (!meta.event_address?.includes('York Avenue')) {
+    throw new Error('metadata missing event_address from custom');
+  }
+  const area = resolveAreaFromPv(ev, { pvAccountVenueName: 'Gradito' });
+  if (area !== 'Manhattan') throw new Error(`Expected Manhattan from PV custom, got ${area}`);
+});
+
 Deno.test('resolveAreaFromPv parses region from title when no address', () => {
   const area = resolveAreaFromPv(lisaCapreFixture, {});
-  if (area !== 'Florida Keys') throw new Error(`Expected Florida Keys, got ${area}`);
+  if (area !== 'Miami') throw new Error(`Expected Miami (Florida Keys), got ${area}`);
 });
 
 Deno.test('buildCustomFieldsArray captures PV intake', () => {
@@ -90,7 +120,9 @@ Deno.test('buildCustomFieldsArray captures PV intake', () => {
   }
 });
 
-Deno.test('buildPvMetadataFields includes custom_fields', () => {
-  const meta = buildPvMetadataFields(lisaWithAddress, {});
-  if (!meta.custom_fields?.length) throw new Error('metadata missing custom_fields');
-});
+Deno.test('pvEventNeedsDetailFetch false after custom normalized', () => {
+  const ev = normalizePvEventForMapping(
+    { custom: { event_address: '1365 York Avenue New York, NY' } },
+    { custom_fields: [{ key: 'event_address', name: 'Event Address' }] },
+  );
+  if (pvEventNeedsDetailFetch(ev)) throw new Error('should not need detail after custom merge');

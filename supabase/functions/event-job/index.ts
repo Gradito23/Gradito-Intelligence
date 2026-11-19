@@ -9,6 +9,10 @@ import {
 import { backfillIntegrationSecrets, resolveSecret } from '../_shared/crypto.ts';
 import { sendEmail } from '../_shared/email.ts';
 import {
+  renderApplicationAcceptedEmail,
+  renderApplicationReceivedEmail,
+} from '../_shared/emailTemplates.ts';
+import {
   buildJobInviteContext,
   DEFAULT_JOB_EMAIL_HTML,
   DEFAULT_JOB_EMAIL_SUBJECT,
@@ -489,56 +493,236 @@ async function handleSendChefInvites(
   return jsonResponse({ invitations: results });
 }
 
-async function verifyJobApplicantIntake(
+const APPLICATION_RECEIPT_SUBJECT = 'We received your application';
+const APPLICATION_RECEIPT_SMS = 'Gradito: We received your application. If you are a match, we will contact you.';
+const APPLICATION_RECEIPT_PAGE = 'We received your application. If you are a match, we will contact you.';
+const APPLICATION_ACCEPT_SUBJECT = 'Your application has been accepted';
+const APPLICATION_ACCEPT_SMS = 'Gradito: Congratulations. Your application has been accepted. We will contact you shortly.';
+
+type NoticeStatus = 'skipped' | 'sent' | 'failed';
+
+type ApplicantMatch = {
+  intakeVerified: boolean;
+  chefId: string | null;
+  intakeRequestId: string | null;
+};
+
+type ApplicantNotice = {
+  emailStatus: NoticeStatus;
+  smsStatus: NoticeStatus;
+  emailError: string | null;
+  smsError: string | null;
+};
+
+function phonesLooselyMatch(stored: string | null | undefined, applicantDigits: string): boolean {
+  const digits = normalizePhoneDigits(stored);
+  if (digits.length < 7 || applicantDigits.length < 7) return false;
+  return digits === applicantDigits || digits.endsWith(applicantDigits) || applicantDigits.endsWith(digits);
+}
+
+function intakePreference(status: string | null | undefined): number {
+  if (status === 'approved') return 0;
+  if (status === 'pending') return 1;
+  return 2;
+}
+
+function pickIntakeMatch<T extends { id: string; status?: string | null; created_at?: string | null }>(
+  rows: T[],
+): T | null {
+  if (!rows.length) return null;
+  return [...rows].sort((a, b) => {
+    const rank = intakePreference(a.status) - intakePreference(b.status);
+    if (rank !== 0) return rank;
+    return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+  })[0];
+}
+
+async function resolveJobApplicantIdentity(
   adminClient: ReturnType<typeof createServiceClient>,
   email: string,
   phone: string,
-): Promise<boolean> {
+): Promise<ApplicantMatch> {
+  const none: ApplicantMatch = { intakeVerified: false, chefId: null, intakeRequestId: null };
   const emailNorm = normalizeEmail(email);
   const phoneDigits = normalizePhoneDigits(phone);
 
   if (emailNorm) {
-    const { data: chef } = await adminClient
+    const { data: chefsByEmail, error: chefEmailErr } = await adminClient
       .from('chefs')
-      .select('id, email, archived')
-      .ilike('email', emailNorm)
-      .maybeSingle();
-    if (chef && !chef.archived) return true;
-
-    const { data: approvedByEmail } = await adminClient
-      .from('chef_intake_requests')
       .select('id')
-      .eq('status', 'approved')
+      .eq('archived', false)
       .ilike('email', emailNorm)
-      .limit(1)
-      .maybeSingle();
-    if (approvedByEmail) return true;
+      .limit(1);
+    if (chefEmailErr) throw chefEmailErr;
+    if (chefsByEmail?.[0]?.id) {
+      return { intakeVerified: true, chefId: chefsByEmail[0].id, intakeRequestId: null };
+    }
   }
 
   if (phoneDigits.length >= 7) {
-    const { data: intakes } = await adminClient
-      .from('chef_intake_requests')
-      .select('id, phone, mobile, status')
-      .eq('status', 'approved');
-    for (const row of intakes ?? []) {
-      const digits = normalizePhoneDigits(row.mobile || row.phone);
-      if (digits.length >= 7 && (digits === phoneDigits || digits.endsWith(phoneDigits) || phoneDigits.endsWith(digits))) {
-        return true;
-      }
-    }
-    const { data: chefs } = await adminClient
+    const { data: chefs, error: chefsErr } = await adminClient
       .from('chefs')
-      .select('id, phone, mobile, archived')
+      .select('id, phone, mobile')
       .eq('archived', false);
-    for (const row of chefs ?? []) {
-      const digits = normalizePhoneDigits(row.mobile || row.phone);
-      if (digits.length >= 7 && (digits === phoneDigits || digits.endsWith(phoneDigits) || phoneDigits.endsWith(digits))) {
-        return true;
+    if (chefsErr) throw chefsErr;
+    const chef = (chefs ?? []).find((row) => (
+      phonesLooselyMatch(row.mobile, phoneDigits) || phonesLooselyMatch(row.phone, phoneDigits)
+    ));
+    if (chef?.id) {
+      return { intakeVerified: true, chefId: chef.id, intakeRequestId: null };
+    }
+  }
+
+  if (emailNorm) {
+    const { data: intakesByEmail, error: intakeEmailErr } = await adminClient
+      .from('chef_intake_requests')
+      .select('id, status, created_at')
+      .ilike('email', emailNorm);
+    if (intakeEmailErr) throw intakeEmailErr;
+    const intake = pickIntakeMatch(intakesByEmail ?? []);
+    if (intake) {
+      return { intakeVerified: true, chefId: null, intakeRequestId: intake.id };
+    }
+  }
+
+  if (phoneDigits.length >= 7) {
+    const { data: intakes, error: intakesErr } = await adminClient
+      .from('chef_intake_requests')
+      .select('id, mobile, status, created_at');
+    if (intakesErr) throw intakesErr;
+    const matches = (intakes ?? []).filter((row) => phonesLooselyMatch(row.mobile, phoneDigits));
+    const intake = pickIntakeMatch(matches);
+    if (intake) {
+      return { intakeVerified: true, chefId: null, intakeRequestId: intake.id };
+    }
+  }
+
+  return none;
+}
+
+async function sendApplicantNoticeSms(
+  adminClient: ReturnType<typeof createServiceClient>,
+  params: {
+    chefId: string | null;
+    eventId: string | null;
+    content: string;
+    toE164: string;
+    sentByProfileId: string | null;
+    sentVia: string;
+  },
+): Promise<{ ok: boolean; error?: string }> {
+  const settings = await loadQuoSettings(adminClient);
+  if (!settings?.enabled || !quoConfigured(settings)) {
+    return { ok: false, error: 'Quo integration is not enabled' };
+  }
+  const env = getQuoEnvConfig();
+  const from = env.phoneNumberId || env.phoneNumberE164;
+  if (!from) return { ok: false, error: 'QUO phone number is not configured' };
+
+  const sendResult = await quoSendTextMessage(settings.api_key.trim(), {
+    content: params.content,
+    from,
+    to: [params.toE164],
+  });
+  if (!sendResult.ok) {
+    const message = (sendResult.raw as { message?: string })?.message
+      || `Quo send failed (${sendResult.status})`;
+    return { ok: false, error: message };
+  }
+
+  const resource = (sendResult.data as { data?: Record<string, unknown> })?.data ?? {};
+  const occurredAt = typeof resource.createdAt === 'string'
+    ? resource.createdAt
+    : new Date().toISOString();
+  const { error: logErr } = await adminClient.from('quo_communication_events').insert({
+    chef_id: params.chefId,
+    event_id: params.eventId,
+    channel: 'sms',
+    direction: 'outbound',
+    quo_conversation_id: typeof resource.conversationId === 'string' ? resource.conversationId : null,
+    quo_message_id: typeof resource.id === 'string' ? resource.id : null,
+    counterparty_phone_e164: params.toE164,
+    body_text: params.content,
+    payload: { resource, sent_via: params.sentVia },
+    sent_by_profile_id: params.sentByProfileId,
+    occurred_at: occurredAt,
+  });
+  if (logErr) console.error('Failed to log applicant SMS:', logErr.message);
+
+  return { ok: true };
+}
+
+async function deliverApplicantNotice(
+  adminClient: ReturnType<typeof createServiceClient>,
+  params: {
+    email: string;
+    phone: string;
+    subject: string;
+    html: string;
+    smsBody: string;
+    emailType: string;
+    chefId: string | null;
+    eventId: string | null;
+    sentByProfileId: string | null;
+    sentVia: string;
+  },
+): Promise<ApplicantNotice> {
+  const result: ApplicantNotice = {
+    emailStatus: 'skipped',
+    smsStatus: 'skipped',
+    emailError: null,
+    smsError: null,
+  };
+
+  if (params.email) {
+    if (!isValidEmail(params.email)) {
+      result.emailStatus = 'failed';
+      result.emailError = 'No valid email';
+    } else {
+      try {
+        await sendEmail(adminClient, {
+          to: params.email,
+          subject: params.subject,
+          html: params.html,
+          emailType: params.emailType,
+        });
+        result.emailStatus = 'sent';
+      } catch (err) {
+        result.emailStatus = 'failed';
+        result.emailError = err instanceof Error ? err.message : 'Email failed';
       }
     }
   }
 
-  return false;
+  if (params.phone) {
+    const toE164 = normalizeE164(params.phone);
+    if (!toE164) {
+      result.smsStatus = 'failed';
+      result.smsError = 'No valid phone';
+    } else {
+      try {
+        const sent = await sendApplicantNoticeSms(adminClient, {
+          chefId: params.chefId,
+          eventId: params.eventId,
+          content: params.smsBody,
+          toE164,
+          sentByProfileId: params.sentByProfileId,
+          sentVia: params.sentVia,
+        });
+        if (sent.ok) {
+          result.smsStatus = 'sent';
+        } else {
+          result.smsStatus = 'failed';
+          result.smsError = sent.error || 'SMS failed';
+        }
+      } catch (err) {
+        result.smsStatus = 'failed';
+        result.smsError = err instanceof Error ? err.message : 'SMS failed';
+      }
+    }
+  }
+
+  return result;
 }
 
 async function handleSubmitApplication(body: Record<string, unknown>) {
@@ -556,7 +740,7 @@ async function handleSubmitApplication(body: Record<string, unknown>) {
   const adminClient = createServiceClient();
   const { data: jobPage, error: jobErr } = await adminClient
     .from('event_job_pages')
-    .select('id, status')
+    .select('id, status, event_id')
     .eq('id', jobPageId)
     .maybeSingle();
   if (jobErr) throw jobErr;
@@ -564,26 +748,127 @@ async function handleSubmitApplication(body: Record<string, unknown>) {
     return jsonResponse({ error: 'Job not found' }, 404);
   }
 
-  const intakeVerified = await verifyJobApplicantIntake(adminClient, email, phone);
+  const match = await resolveJobApplicantIdentity(adminClient, email, phone);
   let status: 'pending' | 'ignored' = 'ignored';
-  if (intakeVerified || intakeAttestation) status = 'pending';
+  if (match.intakeVerified || intakeAttestation) status = 'pending';
 
-  const { error: insertErr } = await adminClient.from('event_job_applications').insert({
-    event_job_page_id: jobPageId,
-    first_name: firstName,
-    last_name: lastName,
-    email: email || null,
-    phone: phone || null,
-    intake_attestation: intakeAttestation,
-    intake_verified: intakeVerified,
-    status,
-  });
+  const { data: inserted, error: insertErr } = await adminClient
+    .from('event_job_applications')
+    .insert({
+      event_job_page_id: jobPageId,
+      first_name: firstName,
+      last_name: lastName,
+      email: email || null,
+      phone: phone || null,
+      intake_attestation: intakeAttestation,
+      intake_verified: match.intakeVerified,
+      matched_chef_id: match.chefId,
+      matched_intake_request_id: match.intakeRequestId,
+      status,
+    })
+    .select('id')
+    .single();
   if (insertErr) throw insertErr;
+
+  const notice = await deliverApplicantNotice(adminClient, {
+    email,
+    phone,
+    subject: APPLICATION_RECEIPT_SUBJECT,
+    html: renderApplicationReceivedEmail({ firstName }),
+    smsBody: APPLICATION_RECEIPT_SMS,
+    emailType: 'job_application_received',
+    chefId: match.chefId,
+    eventId: jobPage.event_id ?? null,
+    sentByProfileId: null,
+    sentVia: 'job-application-receipt',
+  });
+
+  const { error: noticeErr } = await adminClient
+    .from('event_job_applications')
+    .update({
+      receipt_email_status: notice.emailStatus,
+      receipt_sms_status: notice.smsStatus,
+      receipt_email_error: notice.emailError,
+      receipt_sms_error: notice.smsError,
+    })
+    .eq('id', inserted.id);
+  if (noticeErr) console.error('Failed to record application receipt:', noticeErr.message);
 
   return jsonResponse({
     ok: true,
-    message:
-      'Thanks — we received your application. Our team will follow up if this opportunity is a fit.',
+    message: APPLICATION_RECEIPT_PAGE,
+  });
+}
+
+async function handleAcceptApplication(
+  body: Record<string, unknown>,
+  adminClient: ReturnType<typeof createServiceClient>,
+  user: { id: string },
+) {
+  const applicationId = typeof body.application_id === 'string' ? body.application_id.trim() : '';
+  if (!applicationId) return jsonResponse({ error: 'application_id is required' }, 400);
+
+  const { data: existing, error: existingErr } = await adminClient
+    .from('event_job_applications')
+    .select('id, status')
+    .eq('id', applicationId)
+    .maybeSingle();
+  if (existingErr) throw existingErr;
+  if (!existing) return jsonResponse({ error: 'Application not found' }, 404);
+  if (existing.status === 'accepted') {
+    return jsonResponse({ ok: true, already_accepted: true });
+  }
+
+  const { data: claimed, error: claimErr } = await adminClient
+    .from('event_job_applications')
+    .update({ status: 'accepted' })
+    .eq('id', applicationId)
+    .neq('status', 'accepted')
+    .select('id, first_name, email, phone, matched_chef_id, event_job_page_id')
+    .maybeSingle();
+  if (claimErr) throw claimErr;
+  if (!claimed) {
+    return jsonResponse({ ok: true, already_accepted: true });
+  }
+
+  const { data: jobPage, error: jobErr } = await adminClient
+    .from('event_job_pages')
+    .select('event_id')
+    .eq('id', claimed.event_job_page_id)
+    .maybeSingle();
+  if (jobErr) throw jobErr;
+
+  const notice = await deliverApplicantNotice(adminClient, {
+    email: typeof claimed.email === 'string' ? claimed.email.trim() : '',
+    phone: typeof claimed.phone === 'string' ? claimed.phone.trim() : '',
+    subject: APPLICATION_ACCEPT_SUBJECT,
+    html: renderApplicationAcceptedEmail({
+      firstName: typeof claimed.first_name === 'string' ? claimed.first_name : '',
+    }),
+    smsBody: APPLICATION_ACCEPT_SMS,
+    emailType: 'job_application_accepted',
+    chefId: claimed.matched_chef_id ?? null,
+    eventId: jobPage?.event_id ?? null,
+    sentByProfileId: user.id,
+    sentVia: 'job-application-accepted',
+  });
+
+  const { error: noticeErr } = await adminClient
+    .from('event_job_applications')
+    .update({
+      acceptance_email_status: notice.emailStatus,
+      acceptance_sms_status: notice.smsStatus,
+      acceptance_email_error: notice.emailError,
+      acceptance_sms_error: notice.smsError,
+    })
+    .eq('id', claimed.id);
+  if (noticeErr) console.error('Failed to record acceptance notice:', noticeErr.message);
+
+  return jsonResponse({
+    ok: true,
+    already_accepted: false,
+    acceptance_email_status: notice.emailStatus,
+    acceptance_sms_status: notice.smsStatus,
   });
 }
 
@@ -605,6 +890,12 @@ Deno.serve(async (req) => {
 
     if (action === 'submit_application') {
       return await handleSubmitApplication(body);
+    }
+
+    if (action === 'accept_application') {
+      const authResult = await requireAuth(req);
+      if (authResult.error) return authResult.error;
+      return await handleAcceptApplication(body, authResult.adminClient, authResult.user);
     }
 
     if (action === 'send_chef_invites') {

@@ -173,6 +173,83 @@ export function renderTestEmail(): string {
   });
 }
 
+export function renderIntakeApprovedEmail({
+  firstName,
+  appUrl,
+}: {
+  firstName?: string | null;
+  appUrl?: string | null;
+}): string {
+  const greeting = firstName?.trim()
+    ? `Hi ${escapeHtml(firstName.trim())},`
+    : 'Hi there,';
+  const home = appUrl?.trim() || '';
+  const cta = home ? renderCta('Open Gradito', home) : '';
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${BRAND.navy};font-weight:600;">You&apos;re on the roster</h1>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Great news — your Gradito chef intake has been <strong>approved</strong>. Our team may reach out with private dining opportunities that match your profile.
+    </p>
+  ${cta}
+    <p style="margin:0;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Thank you for partnering with Gradito.
+    </p>
+  `;
+  return renderLayout({
+    preheader: 'Your Gradito chef intake was approved.',
+    bodyHtml,
+  });
+}
+
+export function renderApplicationReceivedEmail({
+  firstName,
+}: {
+  firstName?: string | null;
+}): string {
+  const greeting = firstName?.trim()
+    ? `Hi ${escapeHtml(firstName.trim())},`
+    : 'Hi,';
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${BRAND.navy};font-weight:600;">We received your application</h1>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      We received your application. If you are a match, we will contact you.
+    </p>
+    <p style="margin:0;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Thank you,<br />The Gradito Team
+    </p>
+  `;
+  return renderLayout({
+    preheader: 'We received your application. If you are a match, we will contact you.',
+    bodyHtml,
+  });
+}
+
+export function renderApplicationAcceptedEmail({
+  firstName,
+}: {
+  firstName?: string | null;
+}): string {
+  const greeting = firstName?.trim()
+    ? `Hi ${escapeHtml(firstName.trim())},`
+    : 'Hi,';
+  const bodyHtml = `
+    <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;color:${BRAND.navy};font-weight:600;">Your application has been accepted</h1>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">${greeting}</p>
+    <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Congratulations. Your application has been accepted. We will contact you shortly.
+    </p>
+    <p style="margin:0;font-size:15px;line-height:1.6;color:${BRAND.text};">
+      Thank you,<br />The Gradito Team
+    </p>
+  `;
+  return renderLayout({
+    preheader: 'Congratulations. Your application has been accepted. We will contact you shortly.',
+    bodyHtml,
+  });
+}
+
 export function renderOnboardingGuideEmail({
   chefName,
   guideTitle,

@@ -101,9 +101,14 @@ export default function JobPublic() {
         <GraditoLogo className="h-8 w-auto text-navy mb-6" title="Gradito" />
         <h1 className="font-heading text-xl font-semibold text-navy">Job not available</h1>
         <p className="text-muted-foreground mt-2 max-w-md">{error || 'This page may have been removed.'}</p>
-        <Button asChild className="mt-6" variant="outline">
-          <Link to="/intake">Chef intake</Link>
-        </Button>
+        <div className="mt-6 flex flex-wrap justify-center gap-3">
+          <Button asChild variant="outline">
+            <Link to="/jobs">All opportunities</Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/intake">Chef intake</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -139,7 +144,7 @@ export default function JobPublic() {
       if (data?.error) throw new Error(data.error);
       setApplyMessage(
         data?.message
-        || 'Thanks — we received your application. Our team will follow up if this opportunity is a fit.',
+        || 'We received your application. If you are a match, we will contact you.',
       );
       setApplyForm({
         first_name: '',
@@ -159,10 +164,17 @@ export default function JobPublic() {
     <div className="min-h-screen bg-cream text-navy">
       <header className="border-b border-border/60 bg-background/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-          <GraditoLogo className="h-7 w-auto" title="Gradito" />
-          <Button asChild size="sm" variant="outline">
-            <a href="#apply">Apply</a>
-          </Button>
+          <Link to="/jobs" aria-label="All opportunities">
+            <GraditoLogo className="h-7 w-auto" title="Gradito" />
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link to="/jobs" className="text-sm font-medium text-navy hover:underline">
+              All opportunities
+            </Link>
+            <Button asChild size="sm" variant="outline">
+              <a href="#apply">Apply</a>
+            </Button>
+          </div>
         </div>
       </header>
 

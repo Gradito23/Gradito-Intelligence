@@ -10,7 +10,8 @@
     "lint:fix": "eslint . --fix",
     "typecheck": "tsc -p ./jsconfig.json",
     "preview": "vite preview",
-    "test:pv-mapping": "npx tsx scripts/pvEventMapping.smoke.mjs"
+    "test:pv-mapping": "npx tsx scripts/pvEventMapping.smoke.mjs",
+    "test:chef-match": "node scripts/chefMatchScore.test.mjs"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",

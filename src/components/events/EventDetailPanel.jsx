@@ -398,6 +398,13 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select or from PV…" /></SelectTrigger>
                     <SelectContent>{areaOptions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
                   </Select>
+                  {!draft.service_area && (draft.pv_metadata?.event_address || draft.pv_metadata?.event_location_label) && (
+                    <p className="text-xs text-muted-foreground mt-1 leading-snug">
+                      PV location:
+                      {' '}
+                      {draft.pv_metadata.event_address || draft.pv_metadata.event_location_label}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Client Name</label>

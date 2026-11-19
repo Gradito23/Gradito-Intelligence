@@ -9,9 +9,11 @@ import { resolveSecret } from '../_shared/crypto.ts';
 import {
   buildAuthorizeUrl,
   exchangeAuthorizationCode,
+  fetchPvEventPayloadSummary,
   fetchVenues,
   listSyncRuns,
   loadConnection,
+  syncSinglePvEventById,
   revokeToken,
   savePvCredentials,
   storeTokens,

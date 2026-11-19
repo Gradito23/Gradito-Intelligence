@@ -24,6 +24,7 @@ import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
 import { useJobApplications } from '@/hooks/useJobChefInvitations';
 import { JOB_PAGE_STATUS_STYLES, publicJobUrl } from '@/lib/eventJobPage';
 import { EVENT_STATUS_COLORS } from '@/lib/eventStatuses';
+import { toast } from '@/components/ui/use-toast';
 import { ArrowLeft, Calendar, ExternalLink, Loader2 } from 'lucide-react';
 
 async function fetchEventById(eventId) {
@@ -45,6 +46,38 @@ function formatEventDate(value) {
 }
 
 const TAB_IDS = new Set(['overview', 'job', 'match', 'applications', 'staffing']);
+
+function embedOne(value) {
+  if (!value) return null;
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value;
+}
+
+function ApplicantPortalLabel({ row }) {
+  const chef = embedOne(row.matched_chef);
+  if (row.matched_chef_id) {
+    const name = [chef?.first_name, chef?.last_name].filter(Boolean).join(' ');
+    return (
+      <Link to="/chefs" className="text-sm font-medium underline">
+        Existing chef{name ? ` · ${name}` : ''}
+      </Link>
+    );
+  }
+  const intake = embedOne(row.matched_intake);
+  if (row.matched_intake_request_id) {
+    const status = intake?.status || 'unknown';
+    return (
+      <Link to="/intake-requests" className="text-sm font-medium underline capitalize">
+        Intake · {status}
+      </Link>
+    );
+  }
+  return <span className="text-sm text-muted-foreground">New applicant</span>;
+}
+
+function noticeSummary(emailStatus, smsStatus) {
+  return `Email ${emailStatus || 'skipped'} · SMS ${smsStatus || 'skipped'}`;
+}
 
 export default function ConfirmedEventHub() {
   const { eventId } = useParams();
@@ -69,9 +102,33 @@ export default function ConfirmedEventHub() {
   );
 
   const [applicationFilter, setApplicationFilter] = useState('pending');
-  const { applications, isLoading: applicationsLoading } = useJobApplications(jobPage?.id, {
+  const [acceptingId, setAcceptingId] = useState(null);
+  const { applications, isLoading: applicationsLoading, acceptApplication } = useJobApplications(jobPage?.id, {
     enabled: Boolean(jobPage?.id),
   });
+
+  const onAcceptApplication = async (applicationId) => {
+    setAcceptingId(applicationId);
+    try {
+      const result = await acceptApplication(applicationId);
+      if (result?.already_accepted) {
+        toast({ title: 'Already accepted', description: 'This application was accepted earlier.' });
+        return;
+      }
+      toast({
+        title: 'Application accepted',
+        description: noticeSummary(result?.acceptance_email_status, result?.acceptance_sms_status),
+      });
+    } catch (err) {
+      toast({
+        title: 'Could not accept application',
+        description: err instanceof Error ? err.message : 'Accept failed',
+        variant: 'destructive',
+      });
+    } finally {
+      setAcceptingId(null);
+    }
+  };
   const filteredApplications = useMemo(() => {
     if (applicationFilter === 'all') return applications;
     return applications.filter((a) => a.status === applicationFilter);
@@ -250,6 +307,7 @@ export default function ConfirmedEventHub() {
               { id: 'pending', label: 'Pending' },
               { id: 'ignored', label: 'Ignored' },
               { id: 'reviewed', label: 'Reviewed' },
+              { id: 'accepted', label: 'Accepted' },
               { id: 'all', label: 'All' },
             ].map((f) => (
               <Button
@@ -280,9 +338,10 @@ export default function ConfirmedEventHub() {
                     <TableHead>Name</TableHead>
                     <TableHead>Contact</TableHead>
                     <TableHead>Attestation</TableHead>
-                    <TableHead>Verified</TableHead>
+                    <TableHead>Portal</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Submitted</TableHead>
+                    <TableHead>Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -298,7 +357,9 @@ export default function ConfirmedEventHub() {
                         {row.phone && <div className="text-muted-foreground">{row.phone}</div>}
                       </TableCell>
                       <TableCell>{row.intake_attestation ? 'Yes' : 'No'}</TableCell>
-                      <TableCell>{row.intake_verified ? 'Yes' : 'No'}</TableCell>
+                      <TableCell>
+                        <ApplicantPortalLabel row={row} />
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline" className="text-xs capitalize">
                           {row.status}
@@ -306,6 +367,22 @@ export default function ConfirmedEventHub() {
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground whitespace-nowrap">
                         {row.created_at ? format(new Date(row.created_at), 'MMM d, yyyy h:mm a') : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {row.status === 'accepted' ? (
+                          <p className="text-xs text-muted-foreground whitespace-nowrap">
+                            {noticeSummary(row.acceptance_email_status, row.acceptance_sms_status)}
+                          </p>
+                        ) : (
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={acceptingId === row.id}
+                            onClick={() => onAcceptApplication(row.id)}
+                          >
+                            {acceptingId === row.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept'}
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}

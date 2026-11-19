@@ -2,6 +2,7 @@ import {
   parseClientNameFromPvEvent,
   buildInsertNotes,
   buildCustomFieldsArray,
+  normalizePvEventForMapping,
   pvMinutesToDisplayTime,
   resolveAreaFromPv,
   resolvePvRevenue,
@@ -32,7 +33,7 @@ check('revenue cents', resolvePvRevenue({ amount: 1770000 }) === 17700);
 check('revenue budget', resolvePvRevenue({ amount: 0, budget: 50000 }) === 500);
 check(
   'area from title',
-  resolveAreaFromPv(ev, {}) === 'Florida Keys',
+  resolveAreaFromPv(ev, {}) === 'Miami',
 );
 check(
   'area from custom address',

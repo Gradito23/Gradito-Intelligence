@@ -20,7 +20,7 @@ export default function MatchResultCard({
   onSendEmail,
   inviteBusy = false,
 }) {
-  const { chef, score, reason, travelFee, label } = result;
+  const { chef, score, reason, travelFee, label, isLocal, distanceKm } = result;
   const fullName = `${chef.first_name} ${chef.last_name}`;
   const selectable = typeof onSelect === 'function';
 
@@ -71,7 +71,23 @@ export default function MatchResultCard({
                 </Badge>
               ))}
               <Badge variant="outline" className="text-xs">{chef.roles_available}</Badge>
+              {isLocal && (
+                <Badge className="bg-emerald-600 text-white text-xs">Local</Badge>
+              )}
+              {!isLocal && distanceKm != null && distanceKm > 0 && (
+                <Badge variant="secondary" className="text-xs">~{distanceKm} km</Badge>
+              )}
             </div>
+
+            {Array.isArray(result.scoreFactors) && result.scoreFactors.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {result.scoreFactors.slice(0, 4).map((f) => (
+                  <Badge key={f.code + f.label} variant="outline" className="text-[10px]">
+                    {f.label}
+                  </Badge>
+                ))}
+              </div>
+            )}
 
             {reason && (
               <p className="mt-3 text-sm text-muted-foreground italic leading-relaxed">

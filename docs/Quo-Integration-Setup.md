@@ -83,6 +83,17 @@ Redeploy `quo-webhook-messages` after changes to `quoWebhook.ts` / `quo.ts`.
 
 Outbound SMS is logged once on send (`integration-quo`); `message.delivered` webhooks merge into that row by `quo_message_id` (migration `20261117900000_quo_sms_message_id_unique.sql`).
 
+## Intake approval welcome (email + SMS)
+
+Migration: `20261118000000_intake_approval_notify.sql`. Deploy: `chef-intake-approve-notify`.
+
+When ops approves a request on **Intake Requests**, the app calls the edge function to send:
+
+- **Welcome email** (`chef_intake_approved`) if the chef has a valid email.
+- **Welcome SMS** via Quo if phone/mobile exists and messaging opt-in is not false.
+
+Submit-time **onboarding guide** email is unchanged (`onboarding-guide-email` from the public intake form). Idempotency: `approval_welcome_email_sent_at` / `approval_welcome_sms_sent_at` on `chef_intake_requests`.
+
 ## Intake invite email (prospects)
 
 Migration: `20261117200000_prospect_invite_email.sql`. Redeploy `integration-email`.
