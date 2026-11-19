@@ -11,6 +11,19 @@ export type PvContactLike = {
 
 export type PvCustomFieldEntry = { label: string; value: string };
 
+export type PvVenueLike = {
+  name?: string;
+  custom_fields?: { key?: string; name?: string }[];
+  address?: {
+    street_address1?: string;
+    street_address2?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    country?: string;
+  };
+};
+
 export type PvEventLike = Record<string, unknown> & {
   id?: string;
   name?: string;
@@ -24,10 +37,55 @@ export type PvEventLike = Record<string, unknown> & {
   end_time?: unknown;
   event_address?: unknown;
   address?: unknown;
+  /** PV API: keyed by venue custom field `key` (see PV "Data model notes"). */
+  custom?: Record<string, unknown>;
   custom_field_values?: unknown;
   custom_fields?: unknown;
   contact?: PvContactLike;
+  /** Set during sync after Get Event still had no intake — do not block page upsert. */
+  _pv_detail_exhausted?: boolean;
 };
+
+const SERVICE_AREA_FROM_ADDRESS: { pattern: RegExp; area: string }[] = [
+  { pattern: /\bmanhattan\b|\bnew york,?\s*ny\b|\byork avenue\b/i, area: 'Manhattan' },
+  { pattern: /\bbrooklyn\b/i, area: 'Brooklyn' },
+  { pattern: /\bqueens\b/i, area: 'Brooklyn' },
+  { pattern: /\bbronx\b/i, area: 'Brooklyn' },
+  { pattern: /\bwestchester\b|\bwhite plains\b|\byonkers\b/i, area: 'Westchester' },
+  { pattern: /\bhamptons\b|\bsouthampton\b|\beast hampton\b/i, area: 'The Hamptons' },
+  { pattern: /\bnewark\b|\bjersey city\b|\bhoboken\b|\bnew jersey\b/i, area: 'New Jersey' },
+  { pattern: /\bmiami\b|\bbrickell\b/i, area: 'Miami' },
+  { pattern: /\bflorida keys\b|\bislamorada\b|\bkey largo\b/i, area: 'Miami' },
+  { pattern: /\blos angeles\b|\b\s+ca\b/i, area: 'Los Angeles' },
+  { pattern: /\bphiladelphia\b|\b\s+pa\b/i, area: 'Philadelphia' },
+  { pattern: /\bwashington\b|\b\s+dc\b/i, area: 'Washington DC' },
+  { pattern: /\bsan francisco\b/i, area: 'San Francisco' },
+  { pattern: /\bnashville\b/i, area: 'Nashville' },
+  { pattern: /\bseattle\b/i, area: 'Seattle' },
+  { pattern: /\blas vegas\b/i, area: 'Las Vegas' },
+  { pattern: /\bdallas\b/i, area: 'Dallas' },
+  { pattern: /\bchicago\b/i, area: 'Chicago' },
+  { pattern: /\bboston\b/i, area: 'Boston' },
+  { pattern: /\baustin\b/i, area: 'Austin' },
+  { pattern: /\bhouston\b/i, area: 'Houston' },
+  { pattern: /\bdenver\b/i, area: 'Denver' },
+  { pattern: /\batlanta\b/i, area: 'Atlanta' },
+  { pattern: /\bnew orleans\b/i, area: 'New Orleans' },
+  { pattern: /\bportland\b/i, area: 'Portland' },
+  { pattern: /\bsan diego\b/i, area: 'San Diego' },
+  { pattern: /\bpalm beach\b/i, area: 'Palm Beach' },
+  { pattern: /\baspen\b/i, area: 'Aspen' },
+];
+
+/** Map free-text event address / intake location to a Gradito roster market when unambiguous. */
+export function inferServiceAreaFromAddressText(text: string | null | undefined): string | null {
+  const hay = text?.trim();
+  if (!hay) return null;
+  for (const row of SERVICE_AREA_FROM_ADDRESS) {
+    if (row.pattern.test(hay)) return row.area;
+  }
+  return null;
+}
 
 const EVENT_TITLE_WORDS = /\b(dinner|wedding|reception|party|corporate|birthday|engagement|gala|luncheon|brunch|catering|welcome)\b/i;
 
@@ -174,10 +232,86 @@ type CustomFieldItem = {
   text?: unknown;
 };
 
+function venueCustomFieldKeyToName(
+  venue?: PvVenueLike | null,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const f of venue?.custom_fields ?? []) {
+    const key = f?.key?.trim();
+    const name = f?.name?.trim();
+    if (key && name) map.set(key, name);
+  }
+  return map;
+}
+
+function customObjectToFieldItems(
+  custom: Record<string, unknown>,
+  keyToName: Map<string, string>,
+): CustomFieldItem[] {
+  const out: CustomFieldItem[] = [];
+  for (const [key, value] of Object.entries(custom)) {
+    if (value == null) continue;
+    const label = keyToName.get(key) ?? key;
+    out.push({ key, name: label, label, value });
+  }
+  return out;
+}
+
+/**
+ * Merge PV `custom` (official API shape) into array-style custom fields for mappers.
+ * Call at sync boundary so list/detail payloads both work.
+ */
+export function normalizePvEventForMapping(
+  ev: PvEventLike,
+  venue?: PvVenueLike | null,
+): PvEventLike {
+  const keyToName = venueCustomFieldKeyToName(venue);
+  const fromArrays = (() => {
+    const raw = ev.custom_field_values ?? ev.custom_fields ?? ev.answers ?? ev.form_answers;
+    if (!Array.isArray(raw)) return [] as CustomFieldItem[];
+    return raw as CustomFieldItem[];
+  })();
+
+  const rawCustom = ev.custom;
+  if (!rawCustom || typeof rawCustom !== 'object' || Array.isArray(rawCustom)) {
+    return ev;
+  }
+
+  const fromObject = customObjectToFieldItems(rawCustom as Record<string, unknown>, keyToName);
+  if (!fromObject.length) return ev;
+
+  const seenKeys = new Set(
+    fromArrays.map((item) => String(item.key ?? item.name ?? item.label ?? '').toLowerCase()).filter(Boolean),
+  );
+  const merged = [...fromArrays];
+  for (const item of fromObject) {
+    const k = String(item.key ?? '').toLowerCase();
+    if (k && seenKeys.has(k)) continue;
+    merged.push(item);
+    if (k) seenKeys.add(k);
+  }
+
+  return { ...ev, custom_field_values: merged };
+}
+
 export function iterPvCustomFields(ev: PvEventLike): CustomFieldItem[] {
-  const raw = ev.custom_field_values ?? ev.custom_fields ?? ev.answers ?? ev.form_answers;
-  if (!Array.isArray(raw)) return [];
-  return raw as CustomFieldItem[];
+  const raw = ev.custom_field_values ?? ev.answers ?? ev.form_answers;
+  if (Array.isArray(raw)) return raw as CustomFieldItem[];
+  const legacyFields = ev.custom_fields;
+  if (Array.isArray(legacyFields)) return legacyFields as CustomFieldItem[];
+  if (
+    legacyFields &&
+    typeof legacyFields === 'object' &&
+    !Array.isArray(legacyFields)
+  ) {
+    return Object.entries(legacyFields as Record<string, unknown>).map(([key, value]) => ({
+      key,
+      name: key,
+      label: key,
+      value,
+    }));
+  }
+  return [];
 }
 
 export function customFieldAnswer(item: CustomFieldItem): string | null {
@@ -238,23 +372,35 @@ export function extractEventLocationLabel(ev: PvEventLike): string | null {
   return null;
 }
 
-/** Gradito Area: known market first, else PV location/region string (not bare account name). */
+/** Gradito Area: roster market when inferable; not a raw street address. */
 export function resolveAreaFromPv(
   ev: PvEventLike,
   options: { knownGraditoMarket?: string | null; pvAccountVenueName?: string | null } = {},
 ): string | null {
   if (options.knownGraditoMarket?.trim()) return options.knownGraditoMarket.trim();
-  const eventAddressField = findCustomFieldByLabel(ev, 'event address');
-  if (eventAddressField?.trim()) return eventAddressField.trim().slice(0, 120);
+
+  const addressHay =
+    findCustomFieldByLabel(ev, 'event address') ??
+    extractEventAddress(ev) ??
+    extractEventLocationLabel(ev);
+  const fromAddress = inferServiceAreaFromAddressText(addressHay);
+  if (fromAddress) return fromAddress;
+
   const loc = extractEventLocationLabel(ev) ?? extractEventAddress(ev);
   if (loc) {
-    const first = loc.split(/[\n,]/)[0]?.trim();
-    if (first && first.length <= 120) return first;
+    const inferred = inferServiceAreaFromAddressText(loc);
+    if (inferred) return inferred;
   }
+
   const title = parseEventTitleFromName(ev.name);
   if (title) {
     const inMatch = title.match(/\b(?:in|at)\s+(.+)$/i);
-    if (inMatch?.[1]?.trim()) return inMatch[1].trim().slice(0, 120);
+    if (inMatch?.[1]?.trim()) {
+      const region = inMatch[1].trim();
+      const fromTitle = inferServiceAreaFromAddressText(region);
+      if (fromTitle) return fromTitle;
+      return region.slice(0, 120);
+    }
   }
   const venue = options.pvAccountVenueName?.trim();
   if (venue && venue.toLowerCase() !== 'gradito') {
@@ -433,9 +579,34 @@ export function buildPvMetadataFields(
   };
 }
 
-/** True when list payload likely omits custom_field_values. */
-export function pvEventNeedsDetailFetch(ev: PvEventLike): boolean {
-  return buildCustomFieldsArray(ev).length === 0;
+/** True when event JSON has no documented intake after normalization (needs GET /events/{id}). */
+export function pvEventNeedsDetailFetch(
+  ev: PvEventLike,
+  venue?: PvVenueLike | null,
+  options: { detailAttempted?: boolean } = {},
+): boolean {
+  if (options.detailAttempted === true) return false;
+  if (ev._pv_detail_exhausted === true) return false;
+  const mapped = normalizePvEventForMapping(ev, venue);
+  if (buildCustomFieldsArray(mapped).length > 0) return false;
+  if (extractEventAddress(mapped)) return false;
+  return true;
+}
+
+export function pageDetailEnrichmentComplete(
+  events: PvEventLike[],
+  venueMap: Map<string, unknown>,
+  exhaustedIds: Set<string>,
+): boolean {
+  for (const ev of events) {
+    const id = ev?.id != null ? String(ev.id) : '';
+    const venue = ev?.venue_id ? venueMap.get(String(ev.venue_id)) : undefined;
+    const attempted = id ? exhaustedIds.has(id) : false;
+    if (pvEventNeedsDetailFetch(ev, venue as PvVenueLike | null, { detailAttempted: attempted })) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function shouldSyncPvClientRevenue(ev: PvEventLike): boolean {

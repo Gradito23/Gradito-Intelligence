@@ -2,6 +2,18 @@
 
 Perfect Venue sync runs in **one ~20s chunk per edge invocation**. A **pg_cron** job calls the edge function every minute while a checkpoint exists; a **daily** job starts incremental sync when idle.
 
+**Stuck sync** (`100 fetched`, `0 updated`, status `running` for a long time): fail the run and clear the checkpoint, then sync again (prefer **incremental**) or use `sync_pv_event` for one PV id:
+
+```sql
+UPDATE perfect_venue_sync_runs
+SET status = 'failed', finished_at = NOW(), error_message = 'Stopped manually — detail enrichment backlog'
+WHERE status = 'running';
+
+UPDATE integration_perfect_venue_connections
+SET sync_checkpoint = NULL
+WHERE id = 1;
+```
+
 ## Prerequisites
 
 1. Migrations through `20261113150000_perfect_venue_pgcron_driver.sql` (`pg_cron`, `pg_net`, scheduled jobs).

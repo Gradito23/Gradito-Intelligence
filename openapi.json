@@ -1,0 +1,3647 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "version": "1.6.0",
+    "title": "Perfect Venue REST API Docs",
+    "contact": {
+      "name": "Perfect Venue Support",
+      "email": "support@perfectvenue.com",
+      "url": "https://www.perfectvenue.com"
+    },
+    "license": {
+      "name": "Terms of Service",
+      "url": "https://www.perfectvenue.com/terms-of-service"
+    },
+    "x-logo": {
+      "url": "https://cdn.prod.website-files.com/63d06722a6f6c812bbe32959/63d2fec1c973d398875d5a4e_PV_logo%402x.png",
+      "altText": "Perfect Venue Logo"
+    },
+    "description": "# Introduction\n\nWelcome to the Perfect Venue API docs. Customers on the Enterprise plan can create their own apps\nfrom Settings in Perfect Venue; see [Creating an app](#section/Authentication/Creating-an-app).\nPartners building an integration for many customers should reach out to support@perfectvenue.com\nand we'll help you get set up.\n\n\nThis site was generated with [Redoc](https://github.com/Redocly/Redoc) and the [OpenAPI/Swagger\nformat](https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.0.2.md).\n\n# Quick start\n\nUse this flow when building a new integration:\n\n  1. Create an app under **Settings → Developer** in Perfect Venue (Enterprise plan), or contact\n     support@perfectvenue.com if you are a partner building for many customers. See\n     [Creating an app](#section/Authentication/Creating-an-app).\n  2. Copy the app's client ID and client secret to your server.\n  3. Send a Perfect Venue user with access to the relevant venues through the OAuth authorization code flow, requesting the [scopes](#section/Authentication/Scopes) you need.\n  4. Exchange the authorization code for an access token and refresh token.\n  5. Call `GET /venues` to find the venues available to the authorizing Perfect Venue user.\n  6. Store the Perfect Venue `venue_id` values in your system.\n  7. Create events with `POST /events`, including contact details inline when you do not already have a `contact_id`.\n  8. Use `GET /events` plus webhooks to keep your system in sync.\n\nAll authenticated API requests use this base URL:\n\n~~~\nhttps://api.perfectvenue.com/api/v1\n~~~\n\n# Implementation path\n\n**1. List venues**\n\nAfter a Perfect Venue user authorizes your integration, call `GET /venues` first. Venue IDs are required when creating events.\nThe venue response also includes venue-specific configuration such as event types, spaces, and custom fields.\n\n~~~\ncurl https://api.perfectvenue.com/api/v1/venues \\\n  -H \"Authorization: Bearer ACCESS_TOKEN\"\n~~~\n\nSave the `id` for each venue your integration should write to. We recommend mapping each\nPerfect Venue `venue_id` to the equivalent resource in your system, such as a location,\nmerchant, store, or account.\n\n**2. Create an event**\n\nCreate an event with a known `contact_id`, or pass a top-level `contact` object to create or reuse a contact\ninline. Use `start_time` and `end_time` for new integrations; `start_date` and `end_date` are deprecated.\n\n~~~\ncurl https://api.perfectvenue.com/api/v1/events \\\n  -H \"Authorization: Bearer ACCESS_TOKEN\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"event\": {\n      \"venue_id\": \"VENUE_ID\",\n      \"name\": \"Henry's Wedding\",\n      \"start_time\": \"2026-08-15T18:00:00Z\",\n      \"end_time\": \"2026-08-15T23:00:00Z\",\n      \"group_size\": 120,\n      \"source\": \"Partner Integration\",\n      \"event_type\": \"Wedding\",\n      \"spaces\": [\"main-hall\"],\n      \"custom\": {\n        \"dietary_restrictions\": \"vegan\"\n      }\n    },\n    \"contact\": {\n      \"first_name\": \"Ada\",\n      \"last_name\": \"Lovelace\",\n      \"email\": \"ada@example.com\",\n      \"phone\": \"+14155550100\"\n    },\n    \"message\": {\n      \"text\": \"Interested in a Saturday evening reception.\"\n    }\n  }'\n~~~\n\n**3. Sync events**\n\nUse `GET /events` to backfill or reconcile data. Always pass `venue_id`; use pagination for large result sets.\n\n~~~\ncurl \"https://api.perfectvenue.com/api/v1/events?venue_id=VENUE_ID&per_page=100&page=1\" \\\n  -H \"Authorization: Bearer ACCESS_TOKEN\"\n~~~\n\nFor incremental syncs, filter by `updated_at`:\n\n~~~\ncurl \"https://api.perfectvenue.com/api/v1/events?venue_id=VENUE_ID&date_field=updated_at&date_from=2026-06-01T00:00:00Z&date_to=2026-06-30T23:59:59Z\" \\\n  -H \"Authorization: Bearer ACCESS_TOKEN\"\n~~~\n\n# Data model notes\n\n  * `venue_id` identifies a venue available to the authorizing Perfect Venue user and is required for creating contacts and events.\n  * `contact_id` identifies the event's primary contact.\n  * `event_type` must match an event type configured for the venue.\n  * `spaces` should contain space slugs from the venue's `spaces` array.\n  * `custom` values are keyed by the venue's custom field `key`.\n  * Event timestamps are ISO 8601 strings. Use the venue's `timezone` when displaying local times to users.\n  * Money amounts are integer cents, for example `150000` for $1,500.00.\n\n# Versioning\n\nSend a `PV-Version` header to choose the response format. Without it, every endpoint keeps the\ndefault format it has always returned, so existing integrations don't change. New integrations\nshould send the latest version.\n\n~~~\ncurl https://api.perfectvenue.com/api/v1/venues \\\n  -H \"Authorization: Bearer ACCESS_TOKEN\" \\\n  -H \"PV-Version: 2026-11-01\"\n~~~\n\n| Version | What changes |\n| --- | --- |\n| Default (no header) | Successful responses are `{\"status\": \"success\", \"data\": ...}`. Errors use the formats in [Error handling](#section/Error-handling). |\n| `2026-11-01` | Successful responses are `{\"data\": ...}`, with list paging in a top level `meta`. Every error is a problem details body with a `request_id`. [List contacts](#tag/Contacts/operation/listContacts) is available. |\n\nThe response echoes the version you sent in a `PV-Version` header. An unknown version returns\n`400 Bad Request` naming the supported versions.\n\n# Error handling\n\nUnder `PV-Version: 2026-11-01`, every error uses the problem details format\n([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)). Branch on `type`, which stays the same\nwhen the wording of `detail` changes.\n\n~~~json\n{\n  \"type\": \"https://docs.perfectvenue.com/api/errors/not-found\",\n  \"title\": \"Not found\",\n  \"status\": 404,\n  \"detail\": \"Venue not found\",\n  \"request_id\": \"9f6c2b0e-4a1d-4c55-8a3e-2f7d1c9b6a10\"\n}\n~~~\n\nSome validation errors also include `errors`, an array of `field`, `code`, and `message`.\n\n| `type` ends with | Status | Meaning |\n| --- | --- | --- |\n| `invalid-request` | 400 | A parameter is missing or invalid, or `PV-Version` is unknown |\n| `validation-error` | 400 | The record failed validation |\n| `authentication-error` | 401 | The access token is missing, invalid, expired, or revoked |\n| `insufficient-scope` | 403 | The token is missing a required [scope](#section/Authentication/Scopes) |\n| `forbidden` | 403 | The authorizing user can't access the venue or resource |\n| `not-found` | 404 | The resource doesn't exist or isn't visible to the authorizing user |\n| `internal-error` | 500 | Something went wrong on our side |\n\nWithout `PV-Version`, most errors use `status: \"fail\"` with messages in `data.errors`:\n\n~~~json\n{\n  \"status\": \"fail\",\n  \"data\": {\n    \"errors\": [\n      { \"message\": \"End time must be after start time\" }\n    ]\n  }\n}\n~~~\n\nIn the default format, a missing, invalid, or expired token returns `401` with an empty body.\nThe reason is in the `WWW-Authenticate` header, for example\n`Bearer realm=\"Doorkeeper\", error=\"invalid_token\", error_description=\"The access token is invalid\"`.\nA missing scope on an application created before 2026-11-01 returns `403` with an empty body,\nexcept from the team member endpoints.\nOther missing scopes return the `status: \"fail\"` body with `code: \"insufficient_scope\"`. Unexpected server errors return\n`{\"status\": \"error\", \"message\": \"Internal server error\"}`.\n\nRate limited requests return `429 Too Many Requests` with a problem details body in every\nversion. See [Rate limiting](#section/Rate-limiting).\n\n# Request IDs\n\nEvery response has an `X-Request-Id` header. Problem details bodies, including rate limit\nresponses, repeat it as `request_id`. Log it with failed requests and include it when you contact\nsupport@perfectvenue.com, so we can find the request.\n\n# Authentication\n\nThe Perfect Venue API uses OAuth 2.0 Bearer tokens for authentication. Partner developers build\nand operate integrations, but a Perfect Venue user must log in and authorize the application\nbefore the integration can access venue data.\n\nAt a high level:\n\n  1. Perfect Venue provisions an OAuth application for your integration.\n  2. Your integration redirects a Perfect Venue user to the authorization URL.\n  3. The user logs in and grants permission.\n  4. Perfect Venue redirects the user back to your `redirect_uri` with an authorization code.\n  5. Your server exchanges that code for an access token and refresh token.\n  6. Your integration uses the access token when calling the API.\n\nAccess is limited to the Perfect Venue user who authorized the application. For example, if that\nuser can access two venues, `GET /venues` returns those venues and API writes are limited to\nresources that user can access.\n\n## Creating an app\n\nAn app is what connects your software, or a tool you use, to Perfect Venue on behalf of a\nteam. Organization admins on the Enterprise plan create apps themselves under\n**Settings → Developer** at `app.perfectvenue.com/settings/developer`. Organizations on other\nplans keep managing the apps they already have, and partners building for many customers can\nask support@perfectvenue.com to set one up.\n\nWhen you create an app you choose:\n\n| Field | Notes |\n| --- | --- |\n| Name and logo | Shown to people on the consent screen when they connect the app |\n| Redirect URIs | One per line. Must use `https`; `localhost` and `http` are not accepted |\n| Private | Only your own organization can connect a private app. This cannot be changed after the app is created |\n\nA **private** app is ready to use as soon as it is created, and its tokens only ever reach\nvenues in your organization. A **public** app is reviewed by Perfect Venue before other\norganizations can connect it; until it is approved, you can connect and test it from your own\naccount. Changing a published app's name, logo, or redirect URIs sends it back to review, and\nother organizations cannot connect it until it is approved again.\n\n## OAuth credentials\n\nEach app has the following values, shown on the Developer settings page or provided by Perfect\nVenue during setup:\n\n| Value | Description |\n| --- | --- |\n| `client_id` | Public identifier for your OAuth application |\n| `client_secret` | Secret used by your server when exchanging authorization codes and refresh tokens |\n| `redirect_uri` | Callback URL registered for your integration |\n\nKeep the `client_secret` on your server. Do not expose it in browser code, mobile apps, logs,\nor customer-visible configuration.\n\n## Authorizing the app\n\nDirect a Perfect Venue user to the Authorization URL with the following query parameters. The user must log in\nand grant permission before your integration can receive an authorization code.\n\n  * `response_type`: Set to \"code\"\n  * `client_id`: Your application's unique client ID, provided by Perfect Venue\n  * `redirect_uri`: The URL to which the user will be redirected after authorization\n  * `scope`: Space separated [scopes](#section/Authentication/Scopes) your integration needs, for example `public read write`. Leave it out to request only `public`.\n  * `state`: (Optional but recommended) A random string to maintain state between the request and callback, helping to prevent [CSRF attacks](https://auth0.com/docs/secure/attack-protection/state-parameters)\n\nExample Authorization URL:\n\n~~~\n  https://api.perfectvenue.com/oauth/authorize?response_type=code&client_id=CLIENT_ID&redirect_uri=REDIRECT_URI&scope=public%20read%20write&state=RANDOM_STRING\n~~~ \n\nAlways validate the `state` value on the callback before exchanging the authorization code.\n\n## Obtaining an access token\n\nOnce the Perfect Venue user has authorized your application, they will be redirected to the specified\n`redirect_uri` with a `code` parameter in the query string. If authorization fails or the user\ndeclines access, the redirect may include an OAuth error instead of `code`.\n\n\nTo exchange this authorization code for an access token, send a POST request to the Token URL\nwith the following setup:\n\n  1. `Authorization` Header: Use Basic HTTP authentication, where the `client_id` and `client_secret` are\n  combined in the format `client_id:client_secret` and Base64 encoded. This encoded value is included in the\n  Authorization header as `Basic <encoded_credentials>`.\n  2. Body Parameters (URL-encoded)  \n      * `grant_type`: Set to \"authorization_code\"\n      * `code`: The authorization code received in the redirect\n      * `redirect_uri`: Must match the `redirect_uri` used the previous step\n\n\nExample Token Request:  \n\n~~~\n  POST https://api.perfectvenue.com/oauth/token\n  Authorization: Basic BASE64_ENCODED(client_id:client_secret)\n  Content-Type: application/x-www-form-urlencoded\n\n  grant_type=authorization_code&code=AUTHORIZATION_CODE&redirect_uri=REDIRECT_URI\n~~~\n\nExample Token Response:\n\n~~~json\n{\n  \"access_token\": \"ACCESS_TOKEN\",\n  \"token_type\": \"Bearer\",\n  \"expires_in\": 7200,\n  \"refresh_token\": \"REFRESH_TOKEN\",\n  \"scope\": \"public read write\",\n  \"created_at\": 1782950400\n}\n~~~\n\nStore tokens securely. Access tokens last 2 hours (`expires_in` is in seconds). Refresh tokens\nshould be treated like passwords because they can be exchanged for new access tokens.\n\n## Scopes\n\nThe user sees the scopes you request on the consent screen, and the access token can only do\nwhat they cover. Request the smallest set your integration needs.\n\n| Scope | Grants | Consent screen text |\n| --- | --- | --- |\n| `public` | The default scope, granted to every token | Perfect Venue public API access |\n| `read` | Reading venues, events, and contacts | View your venues, events, and contacts |\n| `write` | Creating and updating events and contacts | Create and update your events and contacts |\n| `contacts_read` | [List contacts](#tag/Contacts/operation/listContacts) | Contacts name and email |\n| `users_read` | [List team members](#tag/Users/operation/listUsers) and [Get team member](#tag/Users/operation/getUser) | Names, roles, and email addresses of your team members |\n\n`read` and `write` are separate: a token with only `write` can't read. Applications created\nbefore 2026-11-01 don't need `read` or `write`; their `public` tokens keep working for venues,\nevents, and contacts.\n\nA request with a token that lacks the scope returns `403 Forbidden`, and the body names the\nmissing scope. The exception is an application created before 2026-11-01 that doesn't send\n`PV-Version`: it gets an empty `403` body, except from the team member endpoints.\n\n## Using access tokens\n\nUpon a successful token exchange, you’ll receive a JSON response with an access token.\nInclude this token in the Authorization header as `Bearer <token>` for all authenticated requests.  \n\nAccess tokens represent the Perfect Venue user who authorized the application. API responses and writes\nare limited to the venues and resources that user can access in Perfect Venue.\n\n\nExample API Request:\n\n~~~\n  GET /api/v1/venues\n  Host: api.perfectvenue.com\n  Authorization: Bearer YOUR_ACCESS_TOKEN\n~~~\n\n## Using refresh tokens\n\nToken responses will include a refresh token that can be exchanged for a new access token.\n\nTo exchange a refresh token for a new access token, send a POST request to the Token URL\nwith the following setup:\n\n  1. `Authorization` Header: Use Basic HTTP authentication, where the `client_id` and `client_secret` are\n  combined in the format `client_id:client_secret` and Base64 encoded. This encoded value is included in the\n  Authorization header as `Basic <encoded_credentials>`.\n  2. Body Parameters (URL-encoded)  \n      * `grant_type`: Set to \"refresh_token\"\n      * `refresh_token`: The refresh token obtained from a previous token request\n  \nExample Refresh Token Request:  \n\n~~~\n  POST https://api.perfectvenue.com/oauth/token\n  Authorization: Basic BASE64_ENCODED(client_id:client_secret)\n  Content-Type: application/x-www-form-urlencoded\n\n  grant_type=refresh_token&refresh_token=REFRESH_TOKEN\n~~~\n\nYour integration should refresh the token before it expires or when an API request returns\n`401 Unauthorized` because the access token is expired. If a refresh request fails, send the\nPerfect Venue user through the authorization flow again.\n\nEach refresh returns a new refresh token as well as a new access token, with the same scopes.\nStore the new refresh token. The previous one stops working once you use the new access token.\nRefresh tokens don't expire on their own; they stop working when revoked.\n\n## Revoking tokens\n\nUse token revocation when a user disconnects your integration, when you rotate stored\ncredentials, or when you no longer need access for a Perfect Venue user.\n\nSend a `POST` request to the revocation endpoint with client authentication and the token you\nwant to revoke:\n\n~~~\n  POST https://api.perfectvenue.com/oauth/revoke\n  Authorization: Basic BASE64_ENCODED(client_id:client_secret)\n  Content-Type: application/x-www-form-urlencoded\n\n  token=ACCESS_OR_REFRESH_TOKEN\n~~~\n\nRequest parameters:\n\n| Parameter | Required | Description |\n| --- | --- | --- |\n| `token` | Yes | Access token or refresh token to revoke |\n| `token_type_hint` | No | Optional hint such as `access_token` or `refresh_token` |\n\nSuccessful revocation returns `200 OK` with an empty JSON body. The endpoint also returns\n`200 OK` for missing, invalid, or already revoked tokens. If the token was issued to a\ndifferent OAuth client, Perfect Venue returns `403 Forbidden` with `unauthorized_client`.\n\nAfter revoking a token, remove it from your system. If your integration needs access again,\nsend the Perfect Venue user through the OAuth authorization flow to receive new tokens.\n\n## Authentication errors\n\n| Status | Meaning | What to do |\n| --- | --- | --- |\n| `401 Unauthorized` | The access token is missing, invalid, expired, or revoked | Refresh the token or send the user through OAuth again |\n| `403 Forbidden` | The token is valid, but the authorizing user does not have access to the requested venue or resource | Ask the user to confirm their Perfect Venue permissions or authorize with a different user |\n| `403 Forbidden` (missing scope) | The token doesn't have a scope the endpoint requires; the body names it, unless an application created before 2026-11-01 omits `PV-Version` (then the body is empty, except from the team member endpoints) | Send the user through OAuth again, requesting that scope |\n\n# Rate limiting\n\nThe API is rate limited to **100 requests per minute per access token**. If you exceed this\nlimit, the API will respond with `429 Too Many Requests`.\n\nWhen a request is rate limited, the response includes headers that help you decide when to retry:\n\n| Header | Description |\n| --- | --- |\n| `Retry-After` | Seconds to wait before retrying |\n| `X-RateLimit-Limit` | Maximum requests allowed per minute |\n| `X-RateLimit-Remaining` | Requests remaining in the current window |\n| `X-RateLimit-Reset` | Unix timestamp when the current limit window resets |\n\nThe `429` body is a problem details object in every version, with a `request_id`:\n\n~~~json\n{\n  \"type\": \"https://docs.perfectvenue.com/lead-form-api/errors/rate-limited\",\n  \"title\": \"Rate limit exceeded\",\n  \"status\": 429,\n  \"detail\": \"You have exceeded 100 requests per minute. Try again in 42 seconds.\",\n  \"request_id\": \"9f6c2b0e-4a1d-4c55-8a3e-2f7d1c9b6a10\"\n}\n~~~\n\nWhen you receive a `429`, wait before retrying. For API support, contact support@perfectvenue.com.\n"
+  },
+  "externalDocs": {
+    "description": "Visit our Help Center for guides and tutorials",
+    "url": "https://help.perfectvenue.com/knowledge"
+  },
+  "tags": [
+    {
+      "name": "Venue",
+      "description": "Venue operations"
+    },
+    {
+      "name": "Event",
+      "description": "Event operations"
+    },
+    {
+      "name": "Contact",
+      "description": "Contact operations"
+    },
+    {
+      "name": "Users",
+      "description": "Team members in the authorizing user's organization"
+    },
+    {
+      "name": "Proposals",
+      "description": "A proposal is what a venue sends a planner to agree to: the line items, prices, policies, and\nsignature for an event. Most events have one proposal; venues on the Enterprise plan can send\nseveral alternatives for the same event.\n\nEvery event returned by the Events endpoints carries its proposals in a `proposals` array, so\nsyncing events gives you their documents with no extra requests. Use\n[Get proposal](#tag/Proposals/operation/getProposal) when you have a proposal ID on its own, for\nexample from the `proposal.signed` webhook. Webhook event payloads do not include `proposals`.\n\nEvery proposal lists the documents Perfect Venue can produce for it, such as the BEO, Staff BEO,\ninvoice, event summary, guest menu, floor plans, and the venue's custom documents, each with a\nlink to the PDF. The PDF is rendered from the proposal's current contents when the link is opened.\nThese are the same links the Perfect Venue app uses and they open without authentication today;\na future version may require a Perfect Venue login, and this changelog will say so in advance.\n"
+    },
+    {
+      "name": "Webhooks",
+      "description": "Perfect Venue can notify your application in real time when data changes for venues available\nto the authorizing Perfect Venue user. Use webhooks for incremental updates, and use the REST API to\nfetch the current resource state whenever you need to reconcile.\n\n**Quick start**\n\nUse this flow when adding webhook support:\n\n1. Build an HTTPS endpoint that can receive `POST` requests from Perfect Venue.\n2. Send Perfect Venue your endpoint URL and the event types your integration needs.\n3. Perfect Venue will add the webhook endpoint and event subscriptions to your OAuth application.\n4. Store the endpoint signing secret provided during setup.\n5. Verify the `PV-Signature` header on every delivery.\n6. Use `PV-Webhook-Id` as your idempotency key.\n7. Return a `2xx` response only after you have safely accepted the delivery.\n8. Fetch the latest resource from the REST API when your local copy needs reconciliation.\n\n**Subscribing to events**\n\nWebhook subscriptions are configured by Perfect Venue; the Developer settings page does not\nmanage them yet. To subscribe, send support@perfectvenue.com:\n\n| Field | Description |\n| --- | --- |\n| Endpoint URL | The HTTPS URL where Perfect Venue should send webhook deliveries |\n| Event types | One or more public event type names from the table below |\n| OAuth application | The OAuth application Perfect Venue configured for your integration |\n\nExample setup request:\n\n```text\nEndpoint URL: https://example.com/perfect-venue/webhooks\nEvent types: event.created, event.status_changed, event.deleted, contact.created, proposal.signed, payment.succeeded\nOAuth application: Partner Integration Name\n```\n\nPerfect Venue configures webhook subscriptions on your OAuth application. Your endpoint can\nsubscribe to multiple event types.\n\nYour endpoint must be reachable over HTTPS and should be prepared to receive duplicate\ndeliveries.\n\nYour endpoint receives events only for venues available to users who have authorized your OAuth application.\n\n**Delivery request**\n\nEach delivery is an HTTPS `POST` to your configured endpoint.\n\nRequired headers:\n\n| Header | Description |\n| --- | --- |\n| `Content-Type` | Always `application/json` |\n| `PV-Webhook-Id` | Stable delivery ID. Use this to deduplicate retries. |\n| `PV-Signature` | Timestamped HMAC signature used to verify the request. |\n\nExample delivery:\n\n```http\nPOST /perfect-venue/webhooks HTTP/1.1\nContent-Type: application/json\nPV-Webhook-Id: f8c1a0e2-6d2f-4a0d-99a2-1fd6f9f3c1aa\nPV-Signature: t=1718557200,v1=5257a869e7ecebeda32affa62cdca3fa...\n```\n\n**Payload envelope**\n\nThe JSON body always follows this envelope:\n\n```json\n{\n  \"id\": \"f8c1a0e2-6d2f-4a0d-99a2-1fd6f9f3c1aa\",\n  \"type\": \"event.created\",\n  \"api_version\": \"2026-06-01\",\n  \"created_at\": \"2026-06-16T17:00:00Z\",\n  \"data\": {\n    \"id\": \"dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3\",\n    \"venue_id\": \"VENUE_ID\",\n    \"contact_id\": \"CONTACT_ID\",\n    \"owner_id\": \"user_8xZk2LmQp4Vd7A\",\n    \"name\": \"Henry's Wedding\",\n    \"status\": \"lead\",\n    \"start_date\": \"2026-08-15T18:00:00Z\",\n    \"end_date\": \"2026-08-15T23:00:00Z\",\n    \"start_time\": \"2026-08-15T18:00:00Z\",\n    \"end_time\": \"2026-08-15T23:00:00Z\",\n    \"event_type\": \"Wedding\",\n    \"spaces\": [\"main-hall\"],\n    \"created_at\": \"2026-06-16T17:00:00Z\",\n    \"updated_at\": \"2026-06-16T17:00:00Z\"\n  }\n}\n```\n\nThe `data` object contains the payload for the specific event type.\n\n**Event types**\n\n| Type | Fires when |\n| --- | --- |\n| `event.created` | An event (booking or lead) is created |\n| `event.status_changed` | An event's status changes; payload includes the previous status |\n| `event.deleted` | An event is deleted (soft deleted) |\n| `contact.created` | A new inbound inquiry arrives |\n| `proposal.signed` | A planner signs a proposal |\n| `payment.succeeded` | A payment is marked paid |\n\n**Payloads**\n\n**`event.created` and `event.deleted`**\n\nThe `data` payload is the Event object — the same shape returned by\n[Get Event](#tag/Events/operation/getEvent) and [List Events](#tag/Events/operation/listEvents).\n\nExample `event.created` payload:\n\n```json\n{\n  \"id\": \"f8c1a0e2-6d2f-4a0d-99a2-1fd6f9f3c1aa\",\n  \"type\": \"event.created\",\n  \"api_version\": \"2026-06-01\",\n  \"created_at\": \"2026-06-16T17:00:00Z\",\n  \"data\": {\n    \"id\": \"dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3\",\n    \"venue_id\": \"VENUE_ID\",\n    \"contact_id\": \"CONTACT_ID\",\n    \"owner_id\": \"user_8xZk2LmQp4Vd7A\",\n    \"name\": \"Henry's Wedding\",\n    \"status\": \"lead\",\n    \"start_date\": \"2026-08-15T18:00:00Z\",\n    \"end_date\": \"2026-08-15T23:00:00Z\",\n    \"start_time\": \"2026-08-15T18:00:00Z\",\n    \"end_time\": \"2026-08-15T23:00:00Z\",\n    \"group_size\": 120,\n    \"source\": \"Partner Integration\",\n    \"campaign\": \"Summer 2026\",\n    \"amount\": 150000,\n    \"event_type\": \"Wedding\",\n    \"spaces\": [\"main-hall\"],\n    \"created_at\": \"2026-06-16T17:00:00Z\",\n    \"updated_at\": \"2026-06-16T17:00:00Z\"\n  }\n}\n```\n\nExample `event.deleted` payload:\n\n```json\n{\n  \"id\": \"9be6ab48-55f2-46f3-bd07-74af424c0f03\",\n  \"type\": \"event.deleted\",\n  \"api_version\": \"2026-06-01\",\n  \"created_at\": \"2026-06-17T15:30:00Z\",\n  \"data\": {\n    \"id\": \"dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3\",\n    \"venue_id\": \"VENUE_ID\",\n    \"contact_id\": \"CONTACT_ID\",\n    \"owner_id\": \"user_8xZk2LmQp4Vd7A\",\n    \"name\": \"Henry's Wedding\",\n    \"status\": \"lost\",\n    \"start_date\": \"2026-08-15T18:00:00Z\",\n    \"end_date\": \"2026-08-15T23:00:00Z\",\n    \"start_time\": \"2026-08-15T18:00:00Z\",\n    \"end_time\": \"2026-08-15T23:00:00Z\",\n    \"event_type\": \"Wedding\",\n    \"spaces\": [\"main-hall\"],\n    \"created_at\": \"2026-06-16T17:00:00Z\",\n    \"updated_at\": \"2026-06-17T15:30:00Z\"\n  }\n}\n```\n\n**`contact.created`**\n\nThe `data` payload is the Contact object — the same shape returned by\n[Get Contact](#tag/Contacts/operation/getContact).\n\nOnly inbound inquiries emit this event.\n\nExample `contact.created` payload:\n\n```json\n{\n  \"id\": \"7f6adfe6-9e01-4644-b850-3877b56526c8\",\n  \"type\": \"contact.created\",\n  \"api_version\": \"2026-06-01\",\n  \"created_at\": \"2026-06-16T17:00:00Z\",\n  \"data\": {\n    \"id\": \"CONTACT_ID\",\n    \"venue_id\": \"VENUE_ID\",\n    \"first_name\": \"Ada\",\n    \"last_name\": \"Lovelace\",\n    \"email\": \"ada@example.com\",\n    \"phone\": \"+14155550100\"\n  }\n}\n```\n\n**`event.status_changed`**\n\nA thin payload carrying only what changed. Use the `id` to fetch the full event from the\nREST API if you need other fields.\n\n| Field | Type | Description |\n| --- | --- | --- |\n| `id` | string | Event ID |\n| `venue_id` | string | Venue ID |\n| `status` | string | New status |\n| `previous_status` | string\\|null | Status before the change |\n| `updated_at` | string | ISO 8601 timestamp of the change |\n\nExample:\n\n```json\n{\n  \"id\": \"f8c1a0e2-6d2f-4a0d-99a2-1fd6f9f3c1aa\",\n  \"type\": \"event.status_changed\",\n  \"api_version\": \"2026-06-01\",\n  \"created_at\": \"2026-06-16T17:00:00Z\",\n  \"data\": {\n    \"id\": \"dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3\",\n    \"venue_id\": \"VENUE_ID\",\n    \"status\": \"confirmed\",\n    \"previous_status\": \"proposal_sent\",\n    \"updated_at\": \"2026-06-16T17:00:00Z\"\n  }\n}\n```\n\n**`proposal.signed`**\n\nSent when a planner signs a proposal. The signature itself is never included.\n\n| Field | Type | Description |\n| --- | --- | --- |\n| `id` | string | Proposal ID |\n| `event_id` | string | Event ID, the same `id` the Events endpoints return |\n| `venue_id` | string\\|null | Venue ID |\n| `action` | string\\|null | What the proposal asks the planner to do: `agreement_deposit`, `agreement`, `deposit`, `remaining_balance`, `no_action`, `other_payment`, or `countersign` |\n| `signed_at` | string\\|null | ISO 8601 timestamp of the signature |\n| `created_at` | string | ISO 8601 timestamp |\n| `updated_at` | string | ISO 8601 timestamp |\n\nExample:\n\n```json\n{\n  \"id\": \"0b9a5c1e-7d44-4f1e-9a63-2f4e8f0c7d21\",\n  \"type\": \"proposal.signed\",\n  \"api_version\": \"2026-06-01\",\n  \"created_at\": \"2026-06-20T18:04:00Z\",\n  \"data\": {\n    \"id\": \"proposal_Qm3vX8kTz1LpRw\",\n    \"event_id\": \"dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3\",\n    \"venue_id\": \"VENUE_ID\",\n    \"action\": \"agreement_deposit\",\n    \"signed_at\": \"2026-06-20T18:03:41Z\",\n    \"created_at\": \"2026-06-18T16:00:00Z\",\n    \"updated_at\": \"2026-06-20T18:03:41Z\"\n  }\n}\n```\n\n**`payment.succeeded`**\n\nSent when a payment is marked paid, whatever the payment processor.\n\n| Field | Type | Description |\n| --- | --- | --- |\n| `id` | string | Payment ID |\n| `event_id` | string | Event ID, the same `id` the Events endpoints return |\n| `venue_id` | string | Venue ID |\n| `amount` | integer | Amount in cents |\n| `kind` | string | `deposit`, `remaining_balance`, or `other` |\n| `state` | string | Payment state, `paid` |\n| `mechanism` | string | `card`, `ach`, or `offline` |\n| `paid_at` | string\\|null | ISO 8601 timestamp of the payment |\n| `created_at` | string | ISO 8601 timestamp |\n| `updated_at` | string | ISO 8601 timestamp |\n\nExample:\n\n```json\n{\n  \"id\": \"5c2f8e0a-1b6d-4c3e-8f7a-9d0e1c2b3a45\",\n  \"type\": \"payment.succeeded\",\n  \"api_version\": \"2026-06-01\",\n  \"created_at\": \"2026-06-20T18:10:00Z\",\n  \"data\": {\n    \"id\": \"payment_Hc7nV2qWx9KdTs\",\n    \"event_id\": \"dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3\",\n    \"venue_id\": \"VENUE_ID\",\n    \"amount\": 250000,\n    \"kind\": \"deposit\",\n    \"state\": \"paid\",\n    \"mechanism\": \"card\",\n    \"paid_at\": \"2026-06-20T18:09:52Z\",\n    \"created_at\": \"2026-06-20T18:09:30Z\",\n    \"updated_at\": \"2026-06-20T18:09:52Z\"\n  }\n}\n```\n\n**Signature verification**\n\nEvery delivery includes a `PV-Signature` header:\n\n```\nPV-Signature: t=1718557200,v1=5257a869e7ecebeda32affa62cdca3fa...\n```\n\n`t` is the Unix timestamp the request was signed. `v1` is the HMAC-SHA256 hex digest of\n`\"#{msg_id}.#{t}.#{raw_body}\"` where `msg_id` is the value of the `PV-Webhook-Id` header,\ncomputed with your endpoint's signing secret.\n\nVerification steps:\n\n1. Read the raw request body before parsing JSON.\n2. Parse `t` and `v1` from `PV-Signature`.\n3. Reject requests where `t` is too far from the current time. We recommend a 5-minute tolerance.\n4. Build the signed payload as `PV-Webhook-Id + \".\" + t + \".\" + raw_body`.\n5. Compute the HMAC-SHA256 hex digest with your endpoint signing secret.\n6. Compare the computed digest to `v1` using a constant-time comparison.\n\nIncluding `PV-Webhook-Id` in the signed content means a replay attack with a swapped webhook ID\nwill fail verification.\n\nExample Node.js verifier:\n\n```javascript\nconst crypto = require(\"crypto\");\n\nfunction verifyPerfectVenueWebhook({ rawBody, webhookId, signatureHeader, signingSecret }) {\n  const parts = Object.fromEntries(\n    signatureHeader.split(\",\").map((part) => part.split(\"=\"))\n  );\n  const timestamp = parts.t;\n  const expected = parts.v1;\n\n  const signedPayload = `${webhookId}.${timestamp}.${rawBody}`;\n  const actual = crypto\n    .createHmac(\"sha256\", signingSecret)\n    .update(signedPayload)\n    .digest(\"hex\");\n\n  return crypto.timingSafeEqual(\n    Buffer.from(actual, \"hex\"),\n    Buffer.from(expected, \"hex\")\n  );\n}\n```\n\n**Idempotency**\n\nThe `PV-Webhook-Id` header (and the `id` field in the body) is a stable identifier for an\nevent delivery. It does not change across retries. Use it to deduplicate: if you have already\nprocessed an `id`, acknowledge with 2xx and ignore the repeat.\n\nDelivery is at-least-once. Your handler must be safe to run twice for the same `PV-Webhook-Id`.\n\n**Response handling**\n\nReturn a `2xx` status after your endpoint has accepted the delivery. Any non-2xx response,\ntimeout, or connection error is treated as a failed delivery and retried.\n\nRecommended handler behavior:\n\n1. Verify the signature.\n2. Check whether `PV-Webhook-Id` has already been processed.\n3. Persist the delivery or enqueue work in your system.\n4. Return `2xx`.\n5. Process the event asynchronously when possible.\n\n**Ordering and sync**\n\nThere is no global ordering guarantee. Deliveries are dispatched concurrently and can arrive\nout of order. Events about the same resource carry a `created_at` you can order by, and you\ncan always read the current state from the REST API to reconcile. For high-confidence syncs,\ncombine webhooks with periodic `GET /events` backfills filtered by `updated_at`.\n\n**Retries and endpoint health**\n\nA failed delivery is retried up to 15 times with exponential backoff, which spreads the\nretries over several days. Retries resend the payload exactly as it was first built.\n\nAfter 20 failed deliveries in a row with no success in between, Perfect Venue disables the\nendpoint so it stops receiving deliveries, and emails your application's owners. Once the\nendpoint is healthy, it can be turned back on to resume new deliveries.\n\n**Payload changes**\n\nWe may add fields to an event type's `data` at any time. Each addition raises that type's schema\nversion and is listed in the [Changelog](#tag/Changelog). Ignore fields you don't recognize. If\nyou validate deliveries against a copy of these schemas, allow additional properties, or a new\nfield will make valid deliveries fail your check.\n\nRemoving or renaming a field, or changing its type, only happens under a new `api_version`.\n\n| Date | Event types | Schema version | Change |\n| --- | --- | --- | --- |\n| 2026-10-21 | `event.created`, `event.deleted` | 2 | Added `owner_id`, the ID of the team member who owns the event, or `null` when it has no owner. Look the owner up with [Get team member](#tag/Users/operation/getUser), which needs the `users_read` scope. |\n"
+    },
+    {
+      "name": "Changelog",
+      "description": "## 1.6.0 (2026-11-09)\n\n### Proposals\n\n**Proposals on events.** Every event from [List Events](#tag/Events/operation/listEvents),\n[Get Event](#tag/Events/operation/getEvent), [Create Event](#tag/Events/operation/createEvent),\nand [Update Event](#tag/Events/operation/updateEvent) now has a `proposals` array: each proposal's\nID, whether it has been signed, and links to its PDF documents (BEO, Staff BEO, invoice, event\nsummary, guest menu, floor plans, and the venue's custom documents). Webhook payloads are unchanged.\n\n**New [Get proposal](#tag/Proposals/operation/getProposal) endpoint.** Fetch one proposal by the\nID the `proposals` array and the `proposal.signed` webhook carry.\n\n### Apps\n\n**Self-service apps for Enterprise customers.** Organization admins on the Enterprise plan can\ncreate and manage their own OAuth apps under Settings → Developer, including private apps that\nonly their organization can connect. See [Creating an app](#section/Authentication/Creating-an-app).\n\n### Support\n\n**New contact address.** API questions now go to support@perfectvenue.com.\n\n## 1.5.0 (2026-11-05)\n\n### Webhooks\n\n**New `proposal.signed` and `payment.succeeded` webhooks.** Sent when a planner signs a\nproposal and when a payment is marked paid. Every ID in their payloads is a public ID string,\nlike the other event types and the REST API. See [Webhooks](#tag/Webhooks).\n\n## 1.4.0 (2026-10-29)\n\n### Versioning and errors\n\n**New `PV-Version` header.** Send `PV-Version: 2026-11-01` to get `{\"data\": ...}` responses and\nproblem details errors on every endpoint. Requests without the header are unchanged. See\n[Versioning](#section/Versioning).\n\n**Request IDs.** Every response has an `X-Request-Id` header, and problem details bodies repeat\nit as `request_id`. See [Request IDs](#section/Request-IDs).\n\n**Error example fixed.** The default error format nests messages under `data.errors`. The\nexample in [Error handling](#section/Error-handling) used to show them directly under `data`.\n\n### Authentication\n\n**Scopes are enforced.** Applications created on or after 2026-11-01 need `read` to read venues,\nevents, and contacts and `write` to create or update events and contacts. Older applications are\nunchanged. See [Scopes](#section/Authentication/Scopes).\n\n**Refresh tokens rotate.** Each refresh returns a new refresh token; store it. See\n[Using refresh tokens](#section/Authentication/Using-refresh-tokens).\n\n### Contacts\n\n**New [List contacts](#tag/Contacts/operation/listContacts) endpoint** for syncing every contact,\nwith `updated_after`, `created_after`, and cursor paging. Requires `PV-Version: 2026-11-01` and\nthe `contacts_read` scope.\n\n### Users\n\n**New [List team members](#tag/Users/operation/listUsers) and\n[Get team member](#tag/Users/operation/getUser) endpoints**, with the new `users_read` scope.\n\n### Events\n\n**New `owner_id` field** on events in every response, and in the `event.created` and\n`event.deleted` webhooks (schema version 2).\n\n### Webhooks\n\nDocumented the retry schedule, automatic disabling, and the rules for payload changes. See\n[Webhooks](#tag/Webhooks).\n\n## 1.3.0 — 2026-06-18\n\n### Webhooks\n\n**New [Webhooks](#tag/Webhooks) section**\n\nOutgoing webhooks are now available. Register an HTTPS endpoint on your OAuth application\nand subscribe to the event types you care about. Perfect Venue will POST a signed JSON\npayload to your endpoint whenever a subscribed event occurs.\n\nEvent types available in this release:\n\n| Type | Fires when |\n| --- | --- |\n| `event.created` | An event is created |\n| `event.status_changed` | An event's status changes |\n| `event.deleted` | An event is deleted |\n| `contact.created` | A new inbound inquiry arrives |\n\nSee the [Webhooks](#tag/Webhooks) section for the full delivery contract, payload schemas,\nsignature verification, and retry behavior.\n\n### Events\n\n**New [List Events](#tag/Events/operation/listEvents) endpoint**\n\n`GET /events` is now available. Returns a paginated list of events for a venue with support for filtering\nby status, event type, source, spaces, contact, and date range.\n\n| Parameter | Type | Description |\n|---|---|---|\n| `venue_id` | string | **Required.** The ID of the venue |\n| `status` | string[] | Filter by status: `lead`, `qualified`, `proposal_sent`, `confirmed`, `balance_due`, `completed`, `lost` |\n| `event_type` | string[] | Filter by event type name |\n| `source` | string[] | Filter by event source |\n| `spaces` | string[] | Filter by space slug |\n| `contact_id` | string | Filter by contact ID |\n| `order` | string | Sort field: `created_at` (default), `updated_at`, `start_time`, `name` |\n| `sort_direction` | string | `asc` or `desc` (default) |\n| `date_from` | string | ISO 8601 start of date range (requires `date_to`) |\n| `date_to` | string | ISO 8601 end of date range (requires `date_from`) |\n| `date_field` | string | Date field for range filter: `created_at` (default), `updated_at`, `start_time` |\n| `page` | integer | Page number (default: 1) |\n| `per_page` | integer | Results per page, max 100 (default: 25) |\n\n## 1.2.0 — 2026-04-01\n\n### Venues\n\n**New fields on [Get Venue](#tag/Venues/operation/getVenue) and [List Venues](#tag/Venues/operation/listVenues)**\n\n| Field | Type | Description |\n|---|---|---|\n| `event_types` | object[] | Event types configured for the venue, each with a `name` |\n| `spaces` | object[] | Spaces available at the venue, each with `slug`, `name`, `standing`, and `seated` capacity |\n| `custom_fields` | object[] | Custom fields configured for the venue, each with `key`, `name`, `data_type`, and optional `options` |\n\n### Events\n\n**New fields on [Create Event](#tag/Events/operation/createEvent) and [Update Event](#tag/Events/operation/updateEvent)**\n\nThe following optional fields are now supported:\n\n| Field | Type | Description |\n|---|---|---|\n| `amount` | integer | Estimated event value in cents (e.g. `150000` for $1,500.00) |\n| `event_type` | string | Event type name, must match a type configured for the venue |\n| `spaces` | string[] | Space slugs to assign to the event |\n| `custom` | object | Custom field values keyed by field key |\n\n**Inline contact creation on [Create Event](#tag/Events/operation/createEvent)**\n\nYou can now create a contact inline when creating an event by passing a top-level `contact` object\ninstead of a `contact_id`. If a contact with the given email already exists in your organization, it\nwill be reused.\n\n**Initial message on [Create Event](#tag/Events/operation/createEvent)**\n\nYou can now include an initial message from the contact to the venue when creating an event by passing\na top-level `message` object with a `text` field.\n\n**New [Update Event](#tag/Events/operation/updateEvent) endpoint**\n\n`PATCH /events/{event_id}` is now available. All fields are optional — only the fields you include\nwill be updated.\n"
+    }
+  ],
+  "x-tagGroups": [
+    {
+      "name": "API Reference",
+      "tags": [
+        "Contacts",
+        "Events",
+        "Proposals",
+        "Users",
+        "Venues"
+      ]
+    },
+    {
+      "name": "Webhooks",
+      "tags": [
+        "Webhooks"
+      ]
+    },
+    {
+      "name": "Changelog",
+      "tags": [
+        "Changelog"
+      ]
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.perfectvenue.com/api/v1"
+    }
+  ],
+  "paths": {
+    "/venues": {
+      "get": {
+        "tags": [
+          "Venues"
+        ],
+        "summary": "List venues",
+        "description": "List venues available to the Perfect Venue user who authorized your application. Perfect Venue provisions OAuth application access for partner developers during integration setup, but a Perfect Venue user must log in and grant permission before your integration can call the API.\n\nRequires the `read` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "listVenues",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Venue"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Venue"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/venues/{venue_id}": {
+      "get": {
+        "tags": [
+          "Venues"
+        ],
+        "summary": "Get venue",
+        "description": "Get an individual venue by ID.\n\nRequires the `read` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "getVenue",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "venue_id",
+            "schema": {
+              "type": "string",
+              "description": "The ID of the venue"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Venue"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Venue"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "List events",
+        "description": "Returns a paginated list of events for a venue. Requires a `venue_id` query parameter.\n\nResults can be filtered by status, event type, source, spaces, contact, or date range, and sorted by a configurable field and direction.\n\nPagination uses `page` and `per_page` query parameters. `page` defaults to `1`; values below `1` are treated as `1`. `per_page` defaults to `25` and is clamped between `1` and `100`.\n\nPagination metadata has `current_page`, `per_page`, `total_count`, and `total_pages`. By default the events are in `data.events` and the metadata in `data.meta`. Under `PV-Version: 2026-11-01`, `data` is the array of events and the metadata is in a top level `meta`.\n\nRequires the `read` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "listEvents",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "venue_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the venue to list events for"
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "lead",
+                  "qualified",
+                  "proposal_sent",
+                  "confirmed",
+                  "balance_due",
+                  "completed",
+                  "lost"
+                ]
+              }
+            },
+            "style": "form",
+            "explode": true,
+            "description": "Filter by one or more event statuses"
+          },
+          {
+            "in": "query",
+            "name": "event_type",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true,
+            "description": "Filter by one or more event type names configured for the venue"
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true,
+            "description": "Filter by one or more event sources"
+          },
+          {
+            "in": "query",
+            "name": "spaces",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true,
+            "description": "Filter by one or more space slugs configured for the venue"
+          },
+          {
+            "in": "query",
+            "name": "contact_id",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter events by contact ID"
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at",
+                "updated_at",
+                "start_time",
+                "name"
+              ],
+              "default": "created_at"
+            },
+            "description": "Field to sort results by"
+          },
+          {
+            "in": "query",
+            "name": "sort_direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            },
+            "description": "Sort direction"
+          },
+          {
+            "in": "query",
+            "name": "date_from",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": "2025-01-01T00:00:00Z"
+            },
+            "description": "Start of date range filter (ISO 8601). Must be provided together with `date_to`.\n"
+          },
+          {
+            "in": "query",
+            "name": "date_to",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "example": "2025-12-31T23:59:59Z"
+            },
+            "description": "End of date range filter (ISO 8601). Must be provided together with `date_from`.\n"
+          },
+          {
+            "in": "query",
+            "name": "date_field",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at",
+                "updated_at",
+                "start_time"
+              ],
+              "default": "created_at"
+            },
+            "description": "Which date field the `date_from`/`date_to` range applies to"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "description": "Page number"
+          },
+          {
+            "in": "query",
+            "name": "per_page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "description": "Number of results per page (max 100)"
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "type": "object",
+                          "required": [
+                            "events",
+                            "meta"
+                          ],
+                          "properties": {
+                            "events": {
+                              "type": "array",
+                              "items": {
+                                "$ref": "#/components/schemas/Event"
+                              }
+                            },
+                            "meta": {
+                              "$ref": "#/components/schemas/PageMeta"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data",
+                        "meta"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Event"
+                          }
+                        },
+                        "meta": {
+                          "$ref": "#/components/schemas/PageMeta"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Create event",
+        "description": "Creates a new event in a venue. \n\nCreating an event requires a `venue_id`. You can get a list of available venues for the authorizing Perfect Venue user by calling the [list venues](/#tag/Venues/operation/listVenues) endpoint.  \n\nCreating an event requires `venue_id`, `name`, and either an `event.contact_id` or a top-level `contact` object. `start_time` and `end_time` are optional, but recommended for events with a known schedule.\nWhen you create a contact via the [create contact](/#tag/Contacts/operation/createContact) endpoint, you will get back a unique identifier for the contact that can be used to create events. You can also provide a top-level `contact` object to create or reuse a contact inline.\n\n\nRequires the `write` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "createEvent",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/components/schemas/CreateEventInput"
+                  },
+                  "contact": {
+                    "type": "object",
+                    "description": "Inline contact creation. Provide either `contact_id` inside `event` or a top-level `contact` object, not both. If a contact with the given email already exists in the organization, it will be used.\n",
+                    "properties": {
+                      "first_name": {
+                        "$ref": "#/components/schemas/ContactFirstName"
+                      },
+                      "last_name": {
+                        "$ref": "#/components/schemas/ContactLastName"
+                      },
+                      "email": {
+                        "$ref": "#/components/schemas/ContactEmail"
+                      },
+                      "phone": {
+                        "$ref": "#/components/schemas/ContactPhone"
+                      }
+                    }
+                  },
+                  "message": {
+                    "type": "object",
+                    "description": "An initial message from the contact to the venue, created along with the event",
+                    "properties": {
+                      "text": {
+                        "type": "string",
+                        "description": "The message text",
+                        "example": "We're interested in booking for a wedding reception in June."
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "create_event_with_existing_contact": {
+                  "summary": "Create an event with an existing contact",
+                  "value": {
+                    "event": {
+                      "venue_id": "VENUE_ID",
+                      "contact_id": "CONTACT_ID",
+                      "name": "Henry's Wedding",
+                      "start_time": "2026-08-15T18:00:00Z",
+                      "end_time": "2026-08-15T23:00:00Z",
+                      "group_size": 120,
+                      "source": "Partner Integration",
+                      "campaign": "Summer 2026",
+                      "amount": 150000,
+                      "event_type": "Wedding",
+                      "spaces": [
+                        "main-hall"
+                      ],
+                      "custom": {
+                        "dietary_restrictions": "vegan"
+                      }
+                    },
+                    "message": {
+                      "text": "Interested in a Saturday evening reception."
+                    }
+                  }
+                },
+                "create_event_with_inline_contact": {
+                  "summary": "Create an event and contact together",
+                  "value": {
+                    "event": {
+                      "venue_id": "VENUE_ID",
+                      "name": "Corporate Dinner",
+                      "start_time": "2026-09-10T01:00:00Z",
+                      "end_time": "2026-09-10T04:00:00Z",
+                      "group_size": 45,
+                      "source": "Partner Integration",
+                      "event_type": "Dinner"
+                    },
+                    "contact": {
+                      "first_name": "Grace",
+                      "last_name": "Hopper",
+                      "email": "grace@example.com",
+                      "phone": "+14155550102"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Event"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Event"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/events/{event_id}": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Get event",
+        "description": "Get an individual event by ID.\n\nRequires the `read` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "getEvent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "schema": {
+              "type": "string",
+              "description": "The ID of the event"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Event"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Event"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Events"
+        ],
+        "summary": "Update event",
+        "description": "Update an individual event by ID.\n\nRequires the `write` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "updateEvent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "event_id",
+            "schema": {
+              "type": "string",
+              "description": "The ID of the event"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "$ref": "#/components/schemas/UpdateEventInput"
+                  }
+                }
+              },
+              "examples": {
+                "update_event": {
+                  "summary": "Update event timing and guest count",
+                  "value": {
+                    "event": {
+                      "start_time": "2026-08-15T19:00:00Z",
+                      "end_time": "2026-08-16T00:00:00Z",
+                      "group_size": 140,
+                      "amount": 175000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Event"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Event"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/proposals/{proposal_id}": {
+      "get": {
+        "tags": [
+          "Proposals"
+        ],
+        "summary": "Get proposal",
+        "description": "Get an individual proposal by ID. The ID is the same `id` found in an event's `proposals` array and carried by the `proposal.signed` webhook.\n\nRequires the `read` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "getProposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "proposal_id",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ProposalId"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Proposal"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Proposal"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/contacts": {
+      "get": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "List contacts",
+        "description": "Lists every contact in the authorizing user's organization, oldest `updated_at` first, so you can sync contacts into your system. Requires `PV-Version: 2026-11-01`; without the header this endpoint returns an older format that only covers the last 24 hours, kept for existing integrations.\n\nTo sync, store `updated_at` from the last contact you processed and pass it as `updated_after` on the next run. Follow `meta.next_cursor` until it is `null` to read every page. The contact you stored may come back again on the next run, so make your import safe to repeat.\n\nRequires the `contacts_read` scope.\n",
+        "operationId": "listContacts",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "PV-Version",
+            "required": true,
+            "description": "API version for this request. This endpoint needs it; without it you get an older format that only covers the last 24 hours. See [Versioning](#section/Versioning).\n",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "2026-11-01"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "updated_after",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Only return contacts updated after this ISO 8601 timestamp"
+          },
+          {
+            "in": "query",
+            "name": "created_after",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Only return contacts created after this ISO 8601 timestamp"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100
+            },
+            "description": "Contacts per page. Values above 100 are treated as 100."
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            },
+            "description": "The `meta.next_cursor` value from the previous page"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "data",
+                    "meta"
+                  ],
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SyncedContact"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "required": [
+                        "next_cursor"
+                      ],
+                      "properties": {
+                        "next_cursor": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Pass as `cursor` to get the next page. `null` on the last page."
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Create contact",
+        "description": "Creates a new contact.  \n\n**Perfect Venue does not enforce unique fields on contacts**. If you want to avoid creating contacts with duplicate phone numbers or emails, we recommend storing a copy of the contact ID in your own database, and enforce unique fields there.\n\n\nRequires the `write` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "createContact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "contact"
+                ],
+                "properties": {
+                  "contact": {
+                    "$ref": "#/components/schemas/CreateContactInput"
+                  }
+                }
+              },
+              "examples": {
+                "create_contact": {
+                  "summary": "Create a contact for a venue",
+                  "value": {
+                    "contact": {
+                      "venue_id": "VENUE_ID",
+                      "first_name": "Ada",
+                      "last_name": "Lovelace",
+                      "email": "ada@example.com",
+                      "phone": "+14155550100"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Contact"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Contact"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/contacts/{contact_id}": {
+      "get": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Get contact",
+        "description": "Get an individual contact by ID.\n\nRequires the `read` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "getContact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contact_id",
+            "schema": {
+              "type": "string",
+              "description": "The ID of the contact"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Contact"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Contact"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Contacts"
+        ],
+        "summary": "Update contact",
+        "description": "Update an individual contact by ID.\n\nRequires the `write` scope for applications created on or after 2026-11-01. See [Scopes](#section/Authentication/Scopes).\n",
+        "operationId": "updateContact",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contact_id",
+            "schema": {
+              "type": "string",
+              "description": "The ID of the contact"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "contact"
+                ],
+                "properties": {
+                  "contact": {
+                    "$ref": "#/components/schemas/UpdateContactInput"
+                  }
+                }
+              },
+              "examples": {
+                "update_contact": {
+                  "summary": "Update a contact email and phone",
+                  "value": {
+                    "contact": {
+                      "email": "ada.updated@example.com",
+                      "phone": "+14155550101"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/Contact"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/Contact"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "List team members",
+        "description": "Lists the members of the authorizing user's organization. Use it to show who owns an event (`owner_id`) or to let someone pick a team member in your app.\n\nRequires the `users_read` scope.\n",
+        "operationId": "listUsers",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/User"
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/User"
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    },
+    "/users/{user_id}": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Get team member",
+        "description": "Get a member of the authorizing user's organization by ID.\n\nRequires the `users_read` scope.\n",
+        "operationId": "getUser",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The ID of the team member, for example an event's `owner_id`"
+          },
+          {
+            "$ref": "#/components/parameters/PVVersion"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "title": "Default",
+                      "type": "object",
+                      "required": [
+                        "status",
+                        "data"
+                      ],
+                      "properties": {
+                        "status": {
+                          "type": "string",
+                          "enum": [
+                            "success"
+                          ]
+                        },
+                        "data": {
+                          "$ref": "#/components/schemas/User"
+                        }
+                      }
+                    },
+                    {
+                      "title": "PV-Version 2026-11-01",
+                      "type": "object",
+                      "required": [
+                        "data"
+                      ],
+                      "not": {
+                        "required": [
+                          "status"
+                        ]
+                      },
+                      "properties": {
+                        "data": {
+                          "$ref": "#/components/schemas/User"
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {
+    "eventCreated": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "event.created",
+        "description": "Sent when an event is created for a venue available to a Perfect Venue user who authorized your application.\n",
+        "operationId": "eventCreatedWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "api_version",
+                  "created_at",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable webhook delivery ID. Matches the `PV-Webhook-Id` header."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "event.created"
+                    ]
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "example": "2026-06-01"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "data": {
+                    "description": "Event object emitted by the webhook. Same fields as Get Event and List Events, without `proposals`.",
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "venue_id",
+                      "contact_id",
+                      "name",
+                      "status",
+                      "group_size",
+                      "start_date",
+                      "end_date",
+                      "start_time",
+                      "end_time",
+                      "source",
+                      "campaign",
+                      "amount",
+                      "event_type",
+                      "spaces",
+                      "created_at",
+                      "updated_at"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Event ID"
+                      },
+                      "venue_id": {
+                        "type": "string",
+                        "description": "Venue ID"
+                      },
+                      "contact_id": {
+                        "type": "string",
+                        "description": "Contact ID"
+                      },
+                      "owner_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "ID of the team member who owns the event. Added in schema version 2, so it is missing from events created before then, which retries and replays can still deliver."
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "group_size": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "start_date": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "deprecated": true
+                      },
+                      "end_date": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "deprecated": true
+                      },
+                      "start_time": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "end_time": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "campaign": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "amount": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "event_type": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "spaces": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "created_at": {
+                        "type": "string"
+                      },
+                      "updated_at": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "event_created": {
+                  "summary": "Event created",
+                  "value": {
+                    "id": "f8c1a0e2-6d2f-4a0d-99a2-1fd6f9f3c1aa",
+                    "type": "event.created",
+                    "api_version": "2026-06-01",
+                    "created_at": "2026-06-16T17:00:00Z",
+                    "data": {
+                      "id": "dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3",
+                      "venue_id": "VENUE_ID",
+                      "contact_id": "CONTACT_ID",
+                      "owner_id": "user_8xZk2LmQp4Vd7A",
+                      "name": "Henry's Wedding",
+                      "status": "lead",
+                      "start_date": "2026-08-15T18:00:00Z",
+                      "end_date": "2026-08-15T23:00:00Z",
+                      "start_time": "2026-08-15T18:00:00Z",
+                      "end_time": "2026-08-15T23:00:00Z",
+                      "group_size": 120,
+                      "source": "Partner Integration",
+                      "campaign": "Summer 2026",
+                      "amount": 150000,
+                      "event_type": "Wedding",
+                      "spaces": [
+                        "main-hall"
+                      ],
+                      "created_at": "2026-06-16T17:00:00Z",
+                      "updated_at": "2026-06-16T17:00:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return any 2xx status after safely accepting the delivery."
+          }
+        }
+      }
+    },
+    "eventStatusChanged": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "event.status_changed",
+        "description": "Sent when an event status changes. Fetch the event from the REST API if you need the full current event state.\n",
+        "operationId": "eventStatusChangedWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "api_version",
+                  "created_at",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable webhook delivery ID. Matches the `PV-Webhook-Id` header."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "event.status_changed"
+                    ]
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "example": "2026-06-01"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "venue_id",
+                      "status",
+                      "updated_at"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Event ID"
+                      },
+                      "venue_id": {
+                        "type": "string",
+                        "description": "Venue ID"
+                      },
+                      "status": {
+                        "type": "string",
+                        "description": "New status"
+                      },
+                      "previous_status": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Status before the change"
+                      },
+                      "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "event_status_changed": {
+                  "summary": "Event status changed",
+                  "value": {
+                    "id": "f8c1a0e2-6d2f-4a0d-99a2-1fd6f9f3c1aa",
+                    "type": "event.status_changed",
+                    "api_version": "2026-06-01",
+                    "created_at": "2026-06-16T17:00:00Z",
+                    "data": {
+                      "id": "dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3",
+                      "venue_id": "VENUE_ID",
+                      "status": "confirmed",
+                      "previous_status": "proposal_sent",
+                      "updated_at": "2026-06-16T17:00:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return any 2xx status after safely accepting the delivery."
+          }
+        }
+      }
+    },
+    "eventDeleted": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "event.deleted",
+        "description": "Sent when an event is deleted.\n",
+        "operationId": "eventDeletedWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "api_version",
+                  "created_at",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable webhook delivery ID. Matches the `PV-Webhook-Id` header."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "event.deleted"
+                    ]
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "example": "2026-06-01"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "data": {
+                    "description": "Deleted event object emitted by the webhook. Events are soft deleted, so the payload contains the event's last public shape.",
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "venue_id",
+                      "contact_id",
+                      "name",
+                      "status",
+                      "group_size",
+                      "start_date",
+                      "end_date",
+                      "start_time",
+                      "end_time",
+                      "source",
+                      "campaign",
+                      "amount",
+                      "event_type",
+                      "spaces",
+                      "created_at",
+                      "updated_at"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Event ID"
+                      },
+                      "venue_id": {
+                        "type": "string",
+                        "description": "Venue ID"
+                      },
+                      "contact_id": {
+                        "type": "string",
+                        "description": "Contact ID"
+                      },
+                      "owner_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "ID of the team member who owns the event. Added in schema version 2, so it is missing from events created before then, which retries and replays can still deliver."
+                      },
+                      "name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "group_size": {
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "start_date": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "deprecated": true
+                      },
+                      "end_date": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "deprecated": true
+                      },
+                      "start_time": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "end_time": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "source": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "campaign": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "amount": {
+                        "type": [
+                          "number",
+                          "null"
+                        ]
+                      },
+                      "event_type": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "spaces": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "created_at": {
+                        "type": "string"
+                      },
+                      "updated_at": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "event_deleted": {
+                  "summary": "Event deleted",
+                  "value": {
+                    "id": "9be6ab48-55f2-46f3-bd07-74af424c0f03",
+                    "type": "event.deleted",
+                    "api_version": "2026-06-01",
+                    "created_at": "2026-06-17T15:30:00Z",
+                    "data": {
+                      "id": "dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3",
+                      "venue_id": "VENUE_ID",
+                      "contact_id": "CONTACT_ID",
+                      "owner_id": "user_8xZk2LmQp4Vd7A",
+                      "name": "Henry's Wedding",
+                      "status": "lost",
+                      "start_date": "2026-08-15T18:00:00Z",
+                      "end_date": "2026-08-15T23:00:00Z",
+                      "start_time": "2026-08-15T18:00:00Z",
+                      "end_time": "2026-08-15T23:00:00Z",
+                      "group_size": 120,
+                      "source": "Partner Integration",
+                      "campaign": "Summer 2026",
+                      "amount": 150000,
+                      "event_type": "Wedding",
+                      "spaces": [
+                        "main-hall"
+                      ],
+                      "created_at": "2026-06-16T17:00:00Z",
+                      "updated_at": "2026-06-17T15:30:00Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return any 2xx status after safely accepting the delivery."
+          }
+        }
+      }
+    },
+    "contactCreated": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "contact.created",
+        "description": "Sent when a new inbound inquiry creates a contact.\n",
+        "operationId": "contactCreatedWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "api_version",
+                  "created_at",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable webhook delivery ID. Matches the `PV-Webhook-Id` header."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "contact.created"
+                    ]
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "example": "2026-06-01"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "data": {
+                    "description": "Contact object emitted by the webhook. This uses the same serializer as Get Contact.",
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "venue_id",
+                      "first_name",
+                      "last_name",
+                      "email",
+                      "phone"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Contact ID"
+                      },
+                      "venue_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Venue ID"
+                      },
+                      "first_name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "last_name": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "email": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "phone": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "contact_created": {
+                  "summary": "Contact created",
+                  "value": {
+                    "id": "7f6adfe6-9e01-4644-b850-3877b56526c8",
+                    "type": "contact.created",
+                    "api_version": "2026-06-01",
+                    "created_at": "2026-06-16T17:00:00Z",
+                    "data": {
+                      "id": "CONTACT_ID",
+                      "venue_id": "VENUE_ID",
+                      "first_name": "Ada",
+                      "last_name": "Lovelace",
+                      "email": "ada@example.com",
+                      "phone": "+14155550100"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return any 2xx status after safely accepting the delivery."
+          }
+        }
+      }
+    },
+    "proposalSigned": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "proposal.signed",
+        "description": "Sent when a planner signs a proposal. The signature itself is never included.\n",
+        "operationId": "proposalSignedWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "api_version",
+                  "created_at",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable webhook delivery ID. Matches the `PV-Webhook-Id` header."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "proposal.signed"
+                    ]
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "example": "2026-06-01"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "event_id",
+                      "venue_id",
+                      "action",
+                      "signed_at",
+                      "created_at",
+                      "updated_at"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Proposal ID"
+                      },
+                      "event_id": {
+                        "type": "string",
+                        "description": "Event ID"
+                      },
+                      "venue_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "description": "Venue ID"
+                      },
+                      "action": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "enum": [
+                          "agreement_deposit",
+                          "agreement",
+                          "deposit",
+                          "remaining_balance",
+                          "no_action",
+                          "other_payment",
+                          "countersign",
+                          null
+                        ],
+                        "description": "What the proposal asks the planner to do"
+                      },
+                      "signed_at": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time"
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "proposal_signed": {
+                  "summary": "Proposal signed",
+                  "value": {
+                    "id": "0b9a5c1e-7d44-4f1e-9a63-2f4e8f0c7d21",
+                    "type": "proposal.signed",
+                    "api_version": "2026-06-01",
+                    "created_at": "2026-06-20T18:04:00Z",
+                    "data": {
+                      "id": "proposal_Qm3vX8kTz1LpRw",
+                      "event_id": "dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3",
+                      "venue_id": "VENUE_ID",
+                      "action": "agreement_deposit",
+                      "signed_at": "2026-06-20T18:03:41Z",
+                      "created_at": "2026-06-18T16:00:00Z",
+                      "updated_at": "2026-06-20T18:03:41Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return any 2xx status after safely accepting the delivery."
+          }
+        }
+      }
+    },
+    "paymentSucceeded": {
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "summary": "payment.succeeded",
+        "description": "Sent when a payment is marked paid, whatever the payment processor.\n",
+        "operationId": "paymentSucceededWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "type",
+                  "api_version",
+                  "created_at",
+                  "data"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Stable webhook delivery ID. Matches the `PV-Webhook-Id` header."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "payment.succeeded"
+                    ]
+                  },
+                  "api_version": {
+                    "type": "string",
+                    "example": "2026-06-01"
+                  },
+                  "created_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "data": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "event_id",
+                      "venue_id",
+                      "amount",
+                      "kind",
+                      "state",
+                      "mechanism",
+                      "paid_at",
+                      "created_at",
+                      "updated_at"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "description": "Payment ID"
+                      },
+                      "event_id": {
+                        "type": "string",
+                        "description": "Event ID"
+                      },
+                      "venue_id": {
+                        "type": "string",
+                        "description": "Venue ID"
+                      },
+                      "amount": {
+                        "type": "integer",
+                        "description": "Amount in cents"
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "deposit",
+                          "remaining_balance",
+                          "other"
+                        ]
+                      },
+                      "state": {
+                        "type": "string",
+                        "enum": [
+                          "paid"
+                        ]
+                      },
+                      "mechanism": {
+                        "type": "string",
+                        "enum": [
+                          "card",
+                          "ach",
+                          "offline"
+                        ]
+                      },
+                      "paid_at": {
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "format": "date-time"
+                      },
+                      "created_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "updated_at": {
+                        "type": "string",
+                        "format": "date-time"
+                      }
+                    }
+                  }
+                }
+              },
+              "examples": {
+                "payment_succeeded": {
+                  "summary": "Payment succeeded",
+                  "value": {
+                    "id": "5c2f8e0a-1b6d-4c3e-8f7a-9d0e1c2b3a45",
+                    "type": "payment.succeeded",
+                    "api_version": "2026-06-01",
+                    "created_at": "2026-06-20T18:10:00Z",
+                    "data": {
+                      "id": "payment_Hc7nV2qWx9KdTs",
+                      "event_id": "dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3",
+                      "venue_id": "VENUE_ID",
+                      "amount": 250000,
+                      "kind": "deposit",
+                      "state": "paid",
+                      "mechanism": "card",
+                      "paid_at": "2026-06-20T18:09:52Z",
+                      "created_at": "2026-06-20T18:09:30Z",
+                      "updated_at": "2026-06-20T18:09:52Z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Return any 2xx status after safely accepting the delivery."
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerHttpAuthentication": {
+        "description": "Bearer token using an access token obtained from the authorization server",
+        "type": "http",
+        "scheme": "Bearer"
+      }
+    },
+    "parameters": {
+      "PVVersion": {
+        "in": "header",
+        "name": "PV-Version",
+        "required": false,
+        "description": "API version for this request. Leave it out to get the default response format. See [Versioning](#section/Versioning).\n",
+        "schema": {
+          "type": "string",
+          "enum": [
+            "2026-11-01"
+          ]
+        }
+      }
+    },
+    "schemas": {
+      "VenueId": {
+        "type": "string",
+        "description": "The ID of the venue",
+        "example": "venue_kjKibRA_qyCf8g"
+      },
+      "Address": {
+        "type": "object",
+        "properties": {
+          "street_address1": {
+            "type": "string",
+            "example": "159 Osinski Crossroad"
+          },
+          "street_address2": {
+            "type": "string",
+            "example": "Suite 255"
+          },
+          "city": {
+            "type": "string",
+            "example": "South Zelda"
+          },
+          "state": {
+            "type": "string",
+            "example": "North Dakota"
+          },
+          "zip": {
+            "type": "string",
+            "example": "69196"
+          },
+          "country": {
+            "type": "string",
+            "example": "United States"
+          }
+        }
+      },
+      "Venue": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "timezone",
+          "multi_day_enabled"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/VenueId"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name of the venue",
+            "example": "The Lola Rose"
+          },
+          "timezone": {
+            "type": "string",
+            "description": "The venue's timezone",
+            "example": "America/New_York"
+          },
+          "website_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uri",
+            "description": "The venue's website",
+            "example": "https://perfectvenue.com"
+          },
+          "multi_day_enabled": {
+            "type": "boolean",
+            "description": "Indicates if the venue supports multi-day events",
+            "example": true
+          },
+          "address": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Address"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "event_types": {
+            "type": "array",
+            "description": "The event types configured for the venue",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "The name of the event type",
+                  "example": "Wedding"
+                }
+              }
+            }
+          },
+          "spaces": {
+            "type": "array",
+            "description": "The spaces available at the venue",
+            "items": {
+              "type": "object",
+              "properties": {
+                "slug": {
+                  "type": "string",
+                  "description": "The unique identifier for the space",
+                  "example": "main-hall"
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "The name of the space",
+                  "example": "Main Hall"
+                },
+                "standing": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "Maximum standing capacity",
+                  "example": 200
+                },
+                "seated": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "description": "Maximum seated capacity",
+                  "example": 150
+                }
+              }
+            }
+          },
+          "custom_fields": {
+            "type": "array",
+            "description": "Custom fields configured for the venue",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "description": "The unique key used to reference this field",
+                  "example": "dietary_restrictions"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The display name of the field",
+                  "example": "Dietary Restrictions"
+                },
+                "data_type": {
+                  "type": "string",
+                  "description": "The data type of the field",
+                  "enum": [
+                    "short_text",
+                    "long_text",
+                    "enum",
+                    "multi_enum",
+                    "integer",
+                    "date",
+                    "time",
+                    "currency",
+                    "phone"
+                  ],
+                  "example": "enum"
+                },
+                "options": {
+                  "type": "array",
+                  "description": "Available options for enum and multi_enum fields",
+                  "items": {
+                    "type": "string"
+                  },
+                  "example": [
+                    "vegan",
+                    "gluten-free",
+                    "kosher"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "LegacyError": {
+        "type": "object",
+        "description": "Error body for requests without a `PV-Version` header.",
+        "required": [
+          "status",
+          "data"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "fail"
+            ]
+          },
+          "data": {
+            "type": "object",
+            "required": [
+              "errors"
+            ],
+            "properties": {
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "message"
+                  ],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "description": "Present on scope errors",
+                      "example": "insufficient_scope"
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Venue not found"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "description": "Error body under `PV-Version: 2026-11-01`, in the RFC 9457 problem details format.\n",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "description": "Identifies the kind of error. Stable across messages, so branch on this rather than on `detail`.",
+            "enum": [
+              "https://docs.perfectvenue.com/api/errors/invalid-request",
+              "https://docs.perfectvenue.com/api/errors/authentication-error",
+              "https://docs.perfectvenue.com/api/errors/forbidden",
+              "https://docs.perfectvenue.com/api/errors/insufficient-scope",
+              "https://docs.perfectvenue.com/api/errors/not-found",
+              "https://docs.perfectvenue.com/api/errors/validation-error",
+              "https://docs.perfectvenue.com/api/errors/internal-error"
+            ],
+            "example": "https://docs.perfectvenue.com/api/errors/not-found"
+          },
+          "title": {
+            "type": "string",
+            "description": "Short summary of the error type",
+            "example": "Not found"
+          },
+          "status": {
+            "type": "integer",
+            "description": "The HTTP status code",
+            "example": 404
+          },
+          "detail": {
+            "type": "string",
+            "description": "Explanation of this occurrence of the error",
+            "example": "Venue not found"
+          },
+          "errors": {
+            "type": "array",
+            "description": "Field level errors, present on some validation errors",
+            "items": {
+              "type": "object",
+              "required": [
+                "field",
+                "code",
+                "message"
+              ],
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "example": "url"
+                },
+                "code": {
+                  "type": "string",
+                  "example": "blank"
+                },
+                "message": {
+                  "type": "string",
+                  "example": "can't be blank"
+                }
+              }
+            }
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Matches the `X-Request-Id` response header. Include it when you contact support.",
+            "example": "9f6c2b0e-4a1d-4c55-8a3e-2f7d1c9b6a10"
+          }
+        }
+      },
+      "RateLimitProblem": {
+        "type": "object",
+        "description": "Rate limit error body. Every version returns this format.",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "request_id"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://docs.perfectvenue.com/lead-form-api/errors/rate-limited"
+          },
+          "title": {
+            "type": "string",
+            "example": "Rate limit exceeded"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              429
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "example": "You have exceeded 100 requests per minute. Try again in 42 seconds."
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Matches the `X-Request-Id` response header",
+            "example": "9f6c2b0e-4a1d-4c55-8a3e-2f7d1c9b6a10"
+          }
+        }
+      },
+      "ContactId": {
+        "type": "string",
+        "description": "The ID of the contact",
+        "example": "contact_QvUKwrV-Q7G2pw"
+      },
+      "EventName": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The name of the event",
+        "example": "Henry's Wedding"
+      },
+      "EventStartDate": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Deprecated alias for `start_time`. ISO 8601 timestamp representing the start of the event.",
+        "example": "2024-11-12T10:00:00Z"
+      },
+      "EventEndDate": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "Deprecated alias for `end_time`. ISO 8601 timestamp representing the end of the event.",
+        "example": "2024-11-12T12:00:00Z"
+      },
+      "EventStartTime": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "An ISO 8601 timestamp representing the start of the event",
+        "example": "2024-11-12T10:00:00Z"
+      },
+      "EventEndTime": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "An ISO 8601 timestamp representing the end of the event",
+        "example": "2024-11-12T12:00:00Z"
+      },
+      "EventGroupSize": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "The number of guests who plan to attend the event",
+        "example": 10
+      },
+      "EventSource": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The source where the event was created or originated from",
+        "example": "website"
+      },
+      "EventCampaign": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The marketing campaign associated with the event",
+        "example": "fall-2024"
+      },
+      "EventAmount": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "description": "The estimated value of the event in cents (e.g. 150000 for $1,500.00)",
+        "example": 150000
+      },
+      "EventType": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The type of event. Must match one of the event types configured for the venue.",
+        "example": "Wedding"
+      },
+      "EventSpaces": {
+        "type": "array",
+        "description": "The space slugs assigned to the event",
+        "items": {
+          "type": "string"
+        },
+        "example": [
+          "main-hall",
+          "bridal-suite"
+        ]
+      },
+      "ProposalId": {
+        "type": "string",
+        "description": "The ID of the proposal",
+        "example": "proposal_Qm3vX8kTz1LpRw"
+      },
+      "ProposalDocument": {
+        "type": "object",
+        "description": "A document Perfect Venue can produce for the proposal. Automatic documents are rendered from the proposal's current contents; custom documents are the venue's own templates filled in for the event.\n",
+        "required": [
+          "id",
+          "type",
+          "name",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "A fixed slug for automatic documents, or the custom document's own ID",
+            "example": "beo"
+          },
+          "type": {
+            "type": "string",
+            "description": "Which document this is. `event_summary`, `invoice`, and `beo` show prices and are only listed when the authorizing user can see them. `floor_plans` is listed when the venue has the floor plans add-on. `custom` is one of the venue's custom documents.\n",
+            "enum": [
+              "event_summary",
+              "invoice",
+              "beo",
+              "staff_beo",
+              "menu",
+              "floor_plans",
+              "custom"
+            ],
+            "example": "beo"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name, as shown in the Perfect Venue app",
+            "example": "BEO"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the document includes",
+            "example": "Event details, proposal, prices, payments, and internal notes."
+          },
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Link to the PDF, rendered when opened. The same link the Perfect Venue app uses. It opens without authentication today; a future version may require a Perfect Venue login.\n",
+            "example": "https://api.perfectvenue.com/pdfs/0b9a5c1e-7d44-4f1e-9a63-2f4e8f0c7d21/beo.pdf"
+          }
+        }
+      },
+      "Proposal": {
+        "type": "object",
+        "description": "A proposal on an event. Most events have one; venues on the Enterprise plan can send several alternatives. The planner accepts a proposal by signing it.\n",
+        "required": [
+          "id",
+          "event_id",
+          "venue_id",
+          "accepted",
+          "created_at",
+          "updated_at",
+          "documents"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ProposalId"
+          },
+          "event_id": {
+            "type": "string",
+            "description": "The ID of the event, the same `id` the Events endpoints return",
+            "example": "dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3"
+          },
+          "venue_id": {
+            "$ref": "#/components/schemas/VenueId"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The proposal's name. Set when an event has more than one proposal; otherwise `null`.",
+            "example": "Plated dinner"
+          },
+          "accepted": {
+            "type": "boolean",
+            "description": "Whether the planner has signed the proposal",
+            "example": true
+          },
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the proposal currently asks the planner to do",
+            "enum": [
+              "agreement_deposit",
+              "agreement",
+              "deposit",
+              "remaining_balance",
+              "no_action",
+              "other_payment",
+              "countersign",
+              null
+            ],
+            "example": "no_action"
+          },
+          "signed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO 8601 timestamp of the planner's signature, or `null` if unsigned",
+            "example": "2026-06-20T18:03:41Z"
+          },
+          "venue_signed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "ISO 8601 timestamp of the venue's countersignature, or `null`",
+            "example": null
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the proposal was created",
+            "example": "2026-06-18T16:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the proposal was last updated",
+            "example": "2026-06-20T18:03:41Z"
+          },
+          "documents": {
+            "type": "array",
+            "description": "The documents you can download for this proposal, in the order the app shows them",
+            "items": {
+              "$ref": "#/components/schemas/ProposalDocument"
+            }
+          }
+        }
+      },
+      "Event": {
+        "type": "object",
+        "required": [
+          "id",
+          "venue_id",
+          "contact_id",
+          "owner_id",
+          "name",
+          "start_date",
+          "end_date",
+          "status",
+          "created_at",
+          "updated_at",
+          "proposals"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of the event",
+            "example": "dfa4b137-1b3e-4927-a3d8-0e0e5bd601e3"
+          },
+          "venue_id": {
+            "$ref": "#/components/schemas/VenueId"
+          },
+          "contact_id": {
+            "$ref": "#/components/schemas/ContactId"
+          },
+          "owner_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The ID of the team member who owns the event, or `null` when it has no owner. Look the owner up with [Get team member](#tag/Users/operation/getUser).\n",
+            "example": "user_8xZk2LmQp4Vd7A"
+          },
+          "name": {
+            "$ref": "#/components/schemas/EventName"
+          },
+          "status": {
+            "type": "string",
+            "description": "The current status of the event",
+            "enum": [
+              "lead",
+              "qualified",
+              "proposal_sent",
+              "confirmed",
+              "balance_due",
+              "completed",
+              "lost"
+            ],
+            "example": "confirmed"
+          },
+          "start_date": {
+            "$ref": "#/components/schemas/EventStartDate",
+            "deprecated": true
+          },
+          "end_date": {
+            "$ref": "#/components/schemas/EventEndDate",
+            "deprecated": true
+          },
+          "start_time": {
+            "$ref": "#/components/schemas/EventStartTime"
+          },
+          "end_time": {
+            "$ref": "#/components/schemas/EventEndTime"
+          },
+          "group_size": {
+            "$ref": "#/components/schemas/EventGroupSize"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EventSource"
+          },
+          "campaign": {
+            "$ref": "#/components/schemas/EventCampaign"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/EventAmount"
+          },
+          "event_type": {
+            "$ref": "#/components/schemas/EventType"
+          },
+          "spaces": {
+            "$ref": "#/components/schemas/EventSpaces"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the event was created",
+            "example": "2026-01-15T09:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp when the event was last updated",
+            "example": "2026-06-01T14:30:00Z"
+          },
+          "proposals": {
+            "type": "array",
+            "description": "The event's proposals, oldest first, each with links to its PDF documents. Not included in webhook payloads.\n",
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            }
+          }
+        }
+      },
+      "PageMeta": {
+        "type": "object",
+        "required": [
+          "current_page",
+          "per_page",
+          "total_count",
+          "total_pages"
+        ],
+        "properties": {
+          "current_page": {
+            "type": "integer",
+            "example": 1
+          },
+          "per_page": {
+            "type": "integer",
+            "example": 25
+          },
+          "total_count": {
+            "type": "integer",
+            "example": 42
+          },
+          "total_pages": {
+            "type": "integer",
+            "example": 2
+          }
+        }
+      },
+      "CreateEventInput": {
+        "type": "object",
+        "required": [
+          "venue_id",
+          "name"
+        ],
+        "properties": {
+          "venue_id": {
+            "$ref": "#/components/schemas/VenueId"
+          },
+          "contact_id": {
+            "$ref": "#/components/schemas/ContactId"
+          },
+          "name": {
+            "$ref": "#/components/schemas/EventName"
+          },
+          "start_date": {
+            "$ref": "#/components/schemas/EventStartDate",
+            "deprecated": true
+          },
+          "end_date": {
+            "$ref": "#/components/schemas/EventEndDate",
+            "deprecated": true
+          },
+          "start_time": {
+            "$ref": "#/components/schemas/EventStartTime"
+          },
+          "end_time": {
+            "$ref": "#/components/schemas/EventEndTime"
+          },
+          "group_size": {
+            "$ref": "#/components/schemas/EventGroupSize"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EventSource"
+          },
+          "campaign": {
+            "$ref": "#/components/schemas/EventCampaign"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/EventAmount"
+          },
+          "event_type": {
+            "$ref": "#/components/schemas/EventType"
+          },
+          "spaces": {
+            "$ref": "#/components/schemas/EventSpaces"
+          },
+          "custom": {
+            "type": "object",
+            "description": "Custom field values for the event, keyed by custom field key",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "dietary_restrictions": "vegan",
+              "ceremony_style": "outdoor"
+            }
+          }
+        }
+      },
+      "ContactFirstName": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The first name of the contact",
+        "example": "Andrew"
+      },
+      "ContactLastName": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The last name of the contact",
+        "example": "McPlanner"
+      },
+      "ContactEmail": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "format": "email",
+        "description": "The email of the contact",
+        "example": "andrew.mcplanner@example.com"
+      },
+      "ContactPhone": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "description": "The phone number of the contact",
+        "example": "5555555555"
+      },
+      "UpdateEventInput": {
+        "type": "object",
+        "properties": {
+          "contact_id": {
+            "$ref": "#/components/schemas/ContactId"
+          },
+          "name": {
+            "$ref": "#/components/schemas/EventName"
+          },
+          "start_date": {
+            "$ref": "#/components/schemas/EventStartDate",
+            "deprecated": true
+          },
+          "end_date": {
+            "$ref": "#/components/schemas/EventEndDate",
+            "deprecated": true
+          },
+          "start_time": {
+            "$ref": "#/components/schemas/EventStartTime"
+          },
+          "end_time": {
+            "$ref": "#/components/schemas/EventEndTime"
+          },
+          "group_size": {
+            "$ref": "#/components/schemas/EventGroupSize"
+          },
+          "source": {
+            "$ref": "#/components/schemas/EventSource"
+          },
+          "campaign": {
+            "$ref": "#/components/schemas/EventCampaign"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/EventAmount"
+          },
+          "event_type": {
+            "$ref": "#/components/schemas/EventType"
+          },
+          "spaces": {
+            "$ref": "#/components/schemas/EventSpaces"
+          },
+          "custom": {
+            "type": "object",
+            "description": "Custom field values for the event, keyed by custom field key",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "example": {
+              "dietary_restrictions": "vegan",
+              "ceremony_style": "outdoor"
+            }
+          }
+        }
+      },
+      "SyncedContact": {
+        "type": "object",
+        "description": "A contact in the contacts list, with timestamps for syncing",
+        "required": [
+          "id",
+          "venue_id",
+          "first_name",
+          "last_name",
+          "email",
+          "phone",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ContactId"
+          },
+          "venue_id": {
+            "$ref": "#/components/schemas/VenueId"
+          },
+          "first_name": {
+            "$ref": "#/components/schemas/ContactFirstName"
+          },
+          "last_name": {
+            "$ref": "#/components/schemas/ContactLastName"
+          },
+          "email": {
+            "$ref": "#/components/schemas/ContactEmail"
+          },
+          "phone": {
+            "$ref": "#/components/schemas/ContactPhone"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-06-16T17:00:00.000Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Also changes when the contact's guest profile name, email, or phone changes",
+            "example": "2026-06-20T09:12:44.000Z"
+          }
+        }
+      },
+      "CreateContactInput": {
+        "type": "object",
+        "required": [
+          "venue_id"
+        ],
+        "properties": {
+          "venue_id": {
+            "$ref": "#/components/schemas/VenueId"
+          },
+          "first_name": {
+            "$ref": "#/components/schemas/ContactFirstName"
+          },
+          "last_name": {
+            "$ref": "#/components/schemas/ContactLastName"
+          },
+          "email": {
+            "$ref": "#/components/schemas/ContactEmail"
+          },
+          "phone": {
+            "$ref": "#/components/schemas/ContactPhone"
+          }
+        }
+      },
+      "Contact": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ContactId"
+          },
+          "venue_id": {
+            "$ref": "#/components/schemas/VenueId"
+          },
+          "first_name": {
+            "$ref": "#/components/schemas/ContactFirstName"
+          },
+          "last_name": {
+            "$ref": "#/components/schemas/ContactLastName"
+          },
+          "email": {
+            "$ref": "#/components/schemas/ContactEmail"
+          },
+          "phone": {
+            "$ref": "#/components/schemas/ContactPhone"
+          }
+        }
+      },
+      "UpdateContactInput": {
+        "type": "object",
+        "properties": {
+          "first_name": {
+            "$ref": "#/components/schemas/ContactFirstName"
+          },
+          "last_name": {
+            "$ref": "#/components/schemas/ContactLastName"
+          },
+          "email": {
+            "$ref": "#/components/schemas/ContactEmail"
+          },
+          "phone": {
+            "$ref": "#/components/schemas/ContactPhone"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "description": "A member of the authorizing user's organization",
+        "required": [
+          "id",
+          "first_name",
+          "last_name",
+          "email",
+          "role",
+          "venue_ids"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "The ID of the team member. Matches `owner_id` on events.",
+            "example": "user_8xZk2LmQp4Vd7A"
+          },
+          "first_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Grace"
+          },
+          "last_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "example": "Hopper"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "grace@example.com"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The member's role in the organization",
+            "example": "admin"
+          },
+          "venue_ids": {
+            "type": "array",
+            "description": "IDs of the organization's venues this member belongs to that your application can reach",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "venue_kS7acH85hLhDBg"
+            ]
+          }
+        }
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Bad Request. A parameter is missing or invalid, validation failed, or `PV-Version` is unknown.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "title": "Default",
+                  "$ref": "#/components/schemas/LegacyError"
+                },
+                {
+                  "title": "PV-Version 2026-11-01",
+                  "$ref": "#/components/schemas/Problem"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Unauthorized. The access token is missing, invalid, expired, or revoked. Without `PV-Version` the body is empty and the reason is in the `WWW-Authenticate` header.\n",
+        "headers": {
+          "WWW-Authenticate": {
+            "description": "The OAuth error, for example `Bearer realm=\"Doorkeeper\", error=\"invalid_token\", error_description=\"The access token is invalid\"`\n",
+            "schema": {
+              "type": "string"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "title": "PV-Version 2026-11-01",
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Forbidden. The token is missing a required [scope](#section/Authentication/Scopes), or the authorizing user can't access the venue or resource. Without `PV-Version`, a missing scope on an application created before 2026-11-01 returns `403` with an empty body, except from the team member endpoints.\n",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "title": "Default",
+                  "$ref": "#/components/schemas/LegacyError"
+                },
+                {
+                  "title": "PV-Version 2026-11-01",
+                  "$ref": "#/components/schemas/Problem"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Not Found. The resource doesn't exist or isn't visible to the authorizing user.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "oneOf": [
+                {
+                  "title": "Default",
+                  "$ref": "#/components/schemas/LegacyError"
+                },
+                {
+                  "title": "PV-Version 2026-11-01",
+                  "$ref": "#/components/schemas/Problem"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "TooManyRequests": {
+        "description": "Too Many Requests. The access token exceeded the [rate limit](#section/Rate-limiting).",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds to wait before retrying",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        },
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/RateLimitProblem"
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerHttpAuthentication": []
+    }
+  ]
+}
