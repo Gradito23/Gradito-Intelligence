@@ -144,7 +144,7 @@ export default function JobPublic() {
       if (data?.error) throw new Error(data.error);
       setApplyMessage(
         data?.message
-        || 'Gradito: We received your application. If matched we will contact you.',
+        || 'We received your application. If you are a match, we will contact you.',
       );
       setApplyForm({
         first_name: '',

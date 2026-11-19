@@ -9,6 +9,10 @@ import {
 import { backfillIntegrationSecrets, resolveSecret } from '../_shared/crypto.ts';
 import { sendEmail } from '../_shared/email.ts';
 import {
+  renderApplicationAcceptedEmail,
+  renderApplicationReceivedEmail,
+} from '../_shared/emailTemplates.ts';
+import {
   buildJobInviteContext,
   DEFAULT_JOB_EMAIL_HTML,
   DEFAULT_JOB_EMAIL_SUBJECT,
@@ -489,10 +493,11 @@ async function handleSendChefInvites(
   return jsonResponse({ invitations: results });
 }
 
-const APPLICATION_RECEIPT_SUBJECT = 'Gradito: We received your application';
-const APPLICATION_RECEIPT_BODY = 'Gradito: We received your application. If matched we will contact you.';
-const APPLICATION_ACCEPT_SUBJECT = 'Gradito: Your application is accepted';
-const APPLICATION_ACCEPT_BODY = 'Gradito: Congratulations, your application is accepted. We will contact you shortly.';
+const APPLICATION_RECEIPT_SUBJECT = 'We received your application';
+const APPLICATION_RECEIPT_SMS = 'Gradito: We received your application. If you are a match, we will contact you.';
+const APPLICATION_RECEIPT_PAGE = 'We received your application. If you are a match, we will contact you.';
+const APPLICATION_ACCEPT_SUBJECT = 'Your application has been accepted';
+const APPLICATION_ACCEPT_SMS = 'Gradito: Congratulations. Your application has been accepted. We will contact you shortly.';
 
 type NoticeStatus = 'skipped' | 'sent' | 'failed';
 
@@ -653,7 +658,8 @@ async function deliverApplicantNotice(
     email: string;
     phone: string;
     subject: string;
-    body: string;
+    html: string;
+    smsBody: string;
     emailType: string;
     chefId: string | null;
     eventId: string | null;
@@ -677,7 +683,7 @@ async function deliverApplicantNotice(
         await sendEmail(adminClient, {
           to: params.email,
           subject: params.subject,
-          html: `<p>${params.body}</p>`,
+          html: params.html,
           emailType: params.emailType,
         });
         result.emailStatus = 'sent';
@@ -698,7 +704,7 @@ async function deliverApplicantNotice(
         const sent = await sendApplicantNoticeSms(adminClient, {
           chefId: params.chefId,
           eventId: params.eventId,
-          content: params.body,
+          content: params.smsBody,
           toE164,
           sentByProfileId: params.sentByProfileId,
           sentVia: params.sentVia,
@@ -768,7 +774,8 @@ async function handleSubmitApplication(body: Record<string, unknown>) {
     email,
     phone,
     subject: APPLICATION_RECEIPT_SUBJECT,
-    body: APPLICATION_RECEIPT_BODY,
+    html: renderApplicationReceivedEmail({ firstName }),
+    smsBody: APPLICATION_RECEIPT_SMS,
     emailType: 'job_application_received',
     chefId: match.chefId,
     eventId: jobPage.event_id ?? null,
@@ -789,7 +796,7 @@ async function handleSubmitApplication(body: Record<string, unknown>) {
 
   return jsonResponse({
     ok: true,
-    message: APPLICATION_RECEIPT_BODY,
+    message: APPLICATION_RECEIPT_PAGE,
   });
 }
 
@@ -817,7 +824,7 @@ async function handleAcceptApplication(
     .update({ status: 'accepted' })
     .eq('id', applicationId)
     .neq('status', 'accepted')
-    .select('id, email, phone, matched_chef_id, event_job_page_id')
+    .select('id, first_name, email, phone, matched_chef_id, event_job_page_id')
     .maybeSingle();
   if (claimErr) throw claimErr;
   if (!claimed) {
@@ -835,7 +842,10 @@ async function handleAcceptApplication(
     email: typeof claimed.email === 'string' ? claimed.email.trim() : '',
     phone: typeof claimed.phone === 'string' ? claimed.phone.trim() : '',
     subject: APPLICATION_ACCEPT_SUBJECT,
-    body: APPLICATION_ACCEPT_BODY,
+    html: renderApplicationAcceptedEmail({
+      firstName: typeof claimed.first_name === 'string' ? claimed.first_name : '',
+    }),
+    smsBody: APPLICATION_ACCEPT_SMS,
     emailType: 'job_application_accepted',
     chefId: claimed.matched_chef_id ?? null,
     eventId: jobPage?.event_id ?? null,
