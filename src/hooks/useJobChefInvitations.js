@@ -64,10 +64,16 @@ function applicationsQueryKey(jobPageId) {
   return [...EVENT_JOB_APPLICATIONS_KEY, jobPageId];
 }
 
+const APPLICATION_SELECT = `
+  *,
+  matched_chef:chefs!matched_chef_id ( id, first_name, last_name ),
+  matched_intake:chef_intake_requests!matched_intake_request_id ( id, status )
+`;
+
 async function fetchApplications(jobPageId) {
   const { data, error } = await supabase
     .from('event_job_applications')
-    .select('*')
+    .select(APPLICATION_SELECT)
     .eq('event_job_page_id', jobPageId)
     .order('created_at', { ascending: false });
   if (error) throw error;
@@ -88,10 +94,20 @@ export function useJobApplications(jobPageId, { enabled = true } = {}) {
     }
   };
 
+  const acceptApplication = async (applicationId) => {
+    const data = await invokeEventJob({
+      action: 'accept_application',
+      application_id: applicationId,
+    });
+    invalidate();
+    return data;
+  };
+
   return {
     applications: query.data ?? [],
     isLoading: query.isLoading,
     error: query.error,
     invalidate,
+    acceptApplication,
   };
 }

@@ -19,6 +19,7 @@ const ChefIntake = lazy(() => import('@/pages/ChefIntake'));
 const ContractorAgreements = lazy(() => import('@/pages/legal/ContractorAgreements'));
 const GuideRedirect = lazy(() => import('@/pages/GuideRedirect'));
 const JobPublic = lazy(() => import('@/pages/JobPublic'));
+const JobsPublic = lazy(() => import('@/pages/JobsPublic'));
 
 const AppLayout = lazy(() => import('@/components/layout/AppLayout'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
@@ -61,6 +62,7 @@ const PUBLIC_PATHS = new Set([
   '/reset-password',
   '/accept-invite',
   '/intake',
+  '/jobs',
 ]);
 
 function FullPageSpinner() {
@@ -127,6 +129,7 @@ function AuthenticatedApp() {
             element={<Navigate to="/legal/contractor-agreements#nda" replace />}
           />
           <Route path="/guide/:token" element={<GuideRedirect />} />
+          <Route path="/jobs" element={<JobsPublic />} />
           <Route path="/job/:jobId" element={<JobPublic />} />
           <Route path="/oauth/perfect-venue/callback" element={<PerfectVenueOAuthCallback />} />
 
