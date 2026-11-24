@@ -68,6 +68,18 @@ function resultNameIsWord(point: GeoPoint, word: string): boolean {
   return (point.name || '').trim().toLowerCase() === word.toLowerCase();
 }
 
+function waitForNominatim() {
+  return new Promise((resolve) => setTimeout(resolve, 1100));
+}
+
+/** A line already rewritten for Nominatim. Any hit is kept. */
+export async function geocodePreparedPlaceLine(line: string | null | undefined): Promise<GeoPoint | null> {
+  const q = line?.trim();
+  if (!q) return null;
+  await waitForNominatim();
+  return geocodeAddress(q);
+}
+
 /** Full line first. If that is not a place, one query for the longest word already in the line. */
 export async function geocodeServiceAreaName(areaName: string): Promise<GeoPoint | null> {
   const q = areaName?.trim();
@@ -78,7 +90,7 @@ export async function geocodeServiceAreaName(areaName: string): Promise<GeoPoint
 
   const placeWord = longestPlaceWord(q);
   if (placeWord) {
-    await new Promise((resolve) => setTimeout(resolve, 1100));
+    await waitForNominatim();
     const town = await geocodeAddress(placeWord);
     if (town && resultNameIsWord(town, placeWord)) return town;
     return null;
@@ -86,7 +98,7 @@ export async function geocodeServiceAreaName(areaName: string): Promise<GeoPoint
 
   const zip = q.match(/\b\d{5}\b/)?.[0];
   if (!zip) return null;
-  await new Promise((resolve) => setTimeout(resolve, 1100));
+  await waitForNominatim();
   const zipPoint = await geocodeAddress(zip);
   if (zipPoint && (zipPoint.displayName || '').includes(zip)) return zipPoint;
   return null;
