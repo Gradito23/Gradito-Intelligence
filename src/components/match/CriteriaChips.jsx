@@ -20,6 +20,7 @@ export default function CriteriaChips({ criteria, onRemove, onEdit }) {
     <div className="flex flex-wrap gap-2">
       {Object.entries(criteria).map(([key, value]) => {
         if (key.startsWith('_')) return null;
+        if (value && typeof value === 'object' && !Array.isArray(value)) return null;
         if (!value || (Array.isArray(value) && value.length === 0)) return null;
         const config = chipConfig[key] || { label: key, color: 'bg-secondary text-foreground' };
         const displayValue = Array.isArray(value) ? value.join(', ') : String(value);

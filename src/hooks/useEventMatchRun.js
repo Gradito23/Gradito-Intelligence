@@ -7,6 +7,52 @@ import { resultsFromSuggested } from '@/lib/chefMatchScore';
 
 export const EVENT_MATCH_RUN_KEY = 'event_match_run';
 
+function areaNameKey(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+async function ensureAreaCoordinates(event, areas, queryClient) {
+  const name = event?.service_area?.trim();
+  if (!name) return areas || [];
+
+  let area = (areas || []).find((row) => areaNameKey(row?.name) === areaNameKey(name));
+  if (!area) {
+    const { data } = await supabase
+      .from('service_areas')
+      .select('id, name, region, centroid_lat, centroid_lng')
+      .eq('name', name)
+      .maybeSingle();
+    area = data;
+  }
+  if (!area?.id) return areas || [];
+  if (area.centroid_lat != null && area.centroid_lng != null) {
+    if ((areas || []).some((row) => row?.id === area.id)) return areas || [];
+    const withArea = [...(areas || []), area];
+    queryClient.setQueryData(['serviceAreas'], withArea);
+    return withArea;
+  }
+
+  let lookedUp = null;
+  try {
+    const { data, error } = await supabase.functions.invoke('geo-resolve', {
+      body: { service_area_id: area.id },
+    });
+    if (!error) lookedUp = data;
+  } catch {
+    lookedUp = null;
+  }
+
+  const lat = lookedUp?.geo_lat;
+  const lng = lookedUp?.geo_lng;
+  if (lat == null || lng == null) return areas || [];
+
+  const next = (areas || []).some((row) => row?.id === area.id)
+    ? areas.map((row) => (row?.id === area.id ? { ...row, centroid_lat: lat, centroid_lng: lng } : row))
+    : [...(areas || []), { ...area, centroid_lat: lat, centroid_lng: lng }];
+  queryClient.setQueryData(['serviceAreas'], next);
+  return next;
+}
+
 async function fetchLatestEventMatchRun(eventId) {
   if (!eventId) return null;
   const { data, error } = await supabase
@@ -48,7 +94,8 @@ export function useEventMatchRun(eventId, { enabled = true } = {}) {
     const criteria = matchCriteriaFromEvent(event, { jobSnapshot, eventChefsForEvent: chefsForEvent });
     if (!criteria) throw new Error('Could not build match criteria');
 
-    const context = buildMatchContext({ events, eventChefs, clients, serviceAreas });
+    const areas = await ensureAreaCoordinates(event, serviceAreas, queryClient);
+    const context = buildMatchContext({ events, eventChefs, clients, serviceAreas: areas });
     const { finalResults, sousList } = computeMatchLists(chefs, criteria, context);
 
     if (polish && finalResults.length > 0) {

@@ -1,5 +1,42 @@
 import { corsHeaders, createServiceClient, jsonResponse, requireAuth } from '../_shared/auth.ts';
-import { geocodeChefCity } from '../_shared/geocode.ts';
+import { geocodeChefCity, geocodeServiceAreaName } from '../_shared/geocode.ts';
+
+async function resolveServiceArea(
+  adminClient: ReturnType<typeof createServiceClient>,
+  serviceAreaId: string,
+) {
+  const { data: area, error } = await adminClient
+    .from('service_areas')
+    .select('id, name, centroid_lat, centroid_lng')
+    .eq('id', serviceAreaId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!area) return jsonResponse({ error: 'Service area not found' }, 404);
+
+  if (area.centroid_lat != null && area.centroid_lng != null) {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      reason: 'already_has_coordinates',
+      geo_lat: area.centroid_lat,
+      geo_lng: area.centroid_lng,
+    });
+  }
+
+  const name = typeof area.name === 'string' ? area.name.trim() : '';
+  const point = name ? await geocodeServiceAreaName(name) : null;
+  if (!point) {
+    return jsonResponse({ ok: true, skipped: true, reason: 'no_geocode_result' });
+  }
+
+  const { error: upErr } = await adminClient.from('service_areas').update({
+    centroid_lat: point.lat,
+    centroid_lng: point.lng,
+  }).eq('id', serviceAreaId);
+  if (upErr) throw upErr;
+
+  return jsonResponse({ ok: true, geo_lat: point.lat, geo_lng: point.lng });
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -10,8 +47,11 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json().catch(() => ({}));
+    const serviceAreaId = typeof body.service_area_id === 'string' ? body.service_area_id : null;
+    if (serviceAreaId) return await resolveServiceArea(auth.adminClient, serviceAreaId);
+
     const chefId = typeof body.chef_id === 'string' ? body.chef_id : null;
-    if (!chefId) return jsonResponse({ error: 'chef_id required' }, 400);
+    if (!chefId) return jsonResponse({ error: 'chef_id or service_area_id required' }, 400);
 
     const { data: chef, error } = await auth.adminClient
       .from('chefs')

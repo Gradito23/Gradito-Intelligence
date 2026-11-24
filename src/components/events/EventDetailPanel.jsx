@@ -8,11 +8,11 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { X, Save, Trash2, AlertTriangle } from 'lucide-react';
+import { X, Save, Trash2, AlertTriangle, ChevronsUpDown, Loader2 } from 'lucide-react';
 import ChefAvatar from '@/components/ui/ChefAvatar';
 import GoldStars from '@/components/ui/GoldStars';
 import { formatCurrency, useTeamMembers, useCommissionLines } from '@/hooks/useAppData';
-import { CUISINES, SERVICE_AREAS, EXPERIENCE_TYPES } from '@/lib/constants';
+import { CUISINES, EXPERIENCE_TYPES } from '@/lib/constants';
 import { toast } from '@/components/ui/use-toast';
 import ConfirmDialog from '@/components/ui/confirm-dialog';
 import { computePnL } from '@/lib/pnlUtils';
@@ -28,11 +28,114 @@ import EventJobPageActions from './EventJobPageActions';
 import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
 import { useEventJobPage } from '@/hooks/useEventJobPage';
 import { supabase } from '@/api/supabaseClient';
+import { useConfig } from '@/hooks/useConfig';
+import { ConfigRepository } from '@/infrastructure/repositories/ConfigRepository';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 
 const PV_FIELD_LOCK_KEYS = [
   'service_area', 'client_name', 'client_id', 'date', 'event_type', 'guest_count',
   'status', 'client_revenue', 'experience_type', 'notes', 'closer_id', 'facilitators',
 ];
+
+function AreaSearch({ value, options, onChange, onCreate }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [busy, setBusy] = useState(false);
+  const inputRef = React.useRef(null);
+  const trimmed = query.trim();
+  const matches = useMemo(() => {
+    const needle = trimmed.toLowerCase();
+    if (!needle) return options;
+    return options.filter((name) => name.toLowerCase().includes(needle));
+  }, [options, trimmed]);
+
+  const choose = (name) => {
+    onChange(name);
+    setQuery('');
+    setOpen(false);
+  };
+
+  const addAddress = async () => {
+    if (!trimmed || busy) return;
+    const existing = options.find((name) => name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      choose(existing);
+      return;
+    }
+    setBusy(true);
+    try {
+      const createdName = await onCreate(trimmed);
+      choose(createdName || trimmed);
+    } catch (err) {
+      toast({
+        title: 'Could not add address',
+        description: err instanceof Error ? err.message : 'Add failed',
+        variant: 'destructive',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setQuery('');
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="h-8 w-full justify-between px-3 text-sm font-normal"
+        >
+          <span className={value ? 'truncate' : 'truncate text-muted-foreground'}>
+            {value || 'Search area'}
+          </span>
+          <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="z-[60] w-[var(--radix-popover-trigger-width)] p-0 pointer-events-auto"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
+        <Command shouldFilter={false}>
+          <CommandInput
+            ref={inputRef}
+            placeholder="Search area"
+            value={query}
+            onValueChange={setQuery}
+          />
+          <CommandList>
+            {matches.map((name) => (
+              <CommandItem key={name} value={name} onSelect={() => choose(name)}>
+                {name}
+              </CommandItem>
+            ))}
+            {trimmed && matches.length === 0 && (
+              <CommandItem value="__add_address" disabled={busy} onSelect={addAddress}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Not found? Add address
+              </CommandItem>
+            )}
+            {!trimmed && matches.length === 0 && (
+              <p className="px-3 py-4 text-center text-sm text-muted-foreground">No areas yet</p>
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function ChipPicker({ label, selected, options, onChange }) {
   return (
@@ -64,6 +167,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
   const [editedFields, setEditedFields] = useState(new Set());
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [unsavedOpen, setUnsavedOpen] = useState(false);
+  const { data: serviceAreas = [] } = useConfig('service_areas');
 
   useEffect(() => {
     if (event) {
@@ -291,11 +395,29 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
   };
 
   const areaOptions = useMemo(() => {
-    const base = [...SERVICE_AREAS];
-    const cur = draft?.service_area?.trim();
-    if (cur && !base.includes(cur)) base.unshift(cur);
-    return base;
-  }, [draft?.service_area]);
+    const names = serviceAreas.map((area) => area.name).filter(Boolean);
+    const current = draft?.service_area?.trim();
+    if (current && !names.some((name) => name.toLowerCase() === current.toLowerCase())) {
+      names.unshift(current);
+    }
+    return names;
+  }, [serviceAreas, draft?.service_area]);
+
+  const addServiceArea = async (name) => {
+    const created = await ConfigRepository.create('service_areas', { name, active: true });
+    if (created?.id) {
+      try {
+        await supabase.functions.invoke('geo-resolve', { body: { service_area_id: created.id } });
+      } catch {
+        // The address is saved. Coordinates stay empty when the lookup fails.
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: ['serviceAreas'] });
+    await queryClient.invalidateQueries({ queryKey: ['config', 'service_areas'] });
+    await queryClient.invalidateQueries({ queryKey: ['config-admin', 'service_areas'] });
+    toast({ title: 'Address added to Service Areas' });
+    return created?.name || name;
+  };
 
   const eventTypeOptions = useMemo(() => {
     const base = ['Private', 'Corporate', 'Wedding'];
@@ -309,7 +431,16 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
   return (
     <>
       <Sheet open={open} onOpenChange={handleClose}>
-        <SheetContent className="w-full sm:max-w-lg overflow-y-auto p-0 flex flex-col" onEscapeKeyDown={(e) => { e.preventDefault(); handleClose(false); }}>
+        <SheetContent
+          className="w-full sm:max-w-lg overflow-y-auto p-0 flex flex-col"
+          onEscapeKeyDown={(e) => { e.preventDefault(); handleClose(false); }}
+          onInteractOutside={(event) => {
+            const target = event.target;
+            if (target instanceof Element && target.closest('[data-radix-popper-content-wrapper]')) {
+              event.preventDefault();
+            }
+          }}
+        >
           {/* Header */}
           <div className="bg-navy px-5 pt-5 pb-4 text-white shrink-0">
             <SheetHeader className="p-0 mb-1">
@@ -394,10 +525,12 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
                 </div>
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">Area</label>
-                  <Select value={draft.service_area || ''} onValueChange={v => update('service_area', v)}>
-                    <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Select or from PV…" /></SelectTrigger>
-                    <SelectContent>{areaOptions.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}</SelectContent>
-                  </Select>
+                  <AreaSearch
+                    value={draft.service_area || ''}
+                    options={areaOptions}
+                    onChange={(name) => update('service_area', name)}
+                    onCreate={addServiceArea}
+                  />
                   {!draft.service_area && (draft.pv_metadata?.event_address || draft.pv_metadata?.event_location_label) && (
                     <p className="text-xs text-muted-foreground mt-1 leading-snug">
                       PV location:

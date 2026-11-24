@@ -4,7 +4,6 @@ import { maxTravelKmFromChef } from './travelDistanceKm.js';
 export const MATCH_SCORING_VERSION = 'geo-v1';
 
 const SAME_REGION_KM = 50;
-const DIFFERENT_REGION_KM = 500;
 
 export function normalizeAreaName(name) {
   return String(name || '').trim().toLowerCase();
@@ -90,9 +89,6 @@ function chefGeoPoint(chef, areaIndex) {
 }
 
 function eventGeoPoint(criteria, areaIndex) {
-  if (criteria?.event_geo?.lat != null && criteria?.event_geo?.lng != null) {
-    return { lat: Number(criteria.event_geo.lat), lng: Number(criteria.event_geo.lng) };
-  }
   const area = criteria?.service_area;
   return area ? pointFromArea(area, areaIndex) : null;
 }
@@ -130,7 +126,7 @@ export function distanceKmForChef(chef, criteria, areaIndex) {
       return SAME_REGION_KM;
     }
   }
-  return DIFFERENT_REGION_KM;
+  return null;
 }
 
 export function passesMaxTravelCap(chef, distanceKm) {
@@ -154,10 +150,16 @@ export function isUnavailableOnDate(chef, isoDate) {
   });
 }
 
+function distanceSortKey(km) {
+  return km == null || Number.isNaN(km) ? Number.POSITIVE_INFINITY : km;
+}
+
 export function compareGeoRank(a, b) {
   const localA = a.isLocal ? 1 : 0;
   const localB = b.isLocal ? 1 : 0;
   if (localB !== localA) return localB - localA;
-  if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
+  const distA = distanceSortKey(a.distanceKm);
+  const distB = distanceSortKey(b.distanceKm);
+  if (distA !== distB) return distA - distB;
   return (b.talentScore ?? b.score ?? 0) - (a.talentScore ?? a.score ?? 0);
 }
