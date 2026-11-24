@@ -98,26 +98,54 @@ async function resolveServiceArea(
   }
 
   const name = typeof area.name === 'string' ? area.name.trim() : '';
-  let point = name ? await geocodeServiceAreaName(name) : null;
-  if (!point && name) {
+  let point: { lat: number; lng: number } | null = null;
+  let geoQuery: string | null = null;
+  let geoAiCalled = false;
+
+  const found = name ? await geocodeServiceAreaName(name) : null;
+  if (found) {
+    point = found.point;
+    geoQuery = found.query;
+  } else if (name) {
+    geoAiCalled = true;
     try {
       const aiLine = await rewriteLocationForNominatim(adminClient, name);
+      geoQuery = aiLine;
       if (aiLine) point = await geocodePreparedPlaceLine(aiLine);
     } catch {
       point = null;
     }
   }
-  if (!point) {
-    return jsonResponse({ ok: true, skipped: true, reason: 'no_geocode_result' });
+
+  const update: Record<string, unknown> = {
+    geo_ai_called: geoAiCalled,
+    geo_query: geoQuery,
+  };
+  if (point) {
+    update.centroid_lat = point.lat;
+    update.centroid_lng = point.lng;
   }
 
-  const { error: upErr } = await adminClient.from('service_areas').update({
-    centroid_lat: point.lat,
-    centroid_lng: point.lng,
-  }).eq('id', serviceAreaId);
+  const { error: upErr } = await adminClient.from('service_areas').update(update).eq('id', serviceAreaId);
   if (upErr) throw upErr;
 
-  return jsonResponse({ ok: true, geo_lat: point.lat, geo_lng: point.lng });
+  if (!point) {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      reason: 'no_geocode_result',
+      geo_ai_called: geoAiCalled,
+      geo_query: geoQuery,
+    });
+  }
+
+  return jsonResponse({
+    ok: true,
+    geo_lat: point.lat,
+    geo_lng: point.lng,
+    geo_ai_called: geoAiCalled,
+    geo_query: geoQuery,
+  });
 }
 
 Deno.serve(async (req) => {

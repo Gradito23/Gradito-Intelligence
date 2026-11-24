@@ -80,19 +80,21 @@ export async function geocodePreparedPlaceLine(line: string | null | undefined):
   return geocodeAddress(q);
 }
 
+export type ServiceAreaGeocode = { point: GeoPoint; query: string };
+
 /** Full line first. If that is not a place, one query for the longest word already in the line. */
-export async function geocodeServiceAreaName(areaName: string): Promise<GeoPoint | null> {
+export async function geocodeServiceAreaName(areaName: string): Promise<ServiceAreaGeocode | null> {
   const q = areaName?.trim();
   if (!q) return null;
 
   const direct = await geocodeAddress(q);
-  if (direct && geocodeHitMatchesQuery(q, direct.displayName)) return direct;
+  if (direct && geocodeHitMatchesQuery(q, direct.displayName)) return { point: direct, query: q };
 
   const placeWord = longestPlaceWord(q);
   if (placeWord) {
     await waitForNominatim();
     const town = await geocodeAddress(placeWord);
-    if (town && resultNameIsWord(town, placeWord)) return town;
+    if (town && resultNameIsWord(town, placeWord)) return { point: town, query: placeWord };
     return null;
   }
 
@@ -100,7 +102,7 @@ export async function geocodeServiceAreaName(areaName: string): Promise<GeoPoint
   if (!zip) return null;
   await waitForNominatim();
   const zipPoint = await geocodeAddress(zip);
-  if (zipPoint && (zipPoint.displayName || '').includes(zip)) return zipPoint;
+  if (zipPoint && (zipPoint.displayName || '').includes(zip)) return { point: zipPoint, query: zip };
   return null;
 }
 
