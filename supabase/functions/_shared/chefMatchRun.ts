@@ -61,16 +61,13 @@ function chefPoint(chef: ChefRow, idx: Map<string, AreaRow>): { lat: number; lng
   return null;
 }
 
-function distanceKm(chef: ChefRow, eventArea: string | null, eventLat: number | null, eventLng: number | null, idx: Map<string, AreaRow>): number {
+function distanceKm(chef: ChefRow, eventArea: string | null, idx: Map<string, AreaRow>): number | null {
   if (!eventArea || isLocal(chef, eventArea)) return 0;
   const cp = chefPoint(chef, idx);
   let ep: { lat: number; lng: number } | null = null;
-  if (eventLat != null && eventLng != null) ep = { lat: eventLat, lng: eventLng };
-  else {
-    const sa = idx.get(normalizeArea(eventArea));
-    if (sa?.centroid_lat != null && sa?.centroid_lng != null) {
-      ep = { lat: Number(sa.centroid_lat), lng: Number(sa.centroid_lng) };
-    }
+  const sa = idx.get(normalizeArea(eventArea));
+  if (sa?.centroid_lat != null && sa?.centroid_lng != null) {
+    ep = { lat: Number(sa.centroid_lat), lng: Number(sa.centroid_lng) };
   }
   if (cp && ep) return haversineKm(cp, ep);
   const eventSa = idx.get(normalizeArea(eventArea));
@@ -78,7 +75,7 @@ function distanceKm(chef: ChefRow, eventArea: string | null, eventLat: number | 
     const homeSa = idx.get(normalizeArea(h));
     if (homeSa?.region && eventSa?.region && homeSa.region === eventSa.region) return 50;
   }
-  return 500;
+  return null;
 }
 
 function talentScore(chef: ChefRow, criteria: Record<string, unknown>): number {
@@ -105,8 +102,6 @@ export async function runServerChefMatch(
 
   const idx = buildIndex(areas ?? []);
   let criteria = options.criteria;
-  let eventLat: number | null = null;
-  let eventLng: number | null = null;
 
   if (options.eventId) {
     const { data: event, error } = await adminClient.from('events').select('*').eq('id', options.eventId).maybeSingle();
@@ -121,10 +116,7 @@ export async function runServerChefMatch(
       budget: Number(event.chef_food_budget) || Number(event.experience_fee) || null,
       event_type: event.event_type,
       experience_type: event.experience_type,
-      event_geo: event.geo_lat != null ? { lat: event.geo_lat, lng: event.geo_lng } : null,
     };
-    eventLat = event.geo_lat != null ? Number(event.geo_lat) : null;
-    eventLng = event.geo_lng != null ? Number(event.geo_lng) : null;
   }
 
   if (!criteria) throw new Error('criteria or event_id required');
@@ -138,7 +130,7 @@ export async function runServerChefMatch(
         return { chef_id: chef.id, eligible: false, score: -1 };
       }
       const local = isLocal(chef, eventArea);
-      const dist = distanceKm(chef, eventArea, eventLat, eventLng, idx);
+      const dist = distanceKm(chef, eventArea, idx);
       const talent = talentScore(chef, criteria);
       return {
         chef_id: chef.id,
@@ -155,7 +147,9 @@ export async function runServerChefMatch(
       const localA = a.is_local ? 1 : 0;
       const localB = b.is_local ? 1 : 0;
       if (localB !== localA) return localB - localA;
-      return (a.distance_km ?? 0) - (b.distance_km ?? 0) || (b.score ?? 0) - (a.score ?? 0);
+      const distA = a.distance_km == null ? Number.POSITIVE_INFINITY : a.distance_km;
+      const distB = b.distance_km == null ? Number.POSITIVE_INFINITY : b.distance_km;
+      return distA - distB || (b.score ?? 0) - (a.score ?? 0);
     })
     .slice(0, limit);
 
