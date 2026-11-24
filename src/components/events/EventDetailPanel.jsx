@@ -28,6 +28,7 @@ import EventJobPageActions from './EventJobPageActions';
 import EventChefMatchPanel from '@/components/match/EventChefMatchPanel';
 import { useEventJobPage } from '@/hooks/useEventJobPage';
 import { supabase } from '@/api/supabaseClient';
+import { resolveServiceAreaPoint } from '@/lib/resolveServiceAreaPoint';
 import { useConfig } from '@/hooks/useConfig';
 import { ConfigRepository } from '@/infrastructure/repositories/ConfigRepository';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -407,7 +408,7 @@ export default function EventDetailPanel({ event, chefs, eventChefs, open, onClo
     const created = await ConfigRepository.create('service_areas', { name, active: true });
     if (created?.id) {
       try {
-        await supabase.functions.invoke('geo-resolve', { body: { service_area_id: created.id } });
+        await resolveServiceAreaPoint(created.id);
       } catch {
         // The address is saved. Coordinates stay empty when the lookup fails.
       }

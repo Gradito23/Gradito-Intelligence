@@ -4,6 +4,7 @@ import { useChefs, useEvents, useEventChefs, useClients, useServiceAreas } from 
 import { computeMatchLists, persistMatchRun, polishMatchReasons, buildMatchContext } from '@/lib/runChefMatch';
 import { matchCriteriaFromEvent } from '@/lib/matchCriteriaFromEvent';
 import { resultsFromSuggested } from '@/lib/chefMatchScore';
+import { resolveServiceAreaPoint } from '@/lib/resolveServiceAreaPoint';
 
 export const EVENT_MATCH_RUN_KEY = 'event_match_run';
 
@@ -32,18 +33,9 @@ async function ensureAreaCoordinates(event, areas, queryClient) {
     return withArea;
   }
 
-  let lookedUp = null;
-  try {
-    const { data, error } = await supabase.functions.invoke('geo-resolve', {
-      body: { service_area_id: area.id },
-    });
-    if (!error) lookedUp = data;
-  } catch {
-    lookedUp = null;
-  }
-
-  const lat = lookedUp?.geo_lat;
-  const lng = lookedUp?.geo_lng;
+  const lookedUp = await resolveServiceAreaPoint(area.id);
+  const lat = lookedUp?.lat;
+  const lng = lookedUp?.lng;
   if (lat == null || lng == null) return areas || [];
 
   const next = (areas || []).some((row) => row?.id === area.id)

@@ -75,13 +75,21 @@ async function rewriteLocationForNominatim(
   }
 }
 
-async function resolveServiceArea(
+function realCoordinate(value: unknown, min: number, max: number): number | null {
+  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+  if (!Number.isFinite(n) || n < min || n > max) return null;
+  return n;
+}
+
+async function saveProvidedPoint(
   adminClient: ReturnType<typeof createServiceClient>,
   serviceAreaId: string,
+  lat: number,
+  lng: number,
 ) {
   const { data: area, error } = await adminClient
     .from('service_areas')
-    .select('id, name, centroid_lat, centroid_lng')
+    .select('id, centroid_lat, centroid_lng, geo_query, geo_ai_called')
     .eq('id', serviceAreaId)
     .maybeSingle();
   if (error) throw error;
@@ -94,6 +102,73 @@ async function resolveServiceArea(
       reason: 'already_has_coordinates',
       geo_lat: area.centroid_lat,
       geo_lng: area.centroid_lng,
+      geo_ai_called: area.geo_ai_called === true,
+      geo_query: area.geo_query ?? null,
+    });
+  }
+
+  const { error: upErr } = await adminClient.from('service_areas').update({
+    centroid_lat: lat,
+    centroid_lng: lng,
+  }).eq('id', serviceAreaId);
+  if (upErr) throw upErr;
+
+  return jsonResponse({
+    ok: true,
+    geo_lat: lat,
+    geo_lng: lng,
+    geo_ai_called: area.geo_ai_called === true,
+    geo_query: area.geo_query ?? null,
+  });
+}
+
+async function resolveServiceArea(
+  adminClient: ReturnType<typeof createServiceClient>,
+  serviceAreaId: string,
+) {
+  const { data: area, error } = await adminClient
+    .from('service_areas')
+    .select('id, name, centroid_lat, centroid_lng, geo_query, geo_ai_called')
+    .eq('id', serviceAreaId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!area) return jsonResponse({ error: 'Service area not found' }, 404);
+
+  if (area.centroid_lat != null && area.centroid_lng != null) {
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      reason: 'already_has_coordinates',
+      geo_lat: area.centroid_lat,
+      geo_lng: area.centroid_lng,
+      geo_ai_called: area.geo_ai_called === true,
+      geo_query: area.geo_query ?? null,
+    });
+  }
+
+  const storedQuery = typeof area.geo_query === 'string' ? area.geo_query.trim() : '';
+  if (storedQuery) {
+    const storedPoint = await geocodePreparedPlaceLine(storedQuery);
+    if (storedPoint) {
+      const { error: upErr } = await adminClient.from('service_areas').update({
+        centroid_lat: storedPoint.lat,
+        centroid_lng: storedPoint.lng,
+      }).eq('id', serviceAreaId);
+      if (upErr) throw upErr;
+      return jsonResponse({
+        ok: true,
+        geo_lat: storedPoint.lat,
+        geo_lng: storedPoint.lng,
+        geo_ai_called: area.geo_ai_called === true,
+        geo_query: storedQuery,
+      });
+    }
+    return jsonResponse({
+      ok: true,
+      skipped: true,
+      reason: 'no_geocode_result',
+      geo_ai_called: area.geo_ai_called === true,
+      geo_query: storedQuery,
     });
   }
 
@@ -158,7 +233,14 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const serviceAreaId = typeof body.service_area_id === 'string' ? body.service_area_id : null;
-    if (serviceAreaId) return await resolveServiceArea(auth.adminClient, serviceAreaId);
+    if (serviceAreaId) {
+      const lat = realCoordinate(body.geo_lat, -90, 90);
+      const lng = realCoordinate(body.geo_lng, -180, 180);
+      if (lat != null && lng != null) {
+        return await saveProvidedPoint(auth.adminClient, serviceAreaId, lat, lng);
+      }
+      return await resolveServiceArea(auth.adminClient, serviceAreaId);
+    }
 
     const chefId = typeof body.chef_id === 'string' ? body.chef_id : null;
     if (!chefId) return jsonResponse({ error: 'chef_id or service_area_id required' }, 400);
